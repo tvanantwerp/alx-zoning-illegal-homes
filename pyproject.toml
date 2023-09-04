@@ -5,11 +5,14 @@ description = ""
 authors = ["Tom VanAntwerp <tom@tomvanantwerp.com>"]
 readme = "README.md"
 
-[tool.poetry.dependencies]
-python = "^3.11"
-geopandas = "^0.13.2"
-
-
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+create-map = "main:main"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+geopandas = "^0.13.2"
+requests = "^2.31.0"
