@@ -30,6 +30,11 @@
         "filetype": "zip"
     },
     {
+        "name": "Building",
+        "url": "https://opendata.arcgis.com/api/v3/datasets/aec4d1c6ee894e1b821ff39d30bdfc30_0/downloads/data?format=shp&spatialRefId=4326&where=1%3D1",
+        "filetype": "zip"
+    },
+    {
         "name": "Buildings_3D",
         "url": "https://opendata.arcgis.com/api/v3/datasets/39c76292dac441829e20ae1770902d71_0/downloads/data?format=shp&spatialRefId=4326&where=1%3D1",
         "filetype": "zip"

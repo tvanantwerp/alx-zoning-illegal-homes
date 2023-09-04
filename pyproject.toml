@@ -14,7 +14,7 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
-create-map = "main:main"
+create-map = "alx_zoning_illegal_homes.mapper.main:main"
 
 [tool.poetry.dependencies]
 python = "^3.11"
