@@ -1,0 +1,13 @@
+# Mapping which homes are illegal to build again under current zoning in Alexandria, VA
+
+## Data Sources
+
+- [Streets](https://cityofalexandria-alexgis.opendata.arcgis.com/datasets/AlexGIS::transport-streets/explore?location=38.818200%2C-77.094663%2C13.95) ([Shapefile](https://opendata.arcgis.com/api/v3/datasets/dccf9eda6b6c443b8133abf2542854b1_0/downloads/data?format=shp&spatialRefId=4326&where=1=1))
+- [Zoning Map](https://cityofalexandria-alexgis.opendata.arcgis.com/datasets/AlexGIS::zoning/explore?location=38.813344%2C-77.057218%2C13.97) ([Shapefile](https://opendata.arcgis.com/api/v3/datasets/2e5d0470125642bda67f4e78dfe52f89_0/downloads/data?format=shp&spatialRefId=4326&where=1%3D1))
+- [Height Districts](https://cityofalexandria-alexgis.opendata.arcgis.com/datasets/AlexGIS::height-districts/explore?location=38.816715%2C-77.054586%2C14.01) ([Shapefile](https://opendata.arcgis.com/api/v3/datasets/21883749d3f6498baeee580e0ad2d1ef_0/downloads/data?format=shp&spatialRefId=4326&where=1%3D1))
+- [Parcels](https://cityofalexandria-alexgis.opendata.arcgis.com/datasets/AlexGIS::alexandria-parcels/explore?location=38.817839%2C-77.090680%2C14.01) ([Shapefile](https://opendata.arcgis.com/api/v3/datasets/ab8f3a147ddc47deb6d82c5afda65708_0/downloads/data?format=shp&spatialRefId=4326&where=1%3D1))
+- [Address Points](https://cityofalexandria-alexgis.opendata.arcgis.com/datasets/AlexGIS::address-points/explore?location=38.818239%2C-77.053271%2C19.89) ([Shapefile](https://opendata.arcgis.com/api/v3/datasets/ab8f3a147ddc47deb6d82c5afda65708_0/downloads/data?format=shp&spatialRefId=4326&where=1%3D1))
+- [Historic Districts](https://cityofalexandria-alexgis.opendata.arcgis.com/datasets/AlexGIS::historic-districts/explore?location=38.808928%2C-77.050348%2C14.99) ([Shapefile](https://opendata.arcgis.com/api/v3/datasets/e6dcc5ba69ec47e08498210fa4705c49_0/downloads/data?format=shp&spatialRefId=4326&where=1%3D1))
+- [Buildings 3D](https://cityofalexandria-alexgis.opendata.arcgis.com/maps/buildings-3d) ([Shapefile](https://opendata.arcgis.com/api/v3/datasets/39c76292dac441829e20ae1770902d71_0/downloads/data?format=shp&spatialRefId=4326&where=1%3D1))
+- [Building Use](https://cityofalexandria-alexgis.opendata.arcgis.com/datasets/AlexGIS::buildings-use/explore) ([Shapefile](https://opendata.arcgis.com/api/v3/datasets/8ecb044012bf47f0959fee76e9cc559b_0/downloads/data?format=csv&spatialRefId=4326&where=1%3D1))
+- [Road Edges](https://cityofalexandria-alexgis.opendata.arcgis.com/datasets/AlexGIS::road-edges/explore?location=38.819876%2C-77.060195%2C19.80) ([Shapefile](https://opendata.arcgis.com/api/v3/datasets/7d6caf26b82b4f24bab7cb54010c62d0_0/downloads/data?format=shp&spatialRefId=4326&where=1%3D1))
