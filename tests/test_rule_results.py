@@ -1,4 +1,6 @@
 """The per-rule results that back the lot pop-up's table."""
+from dataclasses import replace
+
 import pytest
 from shapely.geometry import LineString, box
 from shapely.ops import unary_union
@@ -249,7 +251,82 @@ def test_open_space_zone_gets_an_open_space_row():
     assert r["open_space"].measured == pytest.approx(1 - 70 * 90 / 9600)
 
 
+BIG_LOT = box(0, 0, 80, 120)
+BIG_HOME = box(5, 20, 75, 110)   # covers about 66% of the lot
+
+
+def test_height_unknown_is_not_checked():
+    _, f = check(BIG_LOT, box(20, 35, 60, 75), "R-8", height=None)
+    row = rows(f)["height"]
+    assert row.status == NOT_CHECKED and "3D building data" in row.explanation
+
+
+def test_no_floor_space_limit_says_no_rule():
+    rules = replace(ZONES["R-8"], max_floor_area_ratio=None)
+    _, f = check(BIG_LOT, box(20, 35, 60, 75), "R-8", rules=rules)
+    row = rows(f)["floor_area"]
+    assert row.status == NO_RULE and "floor space limit" in row.explanation
+
+
+def test_no_height_limit_says_no_rule():
+    rules = replace(ZONES["R-8"], max_height={})
+    _, f = check(BIG_LOT, box(20, 35, 60, 75), "R-8", rules=rules)
+    row = rows(f)["height"]
+    assert row.status == NO_RULE and "height limit" in row.explanation
+
+
+def test_no_outlines_leaves_open_space_unchecked():
+    rules = replace(ZONES["R-8"], max_coverage=0.30)
+    _, f = check(BIG_LOT, BIG_HOME, "R-8", rules=rules, all_buildings=[])
+    row = rows(f)["coverage"]
+    assert row.status == NOT_CHECKED and "no building outlines" in row.explanation
+
+
+def test_coverage_row_fails_with_every_building():
+    rules = replace(ZONES["R-8"], max_coverage=0.30)
+    _, f = check(BIG_LOT, BIG_HOME, "R-8", rules=rules)
+    row = rows(f)["coverage"]
+    assert row.status == FAILS and row.limit == "max" and row.required == 0.30
+    assert row.measured == pytest.approx(6300 / 9600) and row.buildings == [0]
+    assert "open_space" not in rows(f)
+
+
+def test_coverage_row_passes_with_every_building():
+    rules = replace(ZONES["R-8"], max_coverage=0.30)
+    _, f = check(BIG_LOT, box(20, 35, 60, 75), "R-8", rules=rules)
+    row = rows(f)["coverage"]
+    assert row.status == PASSES and row.buildings == [0]
+
+
+def test_excluded_home_type_has_no_open_space_rule():
+    rules = replace(ZONES["R-8"], min_open_space=0.35,
+                    open_space_applies_to=frozenset({"multi"}))
+    reasons, f = check(BIG_LOT, BIG_HOME, "R-8", rules=rules)
+    r = rows(f)
+    assert r["coverage"].status == NO_RULE and "open_space" not in r
+    assert "open_space" not in reasons
+
+
+def test_zone_with_both_limits_shows_the_row_that_failed():
+    rules = replace(ZONES["R-8"], max_coverage=0.80, min_open_space=0.50)
+    reasons, f = check(BIG_LOT, BIG_HOME, "R-8", rules=rules)
+    r = rows(f)
+    assert "open_space" in reasons
+    assert r["open_space"].status == FAILS and "coverage" not in r
+    assert r["open_space"].measured == pytest.approx(1 - 6300 / 9600)
+
+
+def test_zone_with_both_limits_shows_coverage_when_both_pass():
+    rules = replace(ZONES["R-8"], max_coverage=0.80, min_open_space=0.10)
+    reasons, f = check(BIG_LOT, box(20, 35, 60, 75), "R-8", rules=rules)
+    assert rows(f)["coverage"].status == PASSES and "open_space" not in reasons
+
+
 ALL_CASES = [
+    dict(lot=BIG_LOT, home=BIG_HOME, zone="R-8", rules=replace(ZONES["R-8"], max_coverage=0.30)),
+    dict(lot=BIG_LOT, home=BIG_HOME, zone="R-8", all_buildings=[]),
+    dict(lot=BIG_LOT, home=BIG_HOME, zone="R-8",
+         rules=replace(ZONES["R-8"], max_coverage=0.80, min_open_space=0.50)),
     dict(lot=box(0, 0, 80, 120), home=box(20, 35, 60, 75), zone="R-8"),
     dict(lot=box(0, 0, 80, 120), home=box(20, 35, 60, 75), zone="R-8", floor_area=None, height=None),
     dict(lot=box(0, 0, 80, 120), home=box(20, 35, 60, 75), zone="R-8", home_type="townhouse"),

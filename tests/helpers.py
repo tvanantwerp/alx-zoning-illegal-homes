@@ -10,7 +10,7 @@ MAIN = ("MAIN", LineString([(-300, -25), (500, -25)]))
 
 
 def check(lot, home, zone, home_type="single", neighbors=None, attached=None,
-          height=20, floor_area=1000, units=1, rules=None, streets=()):
+          height=20, floor_area=1000, units=1, rules=None, streets=(), all_buildings=None):
     """Check one lot holding one home, fronting Main St to its south.
 
     Pass `rules` to use those instead of the zone's own, and `streets` to add
@@ -24,7 +24,7 @@ def check(lot, home, zone, home_type="single", neighbors=None, attached=None,
         homes=[Home(shape=home, height=height, floor_area=floor_area)],
         lines=classify(lot, neighbors, [MAIN, *streets], "MAIN"),
         units=units,
-        all_buildings=[home],
+        all_buildings=[home] if all_buildings is None else all_buildings,
         attached_neighbors=attached,
     )
     findings = check_lot(facts)

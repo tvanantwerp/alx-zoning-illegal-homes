@@ -706,29 +706,34 @@ def _check_open_space(facts, findings):
                 rules.label, HOME_TYPE_NAMES[kind], "open space or coverage limit")
         findings.results.append(row)
         return
-    findings.results.append(row)
     if not facts.all_buildings:
+        findings.results.append(row)
         row.status, row.explanation = NOT_CHECKED, NO_OUTLINES
         return
     covered = unary_union(facts.all_buildings).intersection(facts.shape).area
     share = covered / facts.shape.area
     findings.measurements["coverage"] = share
-    row.status = PASSES
-    row.buildings = list(range(len(facts.all_buildings)))
+    too_much = bool(rules.max_coverage) and share > rules.max_coverage + COVERAGE_MARGIN
+    too_little = (not too_much and bool(rules.min_open_space)
+                  and 1 - share < rules.min_open_space - COVERAGE_MARGIN)
+    if too_little:
+        row = open_row
+    elif too_much:
+        row = cover_row
     if row is cover_row:
         row.measured, row.required = share, rules.max_coverage
     else:
         row.measured, row.required, row.limit = 1 - share, rules.min_open_space, "min"
-    if rules.max_coverage and share > rules.max_coverage + COVERAGE_MARGIN:
-        row.status = FAILS
+    row.status = FAILS if (too_much or too_little) else PASSES
+    row.buildings = list(range(len(facts.all_buildings)))
+    findings.results.append(row)
+    if too_much:
         findings.reasons.append(Reason(
             "open_space",
             f"Buildings cover too much of the lot: about {share:.0%}, but "
             f"the {rules.label} allows {rules.max_coverage:.0%}.",
         ))
-    elif (not rules.max_coverage and rules.min_open_space
-          and 1 - share < rules.min_open_space - COVERAGE_MARGIN):
-        row.status = FAILS
+    elif too_little:
         findings.reasons.append(Reason(
             "open_space",
             f"Not enough open space: buildings alone cover about {share:.0%} "
