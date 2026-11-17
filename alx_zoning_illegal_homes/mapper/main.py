@@ -6,6 +6,7 @@ import shapely
 
 from alx_zoning_illegal_homes.downloader.download import get_data
 from alx_zoning_illegal_homes.mapper.analyze import analyze
+from alx_zoning_illegal_homes.mapper.lot_files import LOTS_DIR, write_lot_files
 
 SITE_DIR = Path(__file__).resolve().parent.parent.parent / "site"
 OUTPUT = SITE_DIR / "lots.geojson"
@@ -79,9 +80,11 @@ def export(results, path: Path = OUTPUT) -> None:
     results = results[~results.geometry.is_empty]
 
     features = []
-    for row in results.itertuples(index=False):
+    for row in results.itertuples(index=True):
         record = row._asdict()
         properties = {}
+        if record["status"] in ("illegal", "ok"):
+            properties["id"] = int(row.Index)
         for column, name in PROPERTY_NAMES.items():
             value = _clean(record.get(column))
             if value is not None:
@@ -114,8 +117,10 @@ def export(results, path: Path = OUTPUT) -> None:
 def main() -> None:
     """Command line entry point."""
     get_data()
-    results = analyze()
+    facts = {}
+    results = analyze(keep_facts=facts)
     export(results)
+    count = write_lot_files(results, facts)
     checked = results[results["status"].isin(["illegal", "ok"])]
     illegal = (checked["status"] == "illegal").sum()
     planned = checked["district"].notna().sum()
@@ -125,6 +130,7 @@ def main() -> None:
     print(f"{illegal:,} ({illegal / len(checked):.0%}) break at least one "
           "of today's zoning rules.")
     print(f"Wrote {OUTPUT}")
+    print(f"Wrote {count:,} lot files to {LOTS_DIR}")
 
 
 if __name__ == "__main__":
