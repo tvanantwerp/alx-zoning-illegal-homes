@@ -49,3 +49,16 @@ test("shares show as percent and extra cells fall back to a dash", () => {
   assert.match(html, /≤ 35%/);
   assert.match(html, /col-extra[^>]*>–</);
 });
+test("squares only call the lot bigger when it is", () => {
+  assert.match(lotSquares(row({ status: "passes", measured: 9000 })), /at least as big as the zone requires/);
+  const close = lotSquares(row({ status: "passes", measured: 7800 }));
+  assert.match(close, /slightly smaller than the zone requires, but within the map's margin/);
+  assert.doesNotMatch(close, /as big as/);
+  assert.match(lotSquares(row()), /50% of the land/);
+  assert.doesNotMatch(lotSquares(row({ status: "not_checked", measured: 7800 })), /sq-note/);
+});
+test("only failing rows take keyboard focus", () => {
+  const html = rulesTable({ label: "x", rules: [row(), row({ rule: "height", status: "passes" })] }, null);
+  assert.match(html, /<tr data-rule="lot_area" tabindex="0">/);
+  assert.match(html, /<tr data-rule="height">/);
+});

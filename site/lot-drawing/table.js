@@ -59,7 +59,9 @@ export function rulesTable(main, extra) {
         ? `<td class="col-extra">${pill(other)}${other.summary ? "" : ` ${ruleSays(other)}`}</td>`
         : `<td class="col-extra">–</td>`;
     }
-    return `<tr data-rule="${esc(row.rule)}"><td>${name}</td><td>${pill(row)}</td>${middle}${extraCell}</tr>`;
+    // Failing rows take keyboard focus so their part of the drawing can be highlighted without a mouse.
+    const focus = row.status === "fails" ? ` tabindex="0"` : "";
+    return `<tr data-rule="${esc(row.rule)}"${focus}><td>${name}</td><td>${pill(row)}</td>${middle}${extraCell}</tr>`;
   });
   return `<div class="report-wrap"><table class="report"><thead><tr>${head}</tr></thead><tbody>${body.join("")}</tbody></table></div>`;
 }
@@ -73,10 +75,16 @@ export function lotSquares(row) {
     const side = Math.max(18, Math.sqrt(area / max) * 170);
     return `<div class="sq"><svg class="box ${cls}" width="${side}" height="${side}" viewBox="0 0 ${side} ${side}" aria-hidden="true"><rect x="1" y="1" width="${side - 2}" height="${side - 2}"/></svg><span>${label}<br><b>${sqft(area)}</b></span></div>`;
   };
-  const note = fails
-    ? `This lot has ${pct(row.measured / row.required)} of the land the zone requires.`
-    : `This lot is bigger than the zone requires.`;
-  return `<div class="inset lot-squares" data-rule="${esc(row.rule)}"><div class="inset-title">Lot size, drawn to scale</div><div class="squares">${box(row.measured, "", "This lot")}${box(row.required, fails ? "over" : "ghost", "Smallest allowed")}</div><p class="sq-note">${note}</p></div>`;
+  const note = sizeNote(row);
+  return `<div class="inset lot-squares" data-rule="${esc(row.rule)}"><div class="inset-title">Lot size, drawn to scale</div><div class="squares">${box(row.measured, "", "This lot")}${box(row.required, fails ? "over" : "ghost", "Smallest allowed")}</div>${note ? `<p class="sq-note">${note}</p>` : ""}</div>`;
+}
+
+/** One sentence under the lot-size squares comparing the lot with the smallest allowed. */
+function sizeNote(row) {
+  if (row.status === "fails") return `This lot has ${pct(row.measured / row.required)} of the land the zone requires.`;
+  if (row.status !== "passes") return "";
+  if (row.measured >= row.required) return "This lot is at least as big as the zone requires.";
+  return "This lot is slightly smaller than the zone requires, but within the map's margin for measuring error.";
 }
 
 /** The lot's notes as a list. */

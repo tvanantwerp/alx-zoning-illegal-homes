@@ -186,6 +186,7 @@
   .ld-three:active { cursor: grabbing; }
   .ld-three canvas { display: block; }
   .drawing-error { margin: 0; padding: 16px; color: var(--muted); }
+  .ld-three:has(.drawing-error) { height: auto; cursor: auto; }
   .tag {
     font: 600 12px/1.25 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     background: var(--card); color: var(--ink); border: 1px solid var(--rule); border-radius: 6px; padding: 3px 7px;
@@ -216,6 +217,7 @@
   }
   table.report td { padding: 7px 6px; border-bottom: 1px solid var(--rule); vertical-align: middle; }
   table.report tbody tr:hover, table.report tbody tr:focus-within { background: var(--paper); }
+  table.report tbody tr[tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
   table.report .num { font-variant-numeric: tabular-nums; white-space: nowrap; }
   table.report .col-extra { border-left: 1px solid var(--rule); padding-left: 10px; white-space: nowrap; }
   .pill { font: 700 10.5px/1 var(--mono); letter-spacing: .06em; padding: 4px 6px; border-radius: 4px; white-space: nowrap; }
@@ -501,7 +503,6 @@ function describe(properties, full) {
 let selectedFeature = null;
 
 const drawing = setUpLotDrawing({ isOrdinary: () => ordinaryRules, setOrdinary: setOrdinaryRules });
-window.drawing = drawing;
 
 /** Shows a lot in the side panel and outlines it on the map, then opens its drawing. */
 function select(feature) {

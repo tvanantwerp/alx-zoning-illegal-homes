@@ -1,9 +1,23 @@
 import { esc } from "./format.js";
 import { chooseResults, rulesTable, lotSquares, notesList } from "./table.js";
-import { drawLot } from "./scene.js";
-
 const LOAD_ERROR = "The drawing for this lot couldn't be loaded. Try rebuilding the map data.";
+const NO_DRAWING = "The 3D drawing couldn't be shown here, but the rules below still apply.";
 const CAPTION = "Measured from the city's map data, not a survey. Drag to turn it.";
+
+let sceneModule = null;
+
+/**
+ * Loads the 3D drawing code, and Three.js with it, the first time a lot is opened.
+ * Loading it late keeps the map from waiting on Three.js. A failed load is
+ * forgotten so the next lot tries again.
+ */
+function loadScene() {
+  sceneModule ??= import("./scene.js").catch((error) => {
+    sceneModule = null;
+    throw error;
+  });
+  return sceneModule;
+}
 
 /**
  * Wire up the pop-up. `isOrdinary()` reads the shared switch; `setOrdinary(bool)` changes it everywhere.
@@ -31,8 +45,37 @@ export function setUpLotDrawing({ isOrdinary, setOrdinary }) {
     view = null;
   };
 
+  /** Swaps the drawing area for a plain sentence, for when the 3D drawing can't be shown. */
+  const showNoDrawing = (holder) => {
+    const note = document.createElement("p");
+    note.className = "drawing-error";
+    note.textContent = NO_DRAWING;
+    holder.replaceChildren(note);
+    const caption = holder.closest("figure")?.querySelector("figcaption");
+    if (caption) caption.hidden = true;
+  };
+
+  /** Draws the lot in 3D once the drawing code has loaded, unless the pop-up has moved on by then. */
+  const drawScene = async (holder, results, mine) => {
+    let drawLot;
+    try {
+      ({ drawLot } = await loadScene());
+    } catch {
+      if (mine === latest) showNoDrawing(holder);
+      return;
+    }
+    if (mine !== latest) return;
+    try {
+      view = drawLot(holder, lot, results);
+    } catch {
+      view = null;
+      showNoDrawing(holder);
+    }
+  };
+
   /** Fills the header and body for the loaded lot under the current switch, and draws it. */
   const render = () => {
+    const mine = ++latest;
     clearDrawing();
     tips.hide();
     const ordinary = isOrdinary();
@@ -55,11 +98,10 @@ export function setUpLotDrawing({ isOrdinary, setOrdinary }) {
       `<div class="ld-table${extra ? " has-extra" : ""}">${rulesTable(main, extra)}</div>` +
       notesList(notes);
 
-    view = drawLot(body.querySelector(".ld-three"), lot, main);
     const square = body.querySelector(".lot-squares");
     const table = body.querySelector("table.report");
     const show = (rule) => {
-      view.highlight(rule ? [rule] : []);
+      if (view) view.highlight(rule ? [rule] : []);
       if (square) square.classList.toggle("hl", rule === "lot_area");
     };
     for (const row of table.querySelectorAll("tr[data-rule]")) {
@@ -67,6 +109,7 @@ export function setUpLotDrawing({ isOrdinary, setOrdinary }) {
       row.addEventListener("focusin", () => show(row.dataset.rule));
     }
     table.addEventListener("mouseleave", () => show(null));
+    drawScene(body.querySelector(".ld-three"), main, mine);
   };
 
   /** Shows the pop-up for a lot on the map. Lots without an id weren't checked, so there is nothing to draw. */
@@ -121,6 +164,8 @@ export function setUpLotDrawing({ isOrdinary, setOrdinary }) {
   });
 
   dialog.addEventListener("close", () => {
+    // The close event arrives a moment after closing, so a lot opened right away may already be showing.
+    if (dialog.open) return;
     latest++;
     clearDrawing();
     tips.hide();
