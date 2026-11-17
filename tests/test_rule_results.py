@@ -6,7 +6,7 @@ from shapely.ops import unary_union
 from alx_zoning_illegal_homes.mapper.checks import Home, LotFacts, check_lot
 from alx_zoning_illegal_homes.mapper.lot_lines import classify
 from alx_zoning_illegal_homes.mapper.rule_results import (
-    FAILS, NO_RULE, NOT_CHECKED, NOT_REQUIRED, PASSES, reason_kind)
+    RULE_IDS, FAILS, NO_RULE, NOT_CHECKED, NOT_REQUIRED, PASSES, reason_kind)
 from alx_zoning_illegal_homes.mapper.rules import ZONES
 
 from .helpers import between_neighbors, check
@@ -205,3 +205,66 @@ def test_yard_failures_match_reasons(case):
     _, f = check(**YARD_CASES[case])
     failing = {reason_kind(r.rule) for r in f.results if r.status == FAILS}
     assert failing == {reason.kind for reason in f.reasons}
+
+
+def test_oversized_home_marks_floor_space_and_its_building():
+    lot = box(0, 0, 80, 120)
+    _, f = check(lot, box(20, 35, 60, 75), "R-8", neighbors=between_neighbors(lot), floor_area=9000)
+    row = rows(f)["floor_area"]
+    ratio = ZONES["R-8"].floor_area_ratio_for("single", False)
+    assert row.status == FAILS and row.measured == 9000
+    assert row.required == pytest.approx(ratio * 9600)
+    assert row.buildings == [0]
+
+
+def test_height_row_carries_the_limit():
+    lot = box(0, 0, 80, 120)
+    _, f = check(lot, box(25, 40, 55, 70), "R-8", neighbors=between_neighbors(lot), height=60)
+    row = rows(f)["height"]
+    assert row.status == FAILS and row.required == ZONES["R-8"].max_height["single"]
+    assert row.buildings == [0]
+
+
+def test_unknown_floor_space_is_not_checked():
+    lot = box(0, 0, 80, 120)
+    _, f = check(lot, box(20, 35, 60, 75), "R-8", floor_area=None)
+    assert rows(f)["floor_area"].status == NOT_CHECKED
+
+
+def test_rm_open_space_not_checked_until_the_rule_exists():
+    lot = box(0, 0, 30, 100)
+    _, f = check(lot, box(5, 20, 25, 60), "RM", home_type="single", neighbors=between_neighbors(lot))
+    r = rows(f)
+    assert "coverage" not in r and r["open_space"].status == NOT_CHECKED
+    assert "June 24, 1992" in r["open_space"].explanation
+
+
+def test_open_space_zone_gets_an_open_space_row():
+    lot = box(0, 0, 80, 120)
+    zone = next(z for z, rules in ZONES.items() if rules.min_open_space and not rules.max_coverage)
+    kind = next(iter(ZONES[zone].open_space_applies_to or ZONES[zone].allowed))
+    _, f = check(lot, box(5, 20, 75, 110), zone, home_type=kind)
+    r = rows(f)
+    assert "coverage" not in r and r["open_space"].limit == "min"
+    assert r["open_space"].measured == pytest.approx(1 - 70 * 90 / 9600)
+
+
+ALL_CASES = [
+    dict(lot=box(0, 0, 80, 120), home=box(20, 35, 60, 75), zone="R-8"),
+    dict(lot=box(0, 0, 80, 120), home=box(20, 35, 60, 75), zone="R-8", floor_area=None, height=None),
+    dict(lot=box(0, 0, 80, 120), home=box(20, 35, 60, 75), zone="R-8", home_type="townhouse"),
+    dict(lot=box(0, 0, 80, 120), home=box(20, 35, 60, 75), zone="RM", home_type="single",
+         neighbors=between_neighbors(box(0, 0, 80, 120))),
+    dict(lot=box(0, 0, 80, 120), home=box(20, 35, 60, 75), zone="R-8", floor_area=9000, height=60),
+    *YARD_CASES.values(),
+]
+
+
+def test_every_case_has_one_row_per_rule_in_order_and_rows_match_reasons():
+    for kwargs in ALL_CASES:
+        _, f = check(**kwargs)
+        ids = [r.rule for r in f.results]
+        assert ids == sorted(ids, key=RULE_IDS.index) and len(ids) == len(set(ids))
+        assert ("coverage" in ids) != ("open_space" in ids)
+        failing = {reason_kind(r.rule) for r in f.results if r.status == FAILS}
+        assert failing == {reason.kind for reason in f.reasons}

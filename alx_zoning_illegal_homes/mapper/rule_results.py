@@ -36,6 +36,14 @@ CROSSES_LOT_LINE = ("A building outline on this lot crosses the lot line in the 
                     "map, so its yards weren't checked.")
 SIDE_COUNT_ON_CORNER = ("On corner lots the map doesn't count side yards in this zone.")
 NO_SIDE_LINE = "The map couldn't find a lot line on this side of the home."
+NO_FLOOR_AREA = ("City records don't give this home's floor space, and it couldn't be "
+                 "estimated from the number of stories.")
+NO_HEIGHT = "The city's 3D building data has no height for this home."
+NO_OUTLINES = "The city's map has no building outlines on this lot."
+RM_OPEN_SPACE = ("The RM zone requires each home lot to keep open, usable space: 35% of "
+                 "the lot, or the amount it had on June 24, 1992 if that is less, and "
+                 "never under 300 sq ft. Driveways don't count. The map doesn't check "
+                 "this rule yet.")
 
 
 @dataclass

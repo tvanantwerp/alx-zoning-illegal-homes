@@ -14,9 +14,9 @@ from shapely.ops import nearest_points, unary_union
 
 from .lot_lines import LotLines, largest_polygon, lot_width, lot_width_line
 from .rule_results import (
-    CORNER_NO_REAR, CROSSES_LOT_LINE, FAILS, MAPPING_ERROR, NO_REAR_FOUND, NO_RULE,
-    NO_SIDE_LINE, NO_STREET, NOT_CHECKED, NOT_REQUIRED, PASSES, RULE_IDS,
-    SHARED_LOT, SHARED_WALL, SIDE_COUNT_ON_CORNER, TOO_SHALLOW, RuleResult,
+    CORNER_NO_REAR, CROSSES_LOT_LINE, FAILS, MAPPING_ERROR, NO_FLOOR_AREA, NO_HEIGHT,
+    NO_OUTLINES, NO_REAR_FOUND, NO_RULE, NO_SIDE_LINE, NO_STREET, NOT_CHECKED, NOT_REQUIRED, PASSES, RULE_IDS,
+    RM_OPEN_SPACE, SHARED_LOT, SHARED_WALL, SIDE_COUNT_ON_CORNER, TOO_SHALLOW, RuleResult,
     format_feet as _feet, front_yard_explanation, frontage_about,
     no_rule_explanation, side_count_explanation)
 from .rules import HOME_TYPE_NAMES, ZoneRules
@@ -623,15 +623,36 @@ def _check_yards_without_front(facts, findings, homes):
     findings.results.append(row)
 
 
+def _home_indexes(facts) -> list[int]:
+    """Where each home's outline sits in `facts.all_buildings`."""
+    found = []
+    for home in facts.homes:
+        for index, outline in enumerate(facts.all_buildings):
+            if outline.equals(home.shape):
+                found.append(index)
+                break
+    return found
+
+
 def _check_floor_area(facts, findings):
-    limit = facts.rules.floor_area_ratio_for(
-        facts.home_type, facts.in_historic_district)
-    if not limit or any(home.floor_area is None for home in facts.homes):
+    kind = facts.home_type
+    limit = facts.rules.floor_area_ratio_for(kind, facts.in_historic_district)
+    row = RuleResult("floor_area", "Floor space", NO_RULE, unit="sq ft", limit="max")
+    findings.results.append(row)
+    if not limit:
+        row.explanation = no_rule_explanation(
+            facts.rules.label, HOME_TYPE_NAMES[kind], "floor space limit")
+        return
+    if any(home.floor_area is None for home in facts.homes):
+        row.status, row.explanation = NOT_CHECKED, NO_FLOOR_AREA
         return
     floor_area = sum(home.floor_area for home in facts.homes)
     ratio = floor_area / facts.area
     findings.measurements["floor_area_ratio"] = ratio
+    row.status, row.measured, row.required = PASSES, floor_area, limit * facts.area
+    row.buildings = _home_indexes(facts)
     if ratio > limit * (1 + FLOOR_AREA_MARGIN):
+        row.status = FAILS
         findings.reasons.append(Reason(
             "floor_area",
             f"Too much building for the lot: about {_square_feet(floor_area)} "
@@ -642,13 +663,26 @@ def _check_floor_area(facts, findings):
 
 
 def _check_height(facts, findings):
-    limit = facts.rules.max_height.get(facts.home_type)
-    heights = [home.height for home in facts.homes if home.height]
-    if not limit or not heights:
+    kind = facts.home_type
+    limit = facts.rules.max_height.get(kind)
+    row = RuleResult("height", "Height", NO_RULE, unit="ft", limit="max")
+    findings.results.append(row)
+    if not limit:
+        row.explanation = no_rule_explanation(
+            facts.rules.label, HOME_TYPE_NAMES[kind], "height limit")
         return
-    height = max(heights)
+    known = [home for home in facts.homes if home.height]
+    if not known:
+        row.status, row.explanation = NOT_CHECKED, NO_HEIGHT
+        return
+    tallest = max(known, key=lambda home: home.height)
+    height = tallest.height
     findings.measurements["height"] = height
+    row.status, row.measured, row.required = PASSES, height, limit
+    row.buildings = [i for i, outline in enumerate(facts.all_buildings)
+                     if outline.equals(tallest.shape)][:1]
     if height > limit + HEIGHT_MARGIN:
+        row.status = FAILS
         findings.reasons.append(Reason(
             "height",
             f"Too tall: about {_feet(height)}, but the {facts.rules.label} allows {_feet(limit)}.",
@@ -656,22 +690,45 @@ def _check_height(facts, findings):
 
 
 def _check_open_space(facts, findings):
-    rules = facts.rules
-    if not facts.all_buildings or not (rules.min_open_space or rules.max_coverage):
+    rules, kind = facts.rules, facts.home_type
+    open_row = RuleResult("open_space", "Open space", NO_RULE, unit="share")
+    cover_row = RuleResult("coverage", "Land covered by buildings", NO_RULE,
+                           unit="share", limit="max")
+    row = cover_row if rules.max_coverage else open_row
+    if (rules.open_space_applies_to and kind not in rules.open_space_applies_to) or (
+            not rules.min_open_space and not rules.max_coverage):
+        if rules.name == "RM" and not rules.max_coverage:
+            row = open_row
+            row.status, row.explanation = NOT_CHECKED, RM_OPEN_SPACE
+        else:
+            row = cover_row
+            row.explanation = no_rule_explanation(
+                rules.label, HOME_TYPE_NAMES[kind], "open space or coverage limit")
+        findings.results.append(row)
         return
-    if (rules.open_space_applies_to
-            and facts.home_type not in rules.open_space_applies_to):
+    findings.results.append(row)
+    if not facts.all_buildings:
+        row.status, row.explanation = NOT_CHECKED, NO_OUTLINES
         return
     covered = unary_union(facts.all_buildings).intersection(facts.shape).area
     share = covered / facts.shape.area
     findings.measurements["coverage"] = share
+    row.status = PASSES
+    row.buildings = list(range(len(facts.all_buildings)))
+    if row is cover_row:
+        row.measured, row.required = share, rules.max_coverage
+    else:
+        row.measured, row.required, row.limit = 1 - share, rules.min_open_space, "min"
     if rules.max_coverage and share > rules.max_coverage + COVERAGE_MARGIN:
+        row.status = FAILS
         findings.reasons.append(Reason(
             "open_space",
             f"Buildings cover too much of the lot: about {share:.0%}, but "
             f"the {rules.label} allows {rules.max_coverage:.0%}.",
         ))
-    elif rules.min_open_space and 1 - share < rules.min_open_space - COVERAGE_MARGIN:
+    elif (not rules.max_coverage and rules.min_open_space
+          and 1 - share < rules.min_open_space - COVERAGE_MARGIN):
+        row.status = FAILS
         findings.reasons.append(Reason(
             "open_space",
             f"Not enough open space: buildings alone cover about {share:.0%} "
