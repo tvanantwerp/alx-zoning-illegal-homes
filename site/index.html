@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Alexandria's Illegal Homes</title>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.css">
+<style>
+  :root {
+    --paper: #f7f3ec;
+    --ink: #1f1b16;
+    --muted: #6b6257;
+    --rule: #ddd4c6;
+    --ok: #9db8b0;
+    --unchecked: #d9d4cb;
+    --planned: #a9a3cf;
+    --p1: #f3b469;
+    --p2: #e9783c;
+    --p3: #bf3a1e;
+    --p4: #7d1212;
+    --accent: #bf3a1e;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    color: var(--ink);
+    background: var(--paper);
+    display: grid;
+    grid-template-columns: 380px 1fr;
+  }
+  #panel {
+    overflow-y: auto;
+    padding: 22px 22px 28px;
+    border-right: 1px solid var(--rule);
+    background: var(--paper);
+  }
+  #map { height: 100vh; }
+  h1 {
+    font: 700 27px/1.1 "Iowan Old Style", Palatino, Georgia, serif;
+    margin: 0 0 8px;
+    letter-spacing: -0.01em;
+  }
+  .lede { color: var(--muted); margin: 0 0 18px; }
+  .headline {
+    border-top: 3px solid var(--ink);
+    border-bottom: 1px solid var(--rule);
+    padding: 12px 0 14px;
+    margin-bottom: 18px;
+  }
+  .headline .big {
+    font: 700 46px/1 "Iowan Old Style", Palatino, Georgia, serif;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+  }
+  .headline .caption { margin-top: 6px; }
+  h2 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--muted);
+    margin: 22px 0 8px;
+  }
+  .filters label {
+    display: grid;
+    grid-template-columns: 18px 1fr auto;
+    gap: 8px;
+    align-items: start;
+    padding: 5px 0;
+    cursor: pointer;
+  }
+  .filters input { margin: 3px 0 0; accent-color: var(--accent); }
+  .filters small { display: block; color: var(--muted); }
+  .count { font-variant-numeric: tabular-nums; color: var(--muted); }
+  .legend { display: grid; grid-template-columns: 16px 1fr; gap: 6px 9px; align-items: center; }
+  .swatch { width: 16px; height: 16px; border-radius: 3px; border: 1px solid rgba(0,0,0,.18); }
+  #search {
+    width: 100%;
+    padding: 8px 10px;
+    font: inherit;
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    background: #fff;
+  }
+  #search-status { color: var(--muted); font-size: 12px; min-height: 18px; margin-top: 4px; }
+  #detail {
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    background: #fff;
+    padding: 13px 14px;
+  }
+  #detail .placeholder { color: var(--muted); }
+  .card-title { font-weight: 700; font-size: 15px; }
+  .card-meta { color: var(--muted); margin: 2px 0 8px; }
+  .verdict { font-weight: 600; margin: 6px 0; }
+  .verdict.illegal { color: var(--accent); }
+  .verdict.ok { color: #3f6f63; }
+  ul.reasons { margin: 6px 0 0; padding-left: 18px; }
+  ul.reasons li { margin-bottom: 5px; }
+  .notes { color: var(--muted); font-size: 12.5px; margin-top: 8px; }
+  details { margin-top: 20px; border-top: 1px solid var(--rule); padding-top: 12px; }
+  summary { cursor: pointer; font-weight: 600; }
+  details p, details li { color: #3d362e; }
+  details ul { padding-left: 18px; }
+  .maplibregl-popup-content {
+    font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: 10px 12px;
+    max-width: 320px;
+    border-radius: 8px;
+    box-shadow: 0 4px 18px rgba(0,0,0,.18);
+  }
+  #loading {
+    position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+    background: var(--ink); color: #fff; padding: 7px 14px; border-radius: 20px;
+    font-size: 13px; z-index: 5;
+  }
+  #map-wrap { position: relative; }
+  @media (max-width: 760px) {
+    body { grid-template-columns: 1fr; grid-template-rows: 55vh auto; }
+    #map-wrap { grid-row: 1; }
+    #map { height: 55vh; }
+    #panel { border-right: 0; border-top: 1px solid var(--rule); }
+  }
+</style>
+</head>
+<body>
+<aside id="panel">
+  <h1>Alexandria's Illegal Homes</h1>
+  <p class="lede">Homes in Alexandria, Virginia that could not be built today,
+    because they break the city's current zoning rules for new construction.</p>
+
+  <div class="headline">
+    <div class="big" id="share">–</div>
+    <div class="caption" id="share-caption">Loading the map data…</div>
+  </div>
+
+  <h2>Find an address</h2>
+  <input id="search" type="search" placeholder="e.g. 415 PRINCE ST" autocomplete="off">
+  <div id="search-status"></div>
+
+  <h2>Selected lot</h2>
+  <div id="detail"><span class="placeholder">Hover over a lot for a summary. Click one to keep it here.</span></div>
+
+  <h2>Rules to count</h2>
+  <div class="filters" id="filters"></div>
+
+  <h2>Planned districts</h2>
+  <div class="filters">
+    <label>
+      <input type="checkbox" id="ordinary-rules">
+      <span>Judge them by ordinary zoning instead<small>Cameron Station, Potomac Yard, Carlyle and others were built under special approvals, and are judged by those. Tick this to see how they would fare under the ordinary zone that applies there without one.</small></span>
+      <span class="count" id="planned-count"></span>
+    </label>
+  </div>
+
+  <h2>Colors</h2>
+  <div class="legend">
+    <span class="swatch" style="background:var(--p1)"></span><span>Breaks 1 kind of rule</span>
+    <span class="swatch" style="background:var(--p2)"></span><span>Breaks 2 kinds</span>
+    <span class="swatch" style="background:var(--p3)"></span><span>Breaks 3 kinds</span>
+    <span class="swatch" style="background:var(--p4)"></span><span>Breaks 4 or more</span>
+    <span class="swatch" style="background:var(--ok)"></span><span>No problem found with the selected rules</span>
+    <span class="swatch" style="background:var(--unchecked)"></span><span>Not checked: not a home lot (shared community land, shops, offices, parks), or zoning unclear</span>
+  </div>
+
+  <details>
+    <summary>How to read this map</summary>
+    <p>Each lot with a home was measured against the rules for its zone in
+      the city's Zoning Ordinance (as amended through January 2026): lot size, lot width and street
+      frontage, side and rear yards, floor space, height, open space, and
+      whether that kind of home is allowed in the zone at all.</p>
+    <p><strong>These homes are not in trouble.</strong> The ordinance lets
+      older buildings that no longer fit the rules stay, and even be rebuilt
+      as they were. "Illegal" here means: if this lot were empty, nobody
+      could get a permit to build what stands on it now.</p>
+    <p>Things to keep in mind:</p>
+    <ul>
+      <li>Measurements come from the city's public map data, not from
+        surveys. Each check leaves a margin for error, but a finding for any
+        single lot can still be wrong. Yard findings are the least certain,
+        because building outlines are traced from roofs.</li>
+      <li>Front yards are mostly not checked. In most zones the required
+        front yard depends on the neighbors' front yards, so an existing
+        home passes almost by definition.</li>
+      <li>Parking requirements are not checked.</li>
+      <li>Planned districts such as Cameron Station, Potomac Yard and
+        Carlyle were built under special approvals from City Council, which
+        still govern that land. Homes there are judged by what the approval
+        allows, as written in the ordinance: which kinds of home, how tall,
+        and how many across the district. Lot sizes and yards in these
+        districts are fixed by approved site plan drawings, not by general
+        rules, so they are not judged. Tick "Judge them by ordinary zoning
+        instead" to see how far these neighborhoods are from what the
+        ordinary rules for that land would allow.</li>
+      <li>In Potomac Yard the fallback zone depends on where a lot sits
+        (near Route 1, east of the Metro tracks, or elsewhere). Those
+        boundaries are approximated.</li>
+      <li>Permits, variances and special approvals for individual
+        properties are not known to this map.</li>
+    </ul>
+  </details>
+</aside>
+
+<div id="map-wrap">
+  <div id="loading">Loading lots…</div>
+  <div id="map"></div>
+</div>
+
+<script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
+<script>
+const KINDS = [
+  ["lot_size", "Lot too small", "Less land than the zone requires"],
+  ["lot_width", "Lot too narrow", "Width or street frontage below the minimum"],
+  ["yards", "Yards too small", "Too close to a side or rear lot line"],
+  ["floor_area", "Too much floor space", "Building is too big for its lot"],
+  ["height", "Too tall", "Higher than the zone allows"],
+  ["open_space", "Too little open space", "Buildings cover too much of the lot"],
+  ["home_type", "Home type not allowed", "e.g. townhouses where only houses are allowed"],
+];
+const COLORS = { ok: "#9db8b0", unchecked: "#d9d4cb", planned: "#a9a3cf", ramp: ["#f3b469", "#e9783c", "#bf3a1e", "#7d1212"] };
+const selected = new Set(KINDS.map(k => k[0]));
+let ordinaryRules = false;
+
+/** Name of the map-data flag saying a lot breaks one kind of rule. */
+function flagFor(kind, inDistrict) {
+  return (ordinaryRules && inDistrict ? "ordinary_" : "has_") + kind;
+}
+const escapeHtml = text => String(text).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const asList = value => Array.isArray(value) ? value : value ? JSON.parse(value) : [];
+
+const map = new maplibregl.Map({
+  container: "map",
+  style: "https://tiles.openfreemap.org/styles/positron",
+  center: [-77.075, 38.82],
+  zoom: 12.4,
+  minZoom: 10,
+  attributionControl: { compact: true, customAttribution: "Lot and building data: City of Alexandria" },
+});
+map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+
+let lots = null;
+
+/** Count of selected rule kinds a lot breaks, as a map style expression. */
+function problemCountExpression() {
+  const terms = [...selected].map(kind => ["case",
+    ["case", ["has", "district"], ["has", flagFor(kind, true)], ["has", flagFor(kind, false)]],
+    1, 0]);
+  return terms.length ? ["+", 0, ...terms] : 0;
+}
+
+function fillColorExpression() {
+  const count = problemCountExpression();
+  return [
+    "case",
+    ["==", ["get", "status"], "not_checked"], COLORS.unchecked,
+    ["==", count, 0], COLORS.ok,
+    ["==", count, 1], COLORS.ramp[0],
+    ["==", count, 2], COLORS.ramp[1],
+    ["==", count, 3], COLORS.ramp[2],
+    COLORS.ramp[3],
+  ];
+}
+
+function breaksSelected(properties) {
+  return [...selected].some(kind => properties[flagFor(kind, !!properties.district)]);
+}
+
+function updateHeadline() {
+  const checked = lots.features.filter(f => f.properties.status !== "not_checked");
+  const failing = checked.filter(f => breaksSelected(f.properties));
+  const share = checked.length ? failing.length / checked.length : 0;
+  document.getElementById("share").textContent = Math.round(share * 100) + "%";
+  document.getElementById("share-caption").innerHTML =
+    `<strong>${failing.length.toLocaleString()}</strong> of ${checked.length.toLocaleString()} ` +
+    `checked home lots break ` +
+    (selected.size === KINDS.length ? "at least one current rule." : "at least one of the selected rules.");
+}
+
+function buildFilters() {
+  const box = document.getElementById("filters");
+  for (const [kind, title, hint] of KINDS) {
+    const total = lots.features.filter(f => f.properties["has_" + kind]).length;
+    const label = document.createElement("label");
+    label.innerHTML =
+      `<input type="checkbox" checked data-kind="${kind}">` +
+      `<span>${title}<small>${hint}</small></span>` +
+      `<span class="count">${total.toLocaleString()}</span>`;
+    label.querySelector("input").addEventListener("change", event => {
+      event.target.checked ? selected.add(kind) : selected.delete(kind);
+      map.setPaintProperty("lots-fill", "fill-color", fillColorExpression());
+      updateHeadline();
+    });
+    box.appendChild(label);
+  }
+}
+
+function describe(properties, full) {
+  const useOrdinary = ordinaryRules && properties.district;
+  const reasons = asList(useOrdinary ? properties.ordinary_reasons : properties.reasons);
+  const otherReasons = properties.district
+    ? asList(useOrdinary ? properties.reasons : properties.ordinary_reasons) : [];
+  const notes = asList(properties.notes);
+  const judgedBy = !properties.district ? ""
+    : useOrdinary ? `Judged by ordinary ${properties.fallback_zone} zone rules`
+    : "Judged by its special approval";
+  const otherView = !properties.district || !full ? ""
+    : `<div class="notes"><strong>${useOrdinary ? "Under its special approval" : `Without its special approval (ordinary ${escapeHtml(properties.fallback_zone)} zone rules)`}:</strong> ` +
+      (otherReasons.length
+        ? `it would break ${otherReasons.length} rule${otherReasons.length > 1 ? "s" : ""}.<ul class="reasons">${otherReasons.map(r => `<li>${escapeHtml(r)}</li>`).join("")}</ul>`
+        : "no problems found.") + `</div>`;
+  const meta = [
+    properties.zone ? "Zone " + properties.zone : null,
+    properties.type,
+    properties.homes > 1 ? properties.homes + " homes" : null,
+    properties.year ? "built " + properties.year : null,
+    properties.historic ? "historic district" : null,
+    properties.district ? properties.district + " planned district" : null,
+  ].filter(Boolean).join(" · ");
+  let html = `<div class="card-title">${escapeHtml(properties.address || "No address on record")}</div>` +
+    `<div class="card-meta">${escapeHtml(meta)}</div>`;
+  if (properties.status === "not_checked") {
+    return html + `<div class="notes">${properties.use
+      ? escapeHtml(properties.use) + ". Not a home lot, so not checked."
+      : "Not checked: no home found here, or the zoning is unclear."}</div>`;
+  }
+  if (!reasons.length) {
+    return html + `<div class="verdict ok">${properties.district && !useOrdinary
+        ? "Allowed under its special approval." : "No problems found with current rules."}</div>` +
+      (judgedBy && !full ? `<div class="notes">${judgedBy}.</div>` : "") + otherView +
+      (full && notes.length ? `<div class="notes">${notes.map(escapeHtml).join("<br><br>")}</div>` : "");
+  }
+  const shown = full ? reasons : reasons.slice(0, 3);
+  html += `<div class="verdict illegal">Could not be built today:</div>` +
+    `<ul class="reasons">${shown.map(r => `<li>${escapeHtml(r)}</li>`).join("")}</ul>`;
+  if (!full && reasons.length > shown.length) {
+    html += `<div class="notes">+ ${reasons.length - shown.length} more. Click for all.</div>`;
+  }
+  if (full) {
+    const facts = [
+      properties.lot_area ? `Lot: ${properties.lot_area.toLocaleString()} sq ft` : null,
+      properties.width ? `Width: ${Math.round(properties.width)} ft` : null,
+      properties.frontage ? `Street frontage: ${Math.round(properties.frontage)} ft` : null,
+      properties.height ? `Height: about ${Math.round(properties.height)} ft` : null,
+    ].filter(Boolean).join(" · ");
+    if (facts) html += `<div class="notes">${facts}</div>`;
+    html += otherView;
+    if (notes.length) html += `<div class="notes">${notes.map(escapeHtml).join("<br><br>")}</div>`;
+  } else if (judgedBy) {
+    html += `<div class="notes">${judgedBy}.</div>`;
+  }
+  return html;
+}
+
+function select(feature) {
+  document.getElementById("detail").innerHTML = describe(feature.properties, true);
+  map.getSource("picked").setData({ type: "FeatureCollection", features: [feature] });
+}
+
+function setUpSearch() {
+  const input = document.getElementById("search");
+  const status = document.getElementById("search-status");
+  input.addEventListener("keydown", event => {
+    if (event.key !== "Enter") return;
+    const wanted = input.value.trim().toUpperCase().replace(/\s+/g, " ");
+    if (!wanted) return;
+    const tidy = f => (f.properties.address || "").toUpperCase().replace(/\s+/g, " ");
+    const match = lots.features.find(f => tidy(f) === wanted) ||
+      lots.features.find(f => tidy(f).startsWith(wanted)) ||
+      lots.features.find(f => tidy(f).includes(wanted));
+    if (!match) { status.textContent = "No lot found with that address."; return; }
+    status.textContent = "";
+    const ring = match.geometry.type === "Polygon" ? match.geometry.coordinates[0] : match.geometry.coordinates[0][0];
+    const bounds = ring.reduce((b, c) => b.extend(c), new maplibregl.LngLatBounds(ring[0], ring[0]));
+    map.fitBounds(bounds, { padding: 140, maxZoom: 18.5 });
+    select(match);
+  });
+}
+
+map.on("load", async () => {
+  lots = await (await fetch("lots.geojson")).json();
+  document.getElementById("loading").remove();
+  const firstLabel = map.getStyle().layers.find(layer => layer.type === "symbol")?.id;
+
+  map.addSource("lots", { type: "geojson", data: lots, generateId: true });
+  map.addSource("picked", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+  map.addLayer({
+    id: "lots-fill", type: "fill", source: "lots",
+    paint: {
+      "fill-color": fillColorExpression(),
+      // Fade a little when zoomed in so building outlines show through.
+      "fill-opacity": ["interpolate", ["linear"], ["zoom"],
+        15, ["case", ["==", ["get", "status"], "not_checked"], 0.35, 0.85],
+        18, ["case", ["==", ["get", "status"], "not_checked"], 0.2, 0.6]],
+    },
+  }, firstLabel);
+  map.addLayer({
+    id: "lots-line", type: "line", source: "lots", minzoom: 14,
+    paint: { "line-color": "#ffffff", "line-width": ["interpolate", ["linear"], ["zoom"], 14, 0.2, 18, 1.2] },
+  }, firstLabel);
+  map.addLayer({
+    id: "picked-line", type: "line", source: "picked",
+    paint: { "line-color": "#1f1b16", "line-width": 3 },
+  });
+
+  buildFilters();
+  const plannedBox = document.getElementById("ordinary-rules");
+  document.getElementById("planned-count").textContent =
+    lots.features.filter(f => f.properties.district).length.toLocaleString();
+  plannedBox.addEventListener("change", () => {
+    ordinaryRules = plannedBox.checked;
+    map.setPaintProperty("lots-fill", "fill-color", fillColorExpression());
+    updateHeadline();
+  });
+  updateHeadline();
+  setUpSearch();
+
+  const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 12 });
+  map.on("mousemove", "lots-fill", event => {
+    map.getCanvas().style.cursor = "pointer";
+    popup.setLngLat(event.lngLat).setHTML(describe(event.features[0].properties, false)).addTo(map);
+  });
+  map.on("mouseleave", "lots-fill", () => {
+    map.getCanvas().style.cursor = "";
+    popup.remove();
+  });
+  map.on("click", "lots-fill", event => {
+    // Rendered features are clipped to map tiles; use the whole original.
+    select(lots.features[event.features[0].id]);
+  });
+});
+</script>
+</body>
+</html>
