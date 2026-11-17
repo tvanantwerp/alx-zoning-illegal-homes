@@ -16,6 +16,23 @@ uv run pytest                           # tests
 `uv run python -m alx_zoning_illegal_homes.downloader.download --refresh`
 fetches fresh copies of the city's data.
 
+## The lot drawing
+
+Clicking a checked home lot on the map, or finding one with the address
+search, opens a pop-up. It draws the lot and its buildings in 3D, marks
+every rule the lot breaks, and lists every rule the map checks with the
+measured value and what the rule asks for. Hovering over a row lights up its
+part of the drawing. Lots the map didn't check, such as parks, don't open
+one.
+
+For planned-district lots the pop-up has its own copy of the "Judge them by
+ordinary zoning instead" checkbox. Both boxes control the same setting, so
+ticking either one updates the map, the side panel and the pop-up together.
+
+Each drawing loads its own small file. `create-map` writes one per checked
+lot into `site/lots/`, next to `site/lots.geojson`. Both are generated and
+left out of git, so run `create-map` before serving the site.
+
 ## What gets checked
 
 Every lot with a home is measured against the rules for its zone. That covers
