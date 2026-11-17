@@ -44,6 +44,11 @@ RM_OPEN_SPACE = ("The RM zone requires each home lot to keep open, usable space:
                  "the lot, or the amount it had on June 24, 1992 if that is less, and "
                  "never under 300 sq ft. Driveways don't count. The map doesn't check "
                  "this rule yet.")
+BENEFIT_OF_DOUBT = ("Measurements from the city's map and records aren't exact, so "
+                    "the map gives it the benefit of the doubt.")
+
+# Rows the approved site plan of a planned district sets, along with every yard row.
+SITE_PLAN_RULES = ("lot_area", "frontage", "width")
 
 
 @dataclass
@@ -84,7 +89,45 @@ def format_feet(value: float) -> str:
 
 
 def no_rule_explanation(zone_label: str, home_type_name: str, what: str) -> str:
+    """Say that the zone's rules set no limit of this kind for this kind of home."""
     return f"The map's rules for the {zone_label} include no {what} for a {home_type_name}."
+
+
+def _show(value: float, unit: str, precise: bool = False) -> str:
+    """Write a measured or required value in its unit, with one more decimal when `precise`."""
+    if unit == "ft":
+        return f"{value:,.1f} ft" if precise else format_feet(value)
+    if unit == "sq ft":
+        return f"{value:,.0f} sq ft"
+    if unit == "share":
+        return f"{value:.1%}" if precise else f"{value:.0%}"
+    return f"{value:,.1f}"
+
+
+def explain_margin(results: list[RuleResult]) -> None:
+    """Explain rows that pass only thanks to the margin left for measuring error.
+
+    The checks only fail a rule when a home misses it by more than that margin,
+    so a row can pass with a number on the wrong side of the limit, such as a
+    33 ft home under a 30 ft height limit. Each such row without an explanation
+    of its own gets one saying so. Changes the rows in place.
+    """
+    for row in results:
+        if (row.status != PASSES or row.explanation
+                or row.measured is None or row.required is None):
+            continue
+        if row.limit == "min" and row.measured < row.required:
+            side, word = "under", "minimum"
+        elif row.limit == "max" and row.measured > row.required:
+            side, word = "over", "limit"
+        else:
+            continue
+        measured, required = _show(row.measured, row.unit), _show(row.required, row.unit)
+        if measured == required:
+            measured = _show(row.measured, row.unit, precise=True)
+            required = _show(row.required, row.unit, precise=True)
+        row.explanation = (f"About {measured}, a little {side} the {required} {word}. "
+                           f"{BENEFIT_OF_DOUBT}")
 
 
 def frontage_about(street: str, zone_label: str, required: float | None,
@@ -139,10 +182,9 @@ def under_special_approval(results: list[RuleResult],
     rule say the approval sets no lot-by-lot limit. Returns new rows and leaves
     the ones passed in alone.
     """
-    site_plan_rules = ("lot_area", "frontage", "width")
     out = []
     for row in results:
-        plan_sets_it = row.rule in site_plan_rules or row.rule.startswith("yard:")
+        plan_sets_it = row.rule in SITE_PLAN_RULES or row.rule.startswith("yard:")
         if plan_sets_it and row.status in (NO_RULE, NOT_CHECKED):
             row = replace(row, status=NOT_REQUIRED, explanation=(
                 f"The approved site plan for {district.name} sets lot sizes and "

@@ -14,10 +14,10 @@ from shapely.ops import nearest_points, unary_union
 
 from .lot_lines import LotLines, largest_polygon, lot_width, lot_width_line
 from .rule_results import (
-    CORNER_NO_REAR, CROSSES_LOT_LINE, FAILS, MAPPING_ERROR, NO_FLOOR_AREA, NO_HEIGHT,
+    BENEFIT_OF_DOUBT, CORNER_NO_REAR, CROSSES_LOT_LINE, FAILS, MAPPING_ERROR, NO_FLOOR_AREA, NO_HEIGHT,
     NO_OUTLINES, NO_REAR_FOUND, NO_RULE, NO_SIDE_LINE, NO_STREET, NOT_CHECKED, NOT_REQUIRED, PASSES, RULE_IDS,
     RM_OPEN_SPACE, SHARED_LOT, SHARED_WALL, SIDE_COUNT_ON_CORNER, TOO_SHALLOW, RuleResult,
-    format_feet as _feet, front_yard_explanation, frontage_about,
+    explain_margin, format_feet as _feet, front_yard_explanation, frontage_about,
     no_rule_explanation, side_count_explanation)
 from .rules import HOME_TYPE_NAMES, ZoneRules
 
@@ -113,6 +113,7 @@ def check_lot(facts: LotFacts) -> Findings:
     _check_floor_area(facts, findings)
     _check_height(facts, findings)
     _check_open_space(facts, findings)
+    explain_margin(findings.results)
     findings.results.sort(key=lambda row: RULE_IDS.index(row.rule))
     return findings
 
@@ -224,7 +225,8 @@ def _check_width_and_frontage(facts, findings, position):
     findings.measurements["frontage"] = lines.frontage
     findings.measurements["width"] = width
     frontage_row.shapes["line"] = lines.front_line
-    width_line = lot_width_line(facts.shape, lines, measured_at)
+    width_line = (lot_width_line(facts.shape, lines, measured_at) if measured_at > 0
+                  else lines.front_line)
     if width_line is not None:
         width_row.shapes["line"] = width_line
     # Several homes on one shared lot have no lot lines of their own.
@@ -554,10 +556,18 @@ def _rear_row(facts, record, gap, shared, touching, height):
     credited = gap.gap + (ALLEY_CREDIT if gap.on_open else 0)
     fails, required, detail = _judge_yard(
         record, "rear", "Rear", gap.gap, credited, rear_yard, height)
+    explanation = None
     if gap.on_open:
         detail += ", counting half the alley"
+        if not fails and gap.gap < required:
+            explanation = (
+                f"About {_feet(gap.gap)} to the back lot line. Half of the alley behind "
+                f"the lot also counts, which brings the rear yard to about "
+                f"{_feet(credited)} against the {_feet(required)} needed.")
+            if credited < required:
+                explanation += " " + BENEFIT_OF_DOUBT
     return _yard_row(facts, "rear", FAILS if fails else PASSES, gap, required,
-                     detail=detail)
+                     detail=detail, explanation=explanation)
 
 
 def _judge_yard(record, name, label, gap, credited_gap, yard, height):

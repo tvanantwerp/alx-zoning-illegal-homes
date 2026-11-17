@@ -370,3 +370,42 @@ def test_special_approval_explains_other_rows_without_a_rule():
                                           or old.rule.startswith("yard:")):
             assert new.status == NO_RULE
             assert new.explanation.endswith(district.plan_summary)
+
+
+def test_height_passing_within_the_margin_says_so():
+    limit = ZONES["R-8"].max_height["single"]
+    _, f = check(BIG_LOT, box(20, 35, 60, 75), "R-8", height=limit + 3)
+    row = rows(f)["height"]
+    assert row.status == PASSES
+    assert row.explanation.startswith(f"About {limit + 3:.0f} ft, a little over the {limit:.0f} ft limit.")
+    assert "benefit of the doubt" in row.explanation
+
+
+def test_clearly_passing_row_gets_no_margin_explanation():
+    _, f = check(BIG_LOT, box(20, 35, 60, 75), "R-8", height=20)
+    row = rows(f)["height"]
+    assert row.status == PASSES and row.explanation is None
+
+
+def test_failing_row_gets_no_margin_explanation():
+    _, f = check(BIG_LOT, box(20, 35, 60, 75), "R-8", height=60)
+    row = rows(f)["height"]
+    assert row.status == FAILS and row.explanation is None
+
+
+def test_lot_size_within_the_margin_uses_square_feet():
+    lot = box(0, 0, 80, 98)   # 7,840 sq ft against R-8's 8,000
+    _, f = check(lot, box(20, 35, 60, 75), "R-8", neighbors=between_neighbors(lot))
+    row = rows(f)["lot_area"]
+    assert row.status == PASSES
+    assert row.explanation.startswith("About 7,840 sq ft, a little under the 8,000 sq ft minimum.")
+
+
+def test_width_measured_at_the_street_is_drawn_along_the_front_line():
+    rules = replace(ZONES["R-8"], width_measured_at=0)
+    lot = box(0, 0, 40, 100)
+    _, f = check(lot, box(10, 35, 30, 65), "R-8", rules=rules, neighbors=between_neighbors(lot))
+    row = rows(f)["width"]
+    assert row.status == FAILS and row.detail == "measured at the street"
+    assert row.shapes["line"].length == pytest.approx(40, abs=0.5)
+    assert row.shapes["line"].equals(rows(f)["frontage"].shapes["line"])
