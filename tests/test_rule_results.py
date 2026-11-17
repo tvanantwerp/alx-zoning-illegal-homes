@@ -8,8 +8,8 @@ from shapely.ops import unary_union
 from alx_zoning_illegal_homes.mapper.checks import Home, LotFacts, check_lot
 from alx_zoning_illegal_homes.mapper.lot_lines import classify
 from alx_zoning_illegal_homes.mapper.rule_results import (
-    RULE_IDS, FAILS, NO_RULE, NOT_CHECKED, NOT_REQUIRED, PASSES, reason_kind)
-from alx_zoning_illegal_homes.mapper.rules import ZONES
+    RULE_IDS, FAILS, NO_RULE, NOT_CHECKED, NOT_REQUIRED, PASSES, reason_kind, under_special_approval)
+from alx_zoning_illegal_homes.mapper.rules import ZONES, planned_district_rules
 
 from .helpers import between_neighbors, check
 
@@ -345,3 +345,28 @@ def test_every_case_has_one_row_per_rule_in_order_and_rows_match_reasons():
         assert ("coverage" in ids) != ("open_space" in ids)
         failing = {reason_kind(r.rule) for r in f.results if r.status == FAILS}
         assert failing == {reason.kind for reason in f.reasons}
+
+
+def test_special_approval_turns_lot_rules_into_not_required():
+    district, plan, fallback = planned_district_rules("CDD#9")
+    lot = box(0, 0, 20, 90)
+    _, f = check(lot, box(0, 20, 20, 60), "R-8", home_type="townhouse", rules=plan)
+    before = [(x.rule, x.status, x.explanation) for x in f.results]
+    r = {x.rule: x for x in under_special_approval(f.results, district)}
+    assert r["lot_area"].status == NOT_REQUIRED and "site plan" in r["lot_area"].explanation
+    assert district.name in r["lot_area"].explanation
+    assert r["yard:left"].status == NOT_REQUIRED
+    assert r["height"].status == PASSES and r["height"].required == 120
+    assert [(x.rule, x.status, x.explanation) for x in f.results] == before
+
+
+def test_special_approval_explains_other_rows_without_a_rule():
+    district, plan, _ = planned_district_rules("CDD#9")
+    lot = box(0, 0, 20, 90)
+    _, f = check(lot, box(0, 20, 20, 60), "R-8", home_type="townhouse", rules=plan)
+    out = under_special_approval(f.results, district)
+    for old, new in zip(f.results, out):
+        if old.status == NO_RULE and not (old.rule in ("lot_area", "frontage", "width")
+                                          or old.rule.startswith("yard:")):
+            assert new.status == NO_RULE
+            assert new.explanation.endswith(district.plan_summary)

@@ -4,9 +4,9 @@ The checks in `checks.py` write one `RuleResult` per rule alongside the
 plain-language reasons. A row is `fails` exactly when the check also wrote a
 reason, so the table and the reasons never disagree.
 """
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
-from .rules import ZoneRules
+from .rules import PlannedDistrict, ZoneRules
 
 FAILS, PASSES, NOT_CHECKED, NO_RULE, NOT_REQUIRED = (
     "fails", "passes", "not_checked", "no_rule", "not_required")
@@ -128,3 +128,28 @@ def side_count_explanation(zone_label: str, width: float, needed: int) -> str:
     return (f"In the {zone_label}, side yards depend on lot width: none on lots under "
             "25 ft wide, one 5 ft side yard from 25 to 35 ft, and two at 35 ft or more. "
             f"This lot is about {format_feet(width)} wide, so it needs {ending}")
+
+
+def under_special_approval(results: list[RuleResult],
+                           district: PlannedDistrict) -> list[RuleResult]:
+    """The results as they stand under a planned district's special approval.
+
+    Lot size, frontage, width and yard rows with no rule or no check become
+    "not required", since the approved site plan sets them. Other rows with no
+    rule say the approval sets no lot-by-lot limit. Returns new rows and leaves
+    the ones passed in alone.
+    """
+    site_plan_rules = ("lot_area", "frontage", "width")
+    out = []
+    for row in results:
+        plan_sets_it = row.rule in site_plan_rules or row.rule.startswith("yard:")
+        if plan_sets_it and row.status in (NO_RULE, NOT_CHECKED):
+            row = replace(row, status=NOT_REQUIRED, explanation=(
+                f"The approved site plan for {district.name} sets lot sizes and "
+                "yards here, so no general rule applies."))
+        elif row.status == NO_RULE:
+            row = replace(row, explanation=(
+                "The special approval sets no lot-by-lot limit for this. "
+                f"{district.plan_summary}"))
+        out.append(row)
+    return out
