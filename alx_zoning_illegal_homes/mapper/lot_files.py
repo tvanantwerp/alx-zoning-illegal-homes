@@ -13,6 +13,7 @@ from shapely.ops import linemerge
 
 from .checks import LotFacts
 from .rule_results import RuleResult
+from .rules import HOME_TYPE_NAMES
 
 SITE_DIR = Path(__file__).resolve().parent.parent.parent / "site"
 LOTS_DIR = SITE_DIR / "lots"
@@ -58,12 +59,16 @@ def polygons(shape: BaseGeometry) -> list:
 
 
 def line_points(shape: BaseGeometry) -> list:
-    """A line as a list of points. Lines that can't be joined come back as a list of such lists."""
+    """A single line as a list of points."""
+    return _points(shape.coords)
+
+
+def line_list(shape: BaseGeometry) -> list:
+    """Any line shape as a list of lines, each a list of points."""
     if shape.geom_type == "MultiLineString":
         shape = linemerge(shape)
-    if shape.geom_type == "MultiLineString":
-        return [_points(part.coords) for part in shape.geoms]
-    return _points(shape.coords)
+    parts = shape.geoms if shape.geom_type == "MultiLineString" else [shape]
+    return [_points(part.coords) for part in parts]
 
 
 def _shape_data(shape: BaseGeometry):
@@ -73,7 +78,7 @@ def _shape_data(shape: BaseGeometry):
     if shape.geom_type in ("Polygon", "MultiPolygon"):
         return polygons(shape) or None
     if shape.geom_type in ("LineString", "MultiLineString"):
-        return line_points(shape)
+        return line_list(shape)
     return None
 
 
@@ -130,7 +135,7 @@ def lot_drawing(lot_id: int, record: dict, facts: LotFacts) -> dict:
         "address": record.get("address"),
         "zone": record.get("zone"),
         "zone_label": zone_label,
-        "home_type": facts.home_type,
+        "home_type": HOME_TYPE_NAMES.get(facts.home_type, facts.home_type),
         "street": facts.lines.primary_street,
         "position": record.get("position"),
         "historic": bool(record.get("historic")),
@@ -166,7 +171,8 @@ def write_lot_files(results: GeoDataFrame, facts: dict[int, LotFacts],
     checked = results[results["status"].isin(["illegal", "ok"])]
     for lot_id, row in checked.iterrows():
         if lot_id not in facts:
-            continue
+            raise KeyError(f"Lot {int(lot_id)} was checked but its facts were not kept, "
+                           "so its drawing file can't be written.")
         drawing = lot_drawing(lot_id, row.to_dict(), facts[lot_id])
         (folder / f"{int(lot_id)}.json").write_text(
             json.dumps(drawing, separators=(",", ":")), encoding="utf-8")

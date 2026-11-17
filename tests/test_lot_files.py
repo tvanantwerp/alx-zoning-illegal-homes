@@ -65,6 +65,8 @@ def test_rows_round_trip_with_shapes_and_no_nulls():
     drawing = lot_drawing(7, record_for(facts), facts)
     width = next(r for r in drawing["results"]["rules"] if r["rule"] == "width")
     assert "line" in width["shapes"] and None not in width.values()
+    line = width["shapes"]["line"]
+    assert len(line) == 1 and len(line[0][0]) == 2   # a list of lines, each a list of points
     json.dumps(drawing)
 
 
@@ -77,3 +79,35 @@ def test_write_lot_files_replaces_old_files(tmp_path):
     count = write_lot_files(frame, {7: facts}, tmp_path)
     assert count == 1 and not (tmp_path / "999.json").exists()
     assert json.loads((tmp_path / "7.json").read_text())["id"] == 7
+
+
+def test_home_type_is_the_display_name():
+    facts = facts_for(box(0, 0, 40, 100))
+    assert lot_drawing(7, record_for(facts), facts)["home_type"] == "detached house"
+
+
+def test_ordinary_block_only_for_district_lots():
+    facts = facts_for(box(0, 0, 40, 100))
+    plain = lot_drawing(7, record_for(facts), facts)
+    assert "ordinary" not in plain and "ordinary_notes" not in plain
+    assert plain["district"] is None and plain["fallback_zone"] is None
+    assert plain["zone_label"] == "R-8 zone" and plain["results"]["label"] == "R-8 zone rules"
+
+    record = {**record_for(facts), "district": "Test Village", "fallback_zone": "R-8",
+              "ordinary_rule_results": check_lot(facts).results,
+              "ordinary_notes": ["an ordinary note"]}
+    drawing = lot_drawing(7, record, facts)
+    assert drawing["zone_label"] == "Test Village planned district"
+    assert drawing["results"]["label"] == "Special approval"
+    assert drawing["district"] == "Test Village" and drawing["fallback_zone"] == "R-8"
+    assert drawing["ordinary"]["label"] == "Ordinary R-8 zone"
+    assert drawing["ordinary"]["rules"] and drawing["ordinary_notes"] == ["an ordinary note"]
+    json.dumps(drawing)
+
+
+def test_missing_facts_is_an_error(tmp_path):
+    facts = facts_for(box(0, 0, 40, 100))
+    frame = gpd.GeoDataFrame(
+        [{**record_for(facts), "status": "ok", "geometry": facts.shape}], index=[7])
+    with pytest.raises(KeyError, match="Lot 7"):
+        write_lot_files(frame, {}, tmp_path)
