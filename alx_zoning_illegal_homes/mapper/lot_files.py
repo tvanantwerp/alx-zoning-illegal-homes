@@ -178,3 +178,18 @@ def write_lot_files(results: GeoDataFrame, facts: dict[int, LotFacts],
             json.dumps(drawing, separators=(",", ":")), encoding="utf-8")
         count += 1
     return count
+
+
+def replace_lot_files(results: GeoDataFrame, facts: dict[int, LotFacts],
+                      folder: Path = LOTS_DIR) -> int:
+    """Write every lot file to a temporary folder beside `folder`, then swap it in.
+
+    If writing fails partway, the old folder is left as it was, so the map
+    never points at a half-filled one. Returns the count.
+    """
+    staging = folder.with_name(folder.name + ".tmp")
+    count = write_lot_files(results, facts, staging)
+    if folder.exists():
+        shutil.rmtree(folder)
+    staging.rename(folder)
+    return count

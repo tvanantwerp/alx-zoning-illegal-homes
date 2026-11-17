@@ -6,7 +6,7 @@ import shapely
 
 from alx_zoning_illegal_homes.downloader.download import get_data
 from alx_zoning_illegal_homes.mapper.analyze import analyze
-from alx_zoning_illegal_homes.mapper.lot_files import LOTS_DIR, write_lot_files
+from alx_zoning_illegal_homes.mapper.lot_files import LOTS_DIR, replace_lot_files
 
 SITE_DIR = Path(__file__).resolve().parent.parent.parent / "site"
 OUTPUT = SITE_DIR / "lots.geojson"
@@ -119,8 +119,9 @@ def main() -> None:
     get_data()
     facts = {}
     results = analyze(keep_facts=facts)
+    # The map links each lot to its file by id, so the files go in place first.
+    count = replace_lot_files(results, facts)
     export(results)
-    count = write_lot_files(results, facts)
     checked = results[results["status"].isin(["illegal", "ok"])]
     illegal = (checked["status"] == "illegal").sum()
     planned = checked["district"].notna().sum()

@@ -6,7 +6,7 @@ import pytest
 from shapely.geometry import LineString, MultiPolygon, box
 
 from alx_zoning_illegal_homes.mapper.checks import Home, LotFacts, check_lot
-from alx_zoning_illegal_homes.mapper.lot_files import lot_drawing, write_lot_files
+from alx_zoning_illegal_homes.mapper.lot_files import lot_drawing, replace_lot_files, write_lot_files
 from alx_zoning_illegal_homes.mapper.lot_lines import classify
 from alx_zoning_illegal_homes.mapper.rules import ZONES
 
@@ -111,3 +111,27 @@ def test_missing_facts_is_an_error(tmp_path):
         [{**record_for(facts), "status": "ok", "geometry": facts.shape}], index=[7])
     with pytest.raises(KeyError, match="Lot 7"):
         write_lot_files(frame, {}, tmp_path)
+
+
+def test_replace_lot_files_swaps_the_folder_in(tmp_path):
+    facts = facts_for(box(0, 0, 40, 100))
+    frame = gpd.GeoDataFrame(
+        [{**record_for(facts), "status": "ok", "geometry": facts.shape}], index=[7])
+    folder = tmp_path / "lots"
+    folder.mkdir()
+    (folder / "999.json").write_text("{}")
+    assert replace_lot_files(frame, {7: facts}, folder) == 1
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["lots"]
+    assert sorted(p.name for p in folder.iterdir()) == ["7.json"]
+
+
+def test_failed_replace_keeps_the_old_folder(tmp_path):
+    facts = facts_for(box(0, 0, 40, 100))
+    frame = gpd.GeoDataFrame(
+        [{**record_for(facts), "status": "ok", "geometry": facts.shape}], index=[7])
+    folder = tmp_path / "lots"
+    folder.mkdir()
+    (folder / "999.json").write_text("{}")
+    with pytest.raises(KeyError):
+        replace_lot_files(frame, {}, folder)
+    assert sorted(p.name for p in folder.iterdir()) == ["999.json"]
