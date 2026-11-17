@@ -6,6 +6,8 @@ reason, so the table and the reasons never disagree.
 """
 from dataclasses import dataclass, field
 
+from .rules import ZoneRules
+
 FAILS, PASSES, NOT_CHECKED, NO_RULE, NOT_REQUIRED = (
     "fails", "passes", "not_checked", "no_rule", "not_required")
 
@@ -19,6 +21,21 @@ SHARED_LOT = ("Several homes share this one lot, so no single home has lot "
               "lines of its own to measure.")
 TOO_SHALLOW = ("The lot is shallower than the depth where this zone measures "
                "width, so the map couldn't measure it.")
+SHARED_WALL = ("This side of the home shares a wall with the house next door, "
+               "so no yard is expected here.")
+CORNER_NO_REAR = ("On a corner lot the map treats every edge that isn't on a street "
+                  "as a side, so there is no rear yard to check. The side yard rules "
+                  "apply instead.")
+NO_REAR_FOUND = ("The map couldn't pick out a back lot line behind this home, as "
+                 "happens on lots with streets at both ends or odd shapes. Every edge "
+                 "that isn't on the street was judged against the side yard rule instead.")
+MAPPING_ERROR = ("The city's map shows this home touching the lot line with no "
+                 "neighbor attached. That is more likely a mapping error than a real "
+                 "wall on the line, so this yard wasn't checked.")
+CROSSES_LOT_LINE = ("A building outline on this lot crosses the lot line in the city's "
+                    "map, so its yards weren't checked.")
+SIDE_COUNT_ON_CORNER = ("On corner lots the map doesn't count side yards in this zone.")
+NO_SIDE_LINE = "The map couldn't find a lot line on this side of the home."
 
 
 @dataclass
@@ -79,3 +96,27 @@ def frontage_about(street: str, zone_label: str, required: float | None,
         text += (" In this zone, lot width is also measured right at the "
                  "street, so here the two rules measure the same line.")
     return text
+
+
+def front_yard_explanation(rules: ZoneRules, in_historic_district: bool) -> str:
+    """Why the front yard isn't checked in this lot's zone."""
+    label = rules.label
+    if rules.name == "RM" or (rules.name == "RB" and in_historic_district):
+        return (f"In the {label}, a home's front wall is meant to sit right at the "
+                "front lot line, unless most homes on the block are set back further. "
+                "Then it must line up with their average. The map doesn't measure the "
+                "neighbors' homes yet, so this rule isn't checked.")
+    if rules.name.startswith("R"):
+        return (f"In the {label}, the front yard must fall within the range of front "
+                "yards of the neighboring homes that share this street frontage. The "
+                "map doesn't measure the neighbors' homes yet, so this rule isn't checked.")
+    return f"The map doesn't check front yards in the {label}."
+
+
+def side_count_explanation(zone_label: str, width: float, needed: int) -> str:
+    """Explain the zones where the number of side yards depends on lot width."""
+    ending = {0: "none.", 1: "a 5 ft yard on at least one side."}.get(
+        needed, "a 5 ft yard on both sides.")
+    return (f"In the {zone_label}, side yards depend on lot width: none on lots under "
+            "25 ft wide, one 5 ft side yard from 25 to 35 ft, and two at 35 ft or more. "
+            f"This lot is about {format_feet(width)} wide, so it needs {ending}")

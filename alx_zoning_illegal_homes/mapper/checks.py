@@ -5,16 +5,20 @@ lines and building outlines come from different surveys, and outlines are
 traced from roofs, eaves included), so each check leaves a margin and only
 reports a problem when the home misses the rule by more than that margin.
 """
+import math
 from dataclasses import dataclass, field
 
 import numpy as np
-from shapely.ops import unary_union
+from shapely.geometry import LineString
+from shapely.ops import nearest_points, unary_union
 
 from .lot_lines import LotLines, largest_polygon, lot_width, lot_width_line
 from .rule_results import (
-    FAILS, NO_RULE, NO_STREET, NOT_CHECKED, PASSES, RULE_IDS, SHARED_LOT,
-    TOO_SHALLOW, RuleResult, format_feet as _feet, frontage_about,
-    no_rule_explanation)
+    CORNER_NO_REAR, CROSSES_LOT_LINE, FAILS, MAPPING_ERROR, NO_REAR_FOUND, NO_RULE,
+    NO_SIDE_LINE, NO_STREET, NOT_CHECKED, NOT_REQUIRED, PASSES, RULE_IDS,
+    SHARED_LOT, SHARED_WALL, SIDE_COUNT_ON_CORNER, TOO_SHALLOW, RuleResult,
+    format_feet as _feet, front_yard_explanation, frontage_about,
+    no_rule_explanation, side_count_explanation)
 from .rules import HOME_TYPE_NAMES, ZoneRules
 
 # Slack given to distance measurements, in feet.
@@ -39,6 +43,12 @@ TOUCHING_GAP = 0.5
 # A building with more than this share of its outline outside the lot is
 # probably one outline drawn across several lots; its yards can't be judged.
 MAX_SHARE_OUTSIDE_LOT = 0.12
+
+YARD_ROLES = ("front", "left", "right", "rear")
+YARD_NAMES = {"front": "Front yard", "left": "Left side yard",
+              "right": "Right side yard", "rear": "Rear yard",
+              "nearest": "Closest lot line"}
+_STATUS_RANK = {NO_RULE: 0, NOT_REQUIRED: 1, NOT_CHECKED: 2, PASSES: 3, FAILS: 4}
 
 
 @dataclass
@@ -273,13 +283,32 @@ def _check_width_and_frontage(facts, findings, position):
     return width
 
 
-def _yard_gaps(facts, home):
+@dataclass
+class YardGap:
+    """How far a home sits from one side of its lot, and where."""
+
+    gap: float
+    # True when the closest lot line borders an alley or other open land.
+    on_open: bool
+    # From the closest point on the home to the closest point on the lot line.
+    nearest: LineString
+    # Every lot line on this side.
+    lines: list[LineString]
+
+
+def _nearest_line(home, line) -> LineString:
+    """The shortest line between a home and a lot line."""
+    on_home, on_line = nearest_points(home.shape, line)
+    return LineString([on_home, on_line])
+
+
+def _yard_gaps(facts, home) -> tuple[dict, set]:
     """Measure a home's gap to each side, the rear, and the street.
 
-    Returns a dict with keys -1 and +1 (the two sides), "rear" and "front".
-    Each value is (gap in feet, borders an alley or other open land), or
-    missing when the lot has no such edge. Sides with a shared wall are
-    left out.
+    Returns a dict with keys -1 and +1 (the two sides), "rear" and "front",
+    each a YardGap, or missing when the lot has no such edge. Also returns
+    the set of keys that share a wall with a neighbor. Sides with a shared
+    wall are left out of the dict; a rear only loses the lines on the wall.
     """
     lines = facts.lines
     along, inward = lines.front_direction, lines.inward
@@ -308,34 +337,78 @@ def _yard_gaps(facts, home):
             )
             if has_rear and runs_along_front and behind_home:
                 if on_shared_wall:
+                    shared_wall.add("rear")
                     continue
                 key = "rear"
             else:
                 key = _side_of(facts, piece.midpoint, home)
                 if on_shared_wall:
                     shared_wall.add(key)
-        if key not in gaps or gap < gaps[key][0]:
-            gaps[key] = (gap, piece.kind == "open")
-    for key in shared_wall:
+        if key not in gaps:
+            gaps[key] = YardGap(gap, piece.kind == "open",
+                                _nearest_line(home, piece.line), [piece.line])
+            continue
+        entry = gaps[key]
+        entry.lines.append(piece.line)
+        if gap < entry.gap:
+            entry.gap, entry.on_open = gap, piece.kind == "open"
+            entry.nearest = _nearest_line(home, piece.line)
+    for key in shared_wall - {"rear"}:
         gaps.pop(key, None)
-    return gaps
+    return gaps, shared_wall
+
+
+def _side_name(facts, key) -> str:
+    """Name side -1 or +1 "left" or "right", seen from the street facing the lot."""
+    inward = facts.lines.inward
+    toward_right = np.array([inward[1], -inward[0]])
+    return "right" if key * (facts.lines.front_direction @ toward_right) > 0 else "left"
+
+
+def _yard_row(facts, role, status, gap=None, required=None, **fields) -> RuleResult:
+    """One yard's row, with the gap and the required strip to draw when known.
+
+    The strip is the required depth measured in from that side's lot lines.
+    """
+    row = RuleResult(f"yard:{role}", YARD_NAMES[role], status, unit="ft",
+                     required=required, **fields)
+    if gap is not None:
+        row.measured = gap.gap
+        row.shapes["gap"] = gap.nearest
+        if required:
+            row.shapes["strip"] = unary_union(
+                [line.buffer(required, cap_style="flat") for line in gap.lines]
+            ).intersection(facts.shape)
+    return row
+
+
+def _keep_worst(rows: dict, row: RuleResult):
+    """Keep whichever row for this yard shows the worst result.
+
+    Status counts first, then how far the home falls short of the rule.
+    """
+    def badness(r):
+        slack = (r.measured - r.required
+                 if r.measured is not None and r.required is not None else math.inf)
+        return _STATUS_RANK[r.status], -slack
+    if row.rule not in rows or badness(row) > badness(rows[row.rule]):
+        rows[row.rule] = row
 
 
 def _check_yards(facts, findings, width):
-    rules, kind, lines = facts.rules, facts.home_type, facts.lines
+    rules, lines = facts.rules, facts.lines
     lot = largest_polygon(facts.shape)
-    homes = []
+    homes, crossing = [], False
     for home in facts.homes:
         outside = home.shape.difference(lot.buffer(DISTANCE_MARGIN)).area
         if outside > MAX_SHARE_OUTSIDE_LOT * home.shape.area:
+            crossing = True
             findings.notes.append(
                 "A building outline on this lot crosses the lot line in the "
                 "city's map, so its yards were not checked."
             )
         else:
             homes.append(home)
-    if not homes:
-        return
 
     if lines.front_line is None:
         _check_yards_without_front(facts, findings, homes)
@@ -347,14 +420,20 @@ def _check_yards(facts, findings, width):
         if name not in worst or shortfall > worst[name][0]:
             worst[name] = (shortfall, text)
 
+    rows = {}
+    if crossing:
+        for role in YARD_ROLES:
+            _keep_worst(rows, _yard_row(facts, role, NOT_CHECKED,
+                                        explanation=CROSSES_LOT_LINE))
+
     for home in homes:
-        gaps = _yard_gaps(facts, home)
+        gaps, shared = _yard_gaps(facts, home)
         height = (home.height or 0) * HEIGHT_DISCOUNT
         # Where side yards are simply counted (RM, historic RB), a wall on
         # the line is normal, so only the rear is screened there.
         screened = ("rear",) if rules.side_yards_by_lot_width else (-1, 1, "rear")
         touching = [key for key in screened
-                    if key in gaps and gaps[key][0] < TOUCHING_GAP]
+                    if key in gaps and gaps[key].gap < TOUCHING_GAP]
         for key in touching:
             del gaps[key]
         if touching:
@@ -365,85 +444,183 @@ def _check_yards(facts, findings, width):
                 "not checked."
             )
 
-        if rules.front_yard and "front" in gaps:
-            gap = gaps["front"][0]
-            if gap + DISTANCE_MARGIN < rules.front_yard:
-                record("front", rules.front_yard - gap,
-                       f"Too close to the street: front yard is about "
-                       f"{_feet(gap)}, but {_feet(rules.front_yard)} is required.")
+        _keep_worst(rows, _front_row(facts, record, gaps["front"]))
+        for row in _side_rows(facts, record, gaps, shared, touching, height, width):
+            _keep_worst(rows, row)
+        _keep_worst(rows, _rear_row(facts, record, gaps.get("rear"), shared,
+                                    touching, height))
 
-        side_gaps = [gaps[side] for side in (-1, 1) if side in gaps]
-        if rules.side_yards_by_lot_width:
-            measure = width if width is not None else lines.frontage
-            if measure is not None and not lines.is_corner:
-                needed = 2 if measure >= 35 else 1 if measure >= 25 else 0
-                # A shared wall is a side with no yard at all.
-                have = sum(gap + DISTANCE_MARGIN >= 5 for gap, _ in side_gaps)
-                if have < needed:
-                    record("side", needed - have,
-                           f"A lot this wide ({_feet(measure)}) needs "
-                           f"{'two side yards' if needed == 2 else 'a side yard'} "
-                           f"of at least 5 ft; this home has {have}.")
-        elif kind in rules.side_yard and not (
-                width is not None and width < rules.no_side_yard_below_width):
-            yard = rules.side_yard[kind]
-            for gap, _ in side_gaps:
-                _judge_yard(record, "side", "Side", gap, gap, yard, height)
-
-        rear_yard = rules.rear_yard_for(kind)
-        if rear_yard and "rear" in gaps:
-            gap, on_alley = gaps["rear"]
-            credited = gap + (ALLEY_CREDIT if on_alley else 0)
-            _judge_yard(record, "rear", "Rear", gap, credited, rear_yard, height)
-
+    findings.results += rows.values()
     for _, text in worst.values():
         findings.reasons.append(Reason("yards", text))
 
 
+def _front_row(facts, record, gap):
+    """Judge the front yard, where the zone sets a fixed one."""
+    rules = facts.rules
+    if not rules.front_yard:
+        return _yard_row(facts, "front", NOT_CHECKED, gap, explanation=(
+            front_yard_explanation(rules, facts.in_historic_district)))
+    fails = gap.gap + DISTANCE_MARGIN < rules.front_yard
+    if fails:
+        record("front", rules.front_yard - gap.gap,
+               f"Too close to the street: front yard is about "
+               f"{_feet(gap.gap)}, but {_feet(rules.front_yard)} is required.")
+    return _yard_row(facts, "front", FAILS if fails else PASSES, gap,
+                     rules.front_yard, detail="needs")
+
+
+def _side_rows(facts, record, gaps, shared, touching, height, width):
+    """Judge both side yards. Returns the left and right rows."""
+    rules, lines = facts.rules, facts.lines
+    if not rules.side_yards_by_lot_width:
+        return [_side_row(facts, record, key, gaps.get(key), shared, touching,
+                          height, width) for key in (-1, 1)]
+
+    measure = width if width is not None else lines.frontage
+    needed = 2 if measure >= 35 else 1 if measure >= 25 else 0
+    # A shared wall is a side with no yard at all.
+    have = sum(gaps[key].gap + DISTANCE_MARGIN >= 5 for key in (-1, 1) if key in gaps)
+    short = not lines.is_corner and have < needed
+    if short:
+        record("side", needed - have,
+               f"A lot this wide ({_feet(measure)}) needs "
+               f"{'two side yards' if needed == 2 else 'a side yard'} "
+               f"of at least 5 ft; this home has {have}.")
+    return [_counted_side_row(facts, key, gaps.get(key), shared, measure, needed, short)
+            for key in (-1, 1)]
+
+
+def _counted_side_row(facts, key, gap, shared, measure, needed, short):
+    """A side yard row where the zone counts side yards by lot width.
+
+    When the home has too few yards, every side without one fails, so the
+    rows always agree with the reason written for the lot.
+    """
+    role = _side_name(facts, key)
+    if facts.lines.is_corner:
+        return _yard_row(facts, role, NOT_CHECKED, gap, explanation=SIDE_COUNT_ON_CORNER)
+    text = side_count_explanation(facts.rules.label, measure, needed)
+    if needed == 0:
+        return _yard_row(facts, role, NOT_REQUIRED, gap, explanation=text)
+    has_yard = gap is not None and gap.gap + DISTANCE_MARGIN >= 5
+    if short and not has_yard:
+        return _yard_row(facts, role, FAILS, gap, 5, detail="needs", explanation=text)
+    if key in shared:
+        return _yard_row(facts, role, NOT_REQUIRED, explanation=SHARED_WALL)
+    if gap is None:
+        return _yard_row(facts, role, NOT_CHECKED, explanation=NO_SIDE_LINE)
+    return _yard_row(facts, role, PASSES, gap, 5, detail="needs", explanation=text)
+
+
+def _side_row(facts, record, key, gap, shared, touching, height, width):
+    """A side yard row where the zone sets a side yard depth."""
+    rules, kind = facts.rules, facts.home_type
+    role = _side_name(facts, key)
+    if key in touching:
+        return _yard_row(facts, role, NOT_CHECKED, explanation=MAPPING_ERROR)
+    if key in shared:
+        return _yard_row(facts, role, NOT_REQUIRED, explanation=SHARED_WALL)
+    if width is not None and width < rules.no_side_yard_below_width:
+        return _yard_row(facts, role, NOT_REQUIRED, gap, explanation=(
+            f"Lots narrower than {_feet(rules.no_side_yard_below_width)} need "
+            f"no side yards in the {rules.label}."))
+    if kind not in rules.side_yard:
+        return _yard_row(facts, role, NO_RULE, gap, explanation=no_rule_explanation(
+            rules.label, HOME_TYPE_NAMES[kind], "side yard rule"))
+    if gap is None:
+        return _yard_row(facts, role, NOT_CHECKED, explanation=NO_SIDE_LINE)
+    fails, required, detail = _judge_yard(
+        record, "side", "Side", gap.gap, gap.gap, rules.side_yard[kind], height)
+    return _yard_row(facts, role, FAILS if fails else PASSES, gap, required,
+                     detail=detail)
+
+
+def _rear_row(facts, record, gap, shared, touching, height):
+    """The rear yard row, crediting half of an alley behind the lot."""
+    rules, kind = facts.rules, facts.home_type
+    if "rear" in touching:
+        return _yard_row(facts, "rear", NOT_CHECKED, explanation=MAPPING_ERROR)
+    if facts.lines.is_corner:
+        return _yard_row(facts, "rear", NOT_CHECKED, explanation=CORNER_NO_REAR)
+    if gap is None:
+        if "rear" in shared:
+            return _yard_row(facts, "rear", NOT_REQUIRED, explanation=SHARED_WALL)
+        return _yard_row(facts, "rear", NOT_CHECKED, explanation=NO_REAR_FOUND)
+    rear_yard = rules.rear_yard_for(kind)
+    if not rear_yard:
+        return _yard_row(facts, "rear", NO_RULE, gap, explanation=no_rule_explanation(
+            rules.label, HOME_TYPE_NAMES[kind], "rear yard rule"))
+    credited = gap.gap + (ALLEY_CREDIT if gap.on_open else 0)
+    fails, required, detail = _judge_yard(
+        record, "rear", "Rear", gap.gap, credited, rear_yard, height)
+    if gap.on_open:
+        detail += ", counting half the alley"
+    return _yard_row(facts, "rear", FAILS if fails else PASSES, gap, required,
+                     detail=detail)
+
+
 def _judge_yard(record, name, label, gap, credited_gap, yard, height):
-    """Record a yard that is too small, saying which rule it misses.
+    """Judge one yard, recording it when it is too small.
 
     The fixed minimum is a firm finding. The taller-building rule leans on
-    an estimated height, so its wording says so.
+    an estimated height, so its wording says so. Returns whether the yard
+    fails, the depth it was judged against, and a short label for that
+    depth ("needs", or "a home this tall needs" when height sets it).
     """
     if gap + DISTANCE_MARGIN < yard.minimum:
         record(name, yard.minimum - gap + 1000,
                f"{label} yard is too small: about {_feet(gap)}, but at least "
                f"{_feet(yard.minimum)} is required.")
-        return
+        return True, yard.minimum, "needs"
     required = yard.required(height)
+    detail = "a home this tall needs" if required > yard.minimum else "needs"
     if credited_gap + DISTANCE_MARGIN < required:
         record(name, required - credited_gap,
                f"{label} yard is too small for the building's height: about "
                f"{_feet(gap)}, but a building this tall (roughly "
                f"{_feet(height)}) needs about {_feet(required)}.")
+        return True, required, detail
+    return False, required, detail
 
 
 def _check_yards_without_front(facts, findings, homes):
     """Fallback when no street front is known: test only the fixed minimum.
 
     Without a front we cannot tell side from rear, so we use the smaller of
-    the two fixed minimums and skip homes that share a wall.
+    the two fixed minimums and skip homes that share a wall. The four usual
+    yard rows are left unchecked; the nearest lot line gets a row of its own.
     """
+    findings.results += [_yard_row(facts, role, NOT_CHECKED, explanation=NO_STREET)
+                         for role in YARD_ROLES]
     rules, kind = facts.rules, facts.home_type
-    if facts.attached_neighbors is not None or rules.side_yards_by_lot_width:
+    if not homes or facts.attached_neighbors is not None or rules.side_yards_by_lot_width:
         return
     minimums = [yard.minimum for yard in
                 (rules.side_yard.get(kind), rules.rear_yard_for(kind)) if yard]
     if not minimums:
         return
     needed = min(minimums)
-    gap = min(piece.line.distance(home.shape)
-              for home in homes for piece in facts.lines.pieces)
+    gap, home, piece = min(((piece.line.distance(home.shape), home, piece)
+                            for home in homes for piece in facts.lines.pieces),
+                           key=lambda found: found[0])
+    nearest = YardGap(gap, piece.kind == "open", _nearest_line(home, piece.line),
+                      [piece.line])
     if gap < TOUCHING_GAP:
         # Drawn on the line with no neighbor attached: a mapping error.
+        findings.results.append(_yard_row(facts, "nearest", NOT_CHECKED, nearest,
+                                          explanation=MAPPING_ERROR))
         return
-    if gap + DISTANCE_MARGIN < needed:
+    fails = gap + DISTANCE_MARGIN < needed
+    if fails:
         findings.reasons.append(Reason(
             "yards",
             f"Too close to the lot line: about {_feet(gap)}, but at least "
             f"{_feet(needed)} is required.",
         ))
+    row = _yard_row(facts, "nearest", FAILS if fails else PASSES, nearest, detail="needs")
+    row.required = needed
+    findings.results.append(row)
 
 
 def _check_floor_area(facts, findings):
