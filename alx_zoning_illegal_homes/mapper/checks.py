@@ -10,7 +10,11 @@ from dataclasses import dataclass, field
 import numpy as np
 from shapely.ops import unary_union
 
-from .lot_lines import LotLines, largest_polygon, lot_width
+from .lot_lines import LotLines, largest_polygon, lot_width, lot_width_line
+from .rule_results import (
+    FAILS, NO_RULE, NO_STREET, NOT_CHECKED, PASSES, RULE_IDS, SHARED_LOT,
+    TOO_SHALLOW, RuleResult, format_feet as _feet, frontage_about,
+    no_rule_explanation)
 from .rules import HOME_TYPE_NAMES, ZoneRules
 
 # Slack given to distance measurements, in feet.
@@ -80,10 +84,7 @@ class Findings:
     reasons: list[Reason] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
     measurements: dict = field(default_factory=dict)
-
-
-def _feet(value: float) -> str:
-    return f"{value:,.0f} ft" if value >= 20 else f"{value:,.1f} ft"
+    results: list[RuleResult] = field(default_factory=list)
 
 
 def _square_feet(value: float) -> str:
@@ -102,6 +103,7 @@ def check_lot(facts: LotFacts) -> Findings:
     _check_floor_area(facts, findings)
     _check_height(facts, findings)
     _check_open_space(facts, findings)
+    findings.results.sort(key=lambda row: RULE_IDS.index(row.rule))
     return findings
 
 
@@ -143,7 +145,9 @@ def _position(facts: LotFacts) -> str:
 def _check_home_type(facts, findings):
     rules, kind = facts.rules, facts.home_type
     name = HOME_TYPE_NAMES[kind]
+    status, summary = PASSES, f"{name} allowed in the {rules.label}"
     if kind not in rules.allowed:
+        status, summary = FAILS, f"{name} not allowed in the {rules.label}"
         findings.reasons.append(Reason(
             "home_type",
             f"This kind of home ({name}) is not allowed in the "
@@ -151,21 +155,33 @@ def _check_home_type(facts, findings):
         ))
     elif (kind == "multi" and rules.max_multi_units
           and facts.units > rules.max_multi_units):
+        status = FAILS
+        summary = (f"{facts.units} homes in one building; the {rules.label} "
+                   f"allows {rules.max_multi_units}")
         findings.reasons.append(Reason(
             "home_type",
             f"Has {facts.units} homes in one building; the {rules.label} allows at most {rules.max_multi_units}.",
         ))
+    findings.results.append(RuleResult(
+        "home_type", "Home type", status, summary=summary))
 
 
 def _check_lot_area(facts, findings, position):
     rules, kind = facts.rules, facts.home_type
     table = rules.corner_lot_area if position == "corner" else rules.lot_area
     required = table.get(kind, rules.lot_area.get(kind))
-    if not required:
-        return
     per_home = kind == "townhouse" and facts.units > 1
+    row = RuleResult("lot_area", "Land per home" if per_home else "Lot size",
+                     NO_RULE, unit="sq ft")
+    findings.results.append(row)
+    if not required:
+        row.explanation = no_rule_explanation(
+            rules.label, HOME_TYPE_NAMES[kind], "minimum lot size")
+        return
     area = facts.area / facts.units if per_home else facts.area
+    row.status, row.measured, row.required = PASSES, area, required
     if area < required * (1 - AREA_MARGIN):
+        row.status = FAILS
         what = "Land per home" if per_home else "Lot"
         corner = " on a corner" if (position == "corner"
                                     and required != rules.lot_area.get(kind)) else ""
@@ -179,17 +195,31 @@ def _check_lot_area(facts, findings, position):
 def _check_width_and_frontage(facts, findings, position):
     """Check lot width and street frontage. Returns the measured width."""
     rules, kind, lines = facts.rules, facts.home_type, facts.lines
+    measured_at = rules.width_measured_at
+    frontage_row = RuleResult("frontage", "Street frontage", NOT_CHECKED,
+                              unit="ft", measured=lines.frontage)
+    width_row = RuleResult(
+        "width", "Lot width", NOT_CHECKED, unit="ft",
+        detail=(f"measured {_feet(measured_at)} back" if measured_at > 0
+                else "measured at the street"))
+    findings.results += [frontage_row, width_row]
     if lines.frontage is None:
+        frontage_row.explanation = width_row.explanation = NO_STREET
         findings.notes.append(
             "Could not find a public street next to this lot, so its width "
             "and street frontage were not checked."
         )
         return None
-    width = lot_width(facts.shape, lines, rules.width_measured_at)
+    width = lot_width(facts.shape, lines, measured_at)
     findings.measurements["frontage"] = lines.frontage
     findings.measurements["width"] = width
+    frontage_row.shapes["line"] = lines.front_line
+    width_line = lot_width_line(facts.shape, lines, measured_at)
+    if width_line is not None:
+        width_row.shapes["line"] = width_line
     # Several homes on one shared lot have no lot lines of their own.
     if kind == "townhouse" and facts.units > 1:
+        frontage_row.explanation = width_row.explanation = SHARED_LOT
         return width
 
     if position == "corner":
@@ -201,17 +231,39 @@ def _check_width_and_frontage(facts, findings, position):
     where = {"corner": " for a corner lot", "end": " for an end-of-row lot"}.get(
         position, "")
 
+    need_frontage = need_width if kind == "townhouse" else rules.frontage.get(kind)
+    if lines.front_is_curved and kind in rules.curved_frontage:
+        need_frontage = rules.curved_frontage[kind]
+
+    street = lines.primary_street
+    frontage_row.about = frontage_about(street, rules.label, need_frontage, measured_at)
+    if need_width:
+        width_row.required = need_width
+        if width is None:
+            width_row.explanation = TOO_SHALLOW
+        else:
+            width_row.status, width_row.measured = PASSES, width
+    else:
+        width_row.status = NO_RULE
+        width_row.explanation = no_rule_explanation(
+            rules.label, HOME_TYPE_NAMES[kind], "minimum lot width")
+    if need_frontage:
+        frontage_row.status, frontage_row.required = PASSES, need_frontage
+    else:
+        frontage_row.status = NO_RULE
+        frontage_row.explanation = no_rule_explanation(
+            rules.label, HOME_TYPE_NAMES[kind], "minimum street frontage")
+
     if need_width and width is not None and width < need_width * (1 - WIDTH_MARGIN):
+        width_row.status = FAILS
         findings.reasons.append(Reason(
             "lot_width",
             f"Lot is too narrow: about {_feet(width)} wide, but the "
             f"{rules.label} requires {_feet(need_width)}{where}.",
         ))
 
-    need_frontage = need_width if kind == "townhouse" else rules.frontage.get(kind)
-    if lines.front_is_curved and kind in rules.curved_frontage:
-        need_frontage = rules.curved_frontage[kind]
     if need_frontage and lines.frontage < need_frontage * (1 - WIDTH_MARGIN):
+        frontage_row.status = FAILS
         findings.reasons.append(Reason(
             "lot_width",
             f"Too little street frontage: about {_feet(lines.frontage)}, "

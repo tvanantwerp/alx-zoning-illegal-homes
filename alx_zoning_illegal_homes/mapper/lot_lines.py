@@ -282,24 +282,22 @@ def _choose_primary(fronts, address_street):
     return min(fronts, key=lambda name: fronts[name].length)
 
 
-def lot_width(lot, lines: LotLines, distance_back: float) -> float | None:
-    """Measure lot width a set distance back from the front lot line.
+def lot_width_line(lot, lines: LotLines, distance_back: float) -> LineString | None:
+    """The straight line the ordinance measures lot width along.
 
     The ordinance measures width along a straight line between the side lot
     lines, at the depth of the zone's minimum front yard. We trace every
     point in the lot that is exactly that far from the front line, then take
-    the straight-line distance between the two ends of that trace. For a
-    plain rectangle this is its width; for a pie-shaped lot it is the chord
+    the straight line between the two ends of that trace. For a plain
+    rectangle this spans its width; for a pie-shaped lot it is the chord
     across the wedge at that depth.
 
-    Returns None when the lot has no street front or is shallower than the
-    measuring depth.
+    Returns None when the lot has no street front, when the distance is not
+    above zero, or when the lot is shallower than the measuring depth.
     """
     front = lines.front_line
-    if front is None:
+    if front is None or distance_back <= 0:
         return None
-    if distance_back <= 0:
-        return lines.frontage
     lot = largest_polygon(lot)
     trace = front.buffer(distance_back, quad_segs=16).boundary.intersection(lot)
     parts = _lines(trace)
@@ -308,5 +306,18 @@ def lot_width(lot, lines: LotLines, distance_back: float) -> float | None:
     if len(parts) > 1:
         parts = _lines(linemerge(unary_union(parts)))
     longest = max(parts, key=lambda part: part.length)
-    start, end = longest.coords[0], longest.coords[-1]
-    return float(np.hypot(end[0] - start[0], end[1] - start[1]))
+    return LineString([longest.coords[0], longest.coords[-1]])
+
+
+def lot_width(lot, lines: LotLines, distance_back: float) -> float | None:
+    """Measure lot width a set distance back from the front lot line.
+
+    Returns the street frontage when the distance is zero, and None when the
+    lot has no street front or is shallower than the measuring depth.
+    """
+    if lines.front_line is None:
+        return None
+    if distance_back <= 0:
+        return lines.frontage
+    line = lot_width_line(lot, lines, distance_back)
+    return float(line.length) if line is not None else None

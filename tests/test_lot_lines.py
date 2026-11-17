@@ -3,7 +3,7 @@ import pytest
 from shapely.geometry import LineString, Polygon, box
 from shapely.ops import unary_union
 
-from alx_zoning_illegal_homes.mapper.lot_lines import classify, lot_width
+from alx_zoning_illegal_homes.mapper.lot_lines import classify, lot_width, lot_width_line
 
 # Two streets cross at the origin corner of a block of 50 x 100 ft lots.
 # Main St runs east-west 25 ft south of the lots; Oak St runs north-south
@@ -83,3 +83,12 @@ def test_shallow_lot_has_no_width_at_that_depth():
     shallow = box(0, 0, 60, 20)
     lines = classify(shallow, None, [MAIN], "MAIN")
     assert lot_width(shallow, lines, 30) is None
+
+
+def test_width_line_sits_the_measuring_depth_back():
+    lot = box(0, 0, 60, 100)
+    lines = classify(lot, None, [MAIN], "MAIN")   # MAIN runs along y = -25
+    line = lot_width_line(lot, lines, 25)
+    assert line.length == pytest.approx(60, abs=0.5)
+    assert all(y == pytest.approx(25, abs=0.5) for _, y in line.coords)
+    assert lot_width_line(lot, lines, 0) is None
