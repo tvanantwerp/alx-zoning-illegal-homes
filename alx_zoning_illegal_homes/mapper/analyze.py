@@ -9,6 +9,7 @@ import shapely.ops
 from shapely.ops import unary_union
 
 from . import loader
+from .places import near_a_station, station_points
 from .checks import Home, LotFacts, check_lot
 from .lot_lines import MAX_STREET_DISTANCE, classify
 from .rule_results import under_special_approval
@@ -385,6 +386,7 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
     lot_lon_lat = lot_points.to_crs("EPSG:4326")
     route_1 = unary_union(streets.geometry[streets["name"] == "RICHMOND"].values)
     kr_is_east = _king_street_divide(streets)
+    stations = station_points()
     projects = loader.load_development_projects()
     project_tree = shapely.STRtree(projects.geometry.values)
 
