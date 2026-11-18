@@ -28,6 +28,9 @@ WHOLE_BUILDING_SHARE = 0.88
 MIN_PART_AREA = 150.0
 MIN_PART_OF_BUILDING = 0.2
 MIN_PART_OF_LOT = 0.25
+# A piece too small to count joins a counted piece of the same building
+# that lies within this distance.
+JOIN_GAP = 0.5
 # A small outline is a condo unit, not a lot, when a lot at least this many
 # times its size covers at least this share of it.
 UNIT_LOT_RATIO = 2.0
@@ -152,13 +155,40 @@ def _polygons_only(shape):
     return unary_union(parts) if parts else shapely.Polygon()
 
 
+def _join_small_pieces(counted, small):
+    """Fold pieces of a building too small to count into the counted piece beside them.
+
+    When the city draws a lot line a few feet inside a building, a thin strip
+    of it lands on the neighboring lot. That strip is too small to count as
+    a home there, but dropping it would open a gap where the building really
+    meets its neighbor, hiding the shared wall between twin halves or
+    townhouses. Instead each strip joins the counted piece it touches most.
+    A strip that touches no counted piece is dropped.
+
+    `counted` maps lot id to that lot's counted piece, and `small` lists the
+    other pieces. Returns `counted` with the strips joined in.
+    """
+    counted, small = dict(counted), [part for part in small if not part.is_empty]
+    # Joining a strip can bring another strip into reach, so repeat until
+    # nothing more joins.
+    while counted and small:
+        contact, index, lot_id = max(
+            (part.buffer(JOIN_GAP).intersection(piece).area, i, lot_id)
+            for i, part in enumerate(small) for lot_id, piece in counted.items())
+        if contact <= 0:
+            break
+        counted[lot_id] = unary_union([counted[lot_id], small.pop(index)])
+    return counted
+
+
 def _place_buildings(lots, buildings, pairs):
     """Decide which lot, or lots, each building stands on.
 
     Most buildings sit on one lot. But the city often draws a whole row of
     townhouses or a condo building as one outline across many lots. Such a
     building is cut along the lot lines and each lot gets its own part, so
-    every one of those lots is recognized as having a home.
+    every one of those lots is recognized as having a home. Pieces too
+    small to count as a home stay with the counted piece they touch.
 
     Returns one row per (building, lot) with the building part on that lot
     and the share of the whole building it represents.
@@ -177,6 +207,7 @@ def _place_buildings(lots, buildings, pairs):
             rows.append((building_id, best["lot_id"], whole, 1.0))
             continue
         remaining = whole
+        counted, small = {}, []
         for _, pair in group.sort_values("lot_area").iterrows():
             lot = lot_shapes.loc[pair["lot_id"]]
             part = _polygons_only(remaining.intersection(lot))
@@ -185,8 +216,11 @@ def _place_buildings(lots, buildings, pairs):
                 part.area >= MIN_PART_OF_BUILDING * pair["footprint"]
                 or part.area >= MIN_PART_OF_LOT * pair["lot_area"])
             if big_enough:
-                rows.append((building_id, pair["lot_id"], part,
-                             part.area / pair["footprint"]))
+                counted[pair["lot_id"]] = part
+            else:
+                small.append(part)
+        for lot_id, part in _join_small_pieces(counted, small).items():
+            rows.append((building_id, lot_id, part, part.area / best["footprint"]))
     placed = gpd.GeoDataFrame(
         rows, columns=["building_id", "lot_id", "geometry", "share"],
         geometry="geometry", crs=lots.crs)

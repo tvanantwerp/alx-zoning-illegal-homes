@@ -158,7 +158,10 @@ Other details that matter:
   into one lot.
 - The city often draws a whole townhouse row or condo building as a single
   outline across many lots. Such a building is cut along the lot lines so
-  each lot is judged on its own part.
+  each lot is judged on its own part. A piece too small to count as a home
+  (a strip left where a lot line runs a few feet inside a building) stays
+  with the larger piece it touches, so the building keeps its full outline
+  where it meets its neighbor.
 - Lots that one owner has built a single house across are joined.
 - Homes that share a wall (twins, townhouses) are not expected to have a yard
   on that side. Rows of three or more attached homes are treated as
