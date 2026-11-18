@@ -46,7 +46,13 @@ CG, CD, CDX, OC, OCM, OCH, W-1, CRMU, KR) and in planned districts:
 - **Floor space** compared with lot size
 - **Height**
 - **Open space** or building coverage
-- **Home type**, e.g. townhouses in a zone that allows only houses
+- **Home type**, e.g. townhouses in a zone that allows only houses. A few
+  zones carry their own exceptions for older homes, and those homes pass:
+  apartment buildings in the RB zone built before 1978 (the exception also
+  asks that the land was zoned RB by 1973, which the map can't confirm), and
+  detached and twin houses in the RC and RCX zones built before June 24, 1992.
+  Those RC and RCX houses may be rebuilt under the limits they were built
+  under, which the map doesn't know.
 
 The rules live as plain data in `alx_zoning_illegal_homes/mapper/rules.py`.
 They come from Articles III, IV and V of the Zoning Ordinance as amended

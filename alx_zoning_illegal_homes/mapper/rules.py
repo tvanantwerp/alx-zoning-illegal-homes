@@ -36,11 +36,69 @@ class Yard:
 
 
 @dataclass(frozen=True)
+class OlderHomeAllowance:
+    """A zone's own exception that allows a kind of home it otherwise bars, if old enough.
+
+    A few zones say that a kind of home they don't normally allow is fine
+    when it was there before some date. City records give only the year a
+    home was built, so a home counts when that year is before `before_year`.
+    A home built in that year itself can't be told apart, so it doesn't count.
+
+    rule:        the exception in plain words, shown on the home type row.
+    before:      the cutoff date as the ordinance writes it.
+    unconfirmed: what else the exception asks that the map can't confirm.
+    older_rules: True when the zone also lets these homes be rebuilt under
+                 the limits in force when they were built, which the map
+                 doesn't have.
+    """
+
+    before_year: int
+    before: str
+    rule: str
+    unconfirmed: str = ""
+    older_rules: bool = False
+
+
+# The RB zone's exception for older apartment land (section 3-707(A)).
+_RB_OLDER_APARTMENTS = OlderHomeAllowance(
+    before_year=1978,
+    before="March 28, 1978",
+    rule=("The RB zone lets land that was zoned RB by February 27, 1973 be used "
+          "for apartment buildings if it had apartment buildings on it before "
+          "March 28, 1978."),
+    unconfirmed=("The map has no record of past zoning, so it couldn't confirm "
+                 "this land was zoned RB by 1973."),
+)
+
+
+def _older_houses(zone: str) -> dict:
+    """The RC and RCX zones' exception for older houses and twin houses.
+
+    Both zones (sections 3-807(A) and 3-907(A)) say detached and two-unit
+    houses "developed prior to June 24, 1992 shall be deemed to be in
+    compliance with this ordinance", and may be rebuilt under the limits
+    they were built under.
+    """
+    allowance = OlderHomeAllowance(
+        before_year=1992,
+        before="June 24, 1992",
+        rule=(f"The {zone} zone says detached houses and two-unit houses built before "
+              "June 24, 1992 are \"deemed to be in compliance\" with the zoning "
+              "rules, and lets them be rebuilt under the limits they were built under."),
+        older_rules=True,
+    )
+    return {"single": allowance, "semi": allowance}
+
+
+@dataclass(frozen=True)
 class ZoneRules:
     """Everything we check for one zone. Dicts are keyed by home type."""
 
     name: str
     allowed: frozenset
+    # Home types the zone allows only when built before a date, keyed by
+    # home type, each an OlderHomeAllowance.
+    allowed_if_built_before: dict = field(default_factory=dict)
     # How messages refer to these rules, after the word "the".
     described_as: str = ""
     # Largest apartment building allowed, counted in homes. None = no cap.
@@ -183,6 +241,7 @@ ZONES = {
     "RB": ZoneRules(
         name="RB",
         allowed=frozenset({"single", "semi", "townhouse"}),
+        allowed_if_built_before={"multi": _RB_OLDER_APARTMENTS},
         lot_area={"single": 1980, "semi": 1980, "townhouse": 1980},
         lot_width={"single": 50, "semi": 25, "townhouse": 18},
         end_lot_width={"townhouse": 26},
@@ -204,6 +263,7 @@ ZONES = {
     "RCX": ZoneRules(
         name="RCX",
         allowed=frozenset({"townhouse", "multi"}),
+        allowed_if_built_before=_older_houses("RCX"),
         no_front_yard_for=ALL_TYPES,
         lot_area={"townhouse": 1600},
         lot_width={"multi": 50, "townhouse": 18},
@@ -220,6 +280,7 @@ ZONES = {
     "RC": ZoneRules(
         name="RC",
         allowed=frozenset({"townhouse", "multi"}),
+        allowed_if_built_before=_older_houses("RC"),
         no_front_yard_for=ALL_TYPES,
         lot_area={"townhouse": 1600},
         lot_width={"multi": 50, "townhouse": 18},
@@ -710,6 +771,7 @@ def planned_district_rules(label, in_historic_district=False, zone=None, changes
 RB_HISTORIC = ZoneRules(
     name="RB",
     allowed=ZONES["RB"].allowed,
+    allowed_if_built_before=ZONES["RB"].allowed_if_built_before,
     lot_area=ZONES["RB"].lot_area,
     lot_width=ZONES["RB"].lot_width,
     end_lot_width=ZONES["RB"].end_lot_width,

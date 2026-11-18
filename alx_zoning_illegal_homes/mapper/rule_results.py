@@ -93,6 +93,13 @@ def no_rule_explanation(zone_label: str, home_type_name: str, what: str) -> str:
     return f"The map's rules for the {zone_label} include no {what} for a {home_type_name}."
 
 
+def older_rules_explanation(zone_label: str, before: str) -> str:
+    """Say that an older home may be rebuilt under the limits it was built under."""
+    return (f"This home was built before {before}, so the {zone_label} lets it be "
+            "rebuilt under the limits in force when it was built. The map doesn't "
+            "know those older limits.")
+
+
 def _show(value: float, unit: str, precise: bool = False) -> str:
     """Write a measured or required value in its unit, with one more decimal when `precise`."""
     if unit == "ft":

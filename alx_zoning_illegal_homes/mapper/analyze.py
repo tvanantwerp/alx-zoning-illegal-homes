@@ -522,6 +522,7 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
             building_sections=list(on_lot["sections"]),
             attached_neighbors=unary_union(attached) if attached else None,
             in_historic_district=is_historic,
+            year_built=record["year_built"],
         )
         findings = check_lot(facts)
         if keep_facts is not None:

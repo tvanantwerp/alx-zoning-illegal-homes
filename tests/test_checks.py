@@ -134,6 +134,47 @@ def test_townhouse_is_not_allowed_in_a_house_zone():
     assert "home_type" in kinds
 
 
+def _home_type_row(findings):
+    return next(row for row in findings.results if row.rule == "home_type")
+
+
+@pytest.mark.parametrize("historic", [False, True])
+def test_older_apartments_pass_in_rb(historic):
+    lot = box(0, 0, 100, 150)
+    home = box(20, 35, 80, 100)
+    rules = rules_for("RB", historic)
+    kinds, findings = check(lot, home, "RB", home_type="multi", units=8,
+                            year_built=1950, rules=rules, historic=historic)
+    assert "home_type" not in kinds
+    row = _home_type_row(findings)
+    assert row.status == "passes"
+    assert "1950" in row.explanation and "zoned RB by 1973" in row.explanation
+    kinds, _ = check(lot, home, "RB", home_type="multi", units=8, year_built=1978,
+                     rules=rules)
+    assert "home_type" in kinds
+    kinds, _ = check(lot, home, "RB", home_type="multi", units=8, rules=rules)
+    assert "home_type" in kinds
+
+
+@pytest.mark.parametrize("zone", ["RC", "RCX"])
+def test_older_houses_pass_in_rc_and_rcx(zone):
+    lot = box(0, 0, 40, 100)
+    home = box(0, 20, 30, 60)
+    kinds, findings = check(lot, home, zone, home_type="semi", year_built=1985,
+                            attached=box(-30, 20, 0, 60))
+    assert "home_type" not in kinds
+    row = _home_type_row(findings)
+    assert row.status == "passes" and "deemed to be in compliance" in row.explanation
+    lot_size = next(row for row in findings.results if row.rule == "lot_area")
+    assert lot_size.status == "no_rule"
+    assert "rebuilt under the limits in force when it was built" in lot_size.explanation
+    kinds, findings = check(lot, home, zone, home_type="semi", year_built=1999,
+                            attached=box(-30, 20, 0, 60))
+    assert "home_type" in kinds
+    lot_size = next(row for row in findings.results if row.rule == "lot_area")
+    assert "rebuilt" not in lot_size.explanation
+
+
 def test_shared_walls_are_not_missing_side_yards():
     # A 20 ft wide townhouse filling its lot width, neighbors attached.
     lot = box(0, 0, 20, 110)

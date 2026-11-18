@@ -11,12 +11,14 @@ MAIN = ("MAIN", LineString([(-300, -25), (500, -25)]))
 
 def check(lot, home, zone, home_type="single", neighbors=None, attached=None,
           height=20, floor_area=1000, units=1, rules=None, streets=(), all_buildings=None,
-          sections=()):
+          sections=(), year_built=None, historic=False):
     """Check one lot holding one home, fronting Main St to its south.
 
     Pass `rules` to use those instead of the zone's own, `streets` to add
     (name, centerline) pairs beside Main St, as for a corner lot, and
     `sections` to give the home roof sections as (shape, height) pairs.
+    `year_built` is the year the oldest home went up, and `historic` puts
+    the lot in a historic district.
     """
     facts = LotFacts(
         shape=lot,
@@ -29,6 +31,8 @@ def check(lot, home, zone, home_type="single", neighbors=None, attached=None,
         units=units,
         all_buildings=[home] if all_buildings is None else all_buildings,
         attached_neighbors=attached,
+        year_built=year_built,
+        in_historic_district=historic,
     )
     findings = check_lot(facts)
     return {reason.kind for reason in findings.reasons}, findings

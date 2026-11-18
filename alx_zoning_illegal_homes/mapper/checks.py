@@ -18,8 +18,9 @@ from .rule_results import (
     NO_OUTLINES, NO_REAR_FOUND, NO_RULE, NO_SIDE_LINE, NO_STREET, NOT_CHECKED, NOT_REQUIRED, PASSES, RULE_IDS,
     RM_OPEN_SPACE, SHARED_LOT, SHARED_WALL, SIDE_COUNT_ON_CORNER, TOO_SHALLOW, RuleResult,
     explain_margin, format_feet as _feet, front_yard_explanation, frontage_about,
-    no_front_yard_explanation, no_rule_explanation, side_count_explanation)
-from .rules import HOME_TYPE_NAMES, ZoneRules
+    no_front_yard_explanation, no_rule_explanation, older_rules_explanation,
+    side_count_explanation)
+from .rules import HOME_TYPE_NAMES, OlderHomeAllowance, ZoneRules
 
 # Slack given to distance measurements, in feet.
 DISTANCE_MARGIN = 2.0
@@ -108,6 +109,8 @@ class LotFacts:
     # Homes on other lots that touch this lot's homes.
     attached_neighbors: object = None
     in_historic_district: bool = False
+    # Year the oldest home on the lot was built, from city records.
+    year_built: int | None = None
 
 
 @dataclass
@@ -137,13 +140,18 @@ def check_lot(facts: LotFacts) -> Findings:
     findings = Findings()
     position = _position(facts)
     findings.measurements["position"] = position
-    _check_home_type(facts, findings)
+    allowance = _check_home_type(facts, findings)
     _check_lot_area(facts, findings, position)
     width = _check_width_and_frontage(facts, findings, position)
     _check_yards(facts, findings, width)
     _check_floor_area(facts, findings)
     _check_height(facts, findings)
     _check_open_space(facts, findings)
+    if allowance is not None and allowance.older_rules:
+        note = older_rules_explanation(facts.rules.label, allowance.before)
+        for row in findings.results:
+            if row.status == NO_RULE:
+                row.explanation = f"{row.explanation} {note}" if row.explanation else note
     explain_margin(findings.results)
     findings.results.sort(key=lambda row: RULE_IDS.index(row.rule))
     return findings
@@ -184,11 +192,35 @@ def _position(facts: LotFacts) -> str:
     return "interior"
 
 
-def _check_home_type(facts, findings):
+def _older_home_allowance(facts) -> OlderHomeAllowance | None:
+    """The zone's exception for older homes of this type, if this lot's homes are old enough."""
+    allowance = facts.rules.allowed_if_built_before.get(facts.home_type)
+    if (allowance is None or facts.year_built is None
+            or facts.year_built >= allowance.before_year):
+        return None
+    return allowance
+
+
+def _check_home_type(facts, findings) -> OlderHomeAllowance | None:
+    """Check the kind of home against the zone.
+
+    Returns the zone's exception for older homes when that is what lets this
+    home pass, so the other rows can say the older limits apply.
+    """
     rules, kind = facts.rules, facts.home_type
     name = HOME_TYPE_NAMES[kind]
     status, summary = PASSES, f"{name} allowed in the {rules.label}"
-    if kind not in rules.allowed:
+    allowance = None if kind in rules.allowed else _older_home_allowance(facts)
+    explanation = None
+    if allowance is not None:
+        summary = f"older {name} allowed in the {rules.label}"
+        explanation = " ".join(filter(None, [
+            f"This kind of home ({name}) isn't normally allowed in the {rules.label}.",
+            allowance.rule,
+            f"The oldest home on this lot was built in {facts.year_built}, so it counts.",
+            allowance.unconfirmed,
+        ]))
+    elif kind not in rules.allowed:
         status, summary = FAILS, f"{name} not allowed in the {rules.label}"
         findings.reasons.append(Reason(
             "home_type",
@@ -205,7 +237,8 @@ def _check_home_type(facts, findings):
             f"Has {facts.units} homes in one building; the {rules.label} allows at most {rules.max_multi_units}.",
         ))
     findings.results.append(RuleResult(
-        "home_type", "Home type", status, summary=summary))
+        "home_type", "Home type", status, summary=summary, explanation=explanation))
+    return allowance
 
 
 def _check_lot_area(facts, findings, position):
