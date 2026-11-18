@@ -45,7 +45,16 @@ CG, CD, CDX, OC, OCM, OCH, W-1, CRMU, KR) and in planned districts:
   buildings need
 - **Floor space** compared with lot size. In the KR and OCH zones the limit
   is looser within 1,000 ft of a Metro station.
-- **Height**
+- **Height**, measured as the ordinance does: to the top of a flat roof, but
+  only halfway between the eaves and the peak of a gable or hip roof. The
+  city's 3D data gives only the peak, so the map guesses the roof's shape and
+  the height of its eaves from the number of stories in city records (about
+  10 ft per full story, plus 2 ft for a raised ground floor). A roof that
+  rises only a few feet above those eaves counts as flat, and apartment
+  buildings are taken to have flat roofs. A roof is never taken to rise
+  more than 15 ft, since a story count that leaves a taller roof is
+  probably short. With no story count, a pitched roof is measured at 85% of
+  its peak.
 - **Open space** or building coverage. Open space is the land not under a
   building, road, alley, driveway or parking lot, leaving out every strip
   narrower than 8 ft, as the ordinance's definition of "open and usable
@@ -204,7 +213,16 @@ Other details that matter:
 - Parking rules are not checked.
 - Height comes from the city's 3D building layer and floor space from the
   city's building records; neither matches the ordinance's definitions
-  exactly.
+  exactly. The 3D layer draws each part of a building as a flat-topped block
+  as tall as its peak, so it can't show a roof's slope; where the eaves are
+  is a guess from the number of stories. Every pitched roof is treated as a
+  gable or hip roof. Gambrel roofs (measured halfway up the upper slope) and
+  mansard roofs (measured at the roof line) come out lower on the map than
+  the ordinance would measure them. Dormers can't be seen either: in R-20,
+  R-12, R-8, R-5 and R-2-5, and for houses and two-unit houses in RA and RB
+  outside the historic districts, dormers wider in total than 30% of the
+  roof move the measurement up to halfway up the dormers, so a house with
+  wide dormers may be taller than the map says.
 - When one owner holds both halves of a twin, each half on its own parcel,
   and the city's outline pokes a little over the line between them, the two
   parcels are joined and judged as one lot with a two-unit house on it. In

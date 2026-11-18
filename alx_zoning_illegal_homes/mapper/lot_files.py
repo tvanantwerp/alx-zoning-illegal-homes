@@ -11,7 +11,8 @@ from shapely import affinity
 from shapely.geometry.base import BaseGeometry
 from shapely.ops import linemerge
 
-from .checks import LotFacts, roof_parts
+from .checks import LotFacts
+from .heights import roof_parts
 from .rule_results import RuleResult
 from .rules import HOME_TYPE_NAMES
 

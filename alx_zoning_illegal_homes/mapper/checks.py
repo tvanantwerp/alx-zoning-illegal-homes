@@ -13,16 +13,18 @@ import shapely
 from shapely.geometry import LineString
 from shapely.ops import nearest_points, substring, unary_union
 
+from .heights import BuildingHeight, building_height, roof_parts
 from .lot_lines import LotLines, largest_polygon, lot_width, lot_width_line
 from .rule_results import (
     CORNER_NO_REAR, CROSSES_LOT_LINE, FAILS, MAPPING_ERROR, NO_FLOOR_AREA, NO_HEIGHT,
     NO_OUTLINES, NO_REAR_FOUND, NO_RULE, NO_SIDE_LINE, NO_STREET, NOT_CHECKED, NOT_REQUIRED, PASSES, RULE_IDS,
     SHARED_LOT, SHARED_WALL, SIDE_COUNT_ON_CORNER, TOO_SHALLOW, TWO_UNIT_LOT, YARD_BENEFIT_OF_DOUBT,
-    RuleResult,
+    HEIGHT_MEASURED, RuleResult,
     eisenhower_older_home_note, eisenhower_special_permit_explanation,
     explain_margin, format_feet as _feet, front_yard_explanation, frontage_about,
-    no_front_yard_explanation, no_rule_explanation, older_rules_explanation, open_space_about,
-    side_count_explanation, split_twin_explanation, split_twin_reason)
+    height_explanation, margin_explanation, no_front_yard_explanation, no_rule_explanation,
+    older_rules_explanation, open_space_about, side_count_explanation,
+    split_twin_explanation, split_twin_reason)
 from .rules import HOME_TYPE_NAMES, OlderHomeAllowance, ZoneRules
 
 # Slack given to distance measurements, in feet. Covers measuring error and
@@ -54,8 +56,6 @@ TOUCHING_GAP = 0.5
 # A building with more than this share of its outline outside the lot is
 # probably one outline drawn across several lots; its yards can't be judged.
 MAX_SHARE_OUTSIDE_LOT = 0.12
-# Roof pieces smaller than this, in square feet, are dropped as slivers.
-MIN_PART_AREA = 5.0
 
 YARD_ROLES = ("front", "left", "right", "rear")
 YARD_NAMES = {"front": "Front yard", "left": "Left side yard",
@@ -69,34 +69,14 @@ class Home:
     """A residential building on the lot being checked."""
 
     shape: object
+    # Height to the top of the roof, from the city's 3D data.
     height: float | None = None
     floor_area: float | None = None
     # Roof sections from the city's 3D data, as (shape, height) pairs.
     sections: list = field(default_factory=list)
     year_built: int | None = None
-
-
-def roof_parts(outline, sections: list, height: float) -> list[tuple]:
-    """Split a building outline into parts by roof height, as (shape, height) pairs.
-
-    Sections are trimmed to the outline and merged when they share a height.
-    Any piece of the outline no section covers gets `height`, the building's
-    overall height. With no usable sections the whole outline is one part.
-    Pieces smaller than MIN_PART_AREA are slivers where the 3D data and the
-    outline don't quite line up, and are dropped.
-    """
-    by_height: dict[float, list] = {}
-    for shape, section_height in sections:
-        piece = shape.intersection(outline)
-        if piece.area >= MIN_PART_AREA:
-            by_height.setdefault(round(float(section_height), 1), []).append(piece)
-    if not by_height:
-        return [(outline, height)]
-    uncovered = outline.difference(unary_union([shape for shape, _ in sections]))
-    if uncovered.area >= MIN_PART_AREA:
-        by_height.setdefault(height, []).append(uncovered)
-    return [(unary_union(pieces), part_height)
-            for part_height, pieces in sorted(by_height.items())]
+    # Number of stories from the city's building records, or None.
+    stories: float | None = None
 
 
 @dataclass
@@ -908,31 +888,46 @@ def _check_floor_area(facts, findings):
         ))
 
 
+def home_heights(facts: LotFacts) -> list[tuple[Home, BuildingHeight]]:
+    """Each home with a known height, paired with its height as the ordinance measures it."""
+    apartment = facts.home_type == "multi"
+    found = [(home, building_height(home, apartment)) for home in facts.homes]
+    return [(home, estimate) for home, estimate in found if estimate is not None]
+
+
 def _check_height(facts, findings):
     kind = facts.home_type
     limit = facts.rules.max_height.get(kind)
-    row = RuleResult("height", "Height", NO_RULE, unit="ft", limit="max")
+    row = RuleResult("height", "Height", NO_RULE, unit="ft", limit="max",
+                     about=HEIGHT_MEASURED)
     findings.results.append(row)
     if not limit:
         row.explanation = no_rule_explanation(
             facts.rules.label, HOME_TYPE_NAMES[kind], "height limit")
         return
-    known = [home for home in facts.homes if home.height]
+    known = home_heights(facts)
     if not known:
         row.status, row.explanation = NOT_CHECKED, NO_HEIGHT
         return
-    tallest = max(known, key=lambda home: home.height)
-    height = tallest.height
+    tallest, estimate = max(known, key=lambda found: found[1].height)
+    height = estimate.height
     findings.measurements["height"] = height
     row.status, row.measured, row.required = PASSES, height, limit
     row.buildings = [i for i, outline in enumerate(facts.all_buildings)
                      if outline.equals(tallest.shape)][:1]
+    shrunk = height < estimate.peak
+    if shrunk:
+        row.detail = f"roof peak {_feet(estimate.peak)}"
     if height > limit + HEIGHT_MARGIN:
         row.status = FAILS
+        measured = (f"about {_feet(height)} measured the ordinance's way (roof peak about "
+                    f"{_feet(estimate.peak)})" if shrunk else f"about {_feet(height)}")
         findings.reasons.append(Reason(
             "height",
-            f"Too tall: about {_feet(height)}, but the {facts.rules.label} allows {_feet(limit)}.",
+            f"Too tall: {measured}, but the {facts.rules.label} allows {_feet(limit)}.",
         ))
+    row.explanation = " ".join(filter(None, [
+        height_explanation(estimate.peak, height, estimate.why), margin_explanation(row)]))
 
 
 def _polygons(shape):

@@ -11,12 +11,13 @@ MAIN = ("MAIN", LineString([(-300, -25), (500, -25)]))
 
 def check(lot, home, zone, home_type="single", neighbors=None, attached=None,
           height=20, floor_area=1000, units=1, rules=None, streets=(), all_buildings=None,
-          sections=(), year_built=None, historic=False, near_eisenhower=False):
+          sections=(), year_built=None, historic=False, near_eisenhower=False, stories=None):
     """Check one lot holding one home, fronting Main St to its south.
 
     Pass `rules` to use those instead of the zone's own, `streets` to add
     (name, centerline) pairs beside Main St, as for a corner lot, and
-    `sections` to give the home roof sections as (shape, height) pairs.
+    `sections` to give the home roof sections as (shape, height) pairs, and
+    `stories` to give its number of stories.
     `year_built` is the year the oldest home went up, `historic` puts the
     lot in a historic district, and `near_eisenhower` puts it within
     1,000 ft of Eisenhower Avenue.
@@ -27,7 +28,7 @@ def check(lot, home, zone, home_type="single", neighbors=None, attached=None,
         rules=rules if rules is not None else ZONES[zone],
         home_type=home_type,
         homes=[Home(shape=home, height=height, floor_area=floor_area,
-                    sections=list(sections))],
+                    sections=list(sections), stories=stories)],
         lines=classify(lot, neighbors, [MAIN, *streets], "MAIN"),
         units=units,
         all_buildings=[home] if all_buildings is None else all_buildings,

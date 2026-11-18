@@ -43,6 +43,13 @@ NO_SIDE_LINE = "The map couldn't find a lot line on this side of the home."
 NO_FLOOR_AREA = ("City records don't give this home's floor space, and it couldn't be "
                  "estimated from the number of stories.")
 NO_HEIGHT = "The city's 3D building data has no height for this home."
+HEIGHT_MEASURED = (
+    "The zoning rules measure height from the ground to the top of a flat roof, but "
+    "only to halfway between the eaves and the peak of a gable or hip roof. The city's "
+    "3D building data gives only the peak, so the map guesses the roof's shape and "
+    "where its eaves are from the number of stories in city records. It can't see "
+    "gambrel or mansard roofs, which the rules measure higher up, or wide dormers, "
+    "which in most house zones move the measurement up to the dormers.")
 NO_OUTLINES = "The city's map has no building outlines on this lot."
 OPEN_SPACE_MEASURED = (
     "Open space is land at ground level at least 8 ft wide that isn't under a "
@@ -150,31 +157,49 @@ def _show(value: float, unit: str, precise: bool = False) -> str:
     return f"{value:,.1f}"
 
 
+def margin_explanation(row: RuleResult) -> str | None:
+    """Say why a row passes with a number on the wrong side of its limit, or None.
+
+    The checks only fail a rule when a home misses it by more than a margin
+    left for measuring error, so a row can pass with a number on the wrong
+    side of the limit, such as a 33 ft home under a 30 ft height limit. Yard
+    rows also mention roof overhangs, which the margin allows for.
+    """
+    if row.status != PASSES or row.measured is None or row.required is None:
+        return None
+    if row.limit == "min" and row.measured < row.required:
+        side, word = "under", "minimum"
+    elif row.limit == "max" and row.measured > row.required:
+        side, word = "over", "limit"
+    else:
+        return None
+    measured, required = _show(row.measured, row.unit), _show(row.required, row.unit)
+    if measured == required:
+        measured = _show(row.measured, row.unit, precise=True)
+        required = _show(row.required, row.unit, precise=True)
+    benefit = YARD_BENEFIT_OF_DOUBT if row.rule.startswith("yard:") else BENEFIT_OF_DOUBT
+    return f"About {measured}, a little {side} the {required} {word}. {benefit}"
+
+
 def explain_margin(results: list[RuleResult]) -> None:
     """Explain rows that pass only thanks to the margin left for measuring error.
 
-    The checks only fail a rule when a home misses it by more than that margin,
-    so a row can pass with a number on the wrong side of the limit, such as a
-    33 ft home under a 30 ft height limit. Each such row without an explanation
-    of its own gets one saying so; yard rows also mention roof overhangs, which
-    the margin allows for. Changes the rows in place.
+    Each such row without an explanation of its own gets the one from
+    `margin_explanation`. Changes the rows in place.
     """
     for row in results:
-        if (row.status != PASSES or row.explanation
-                or row.measured is None or row.required is None):
-            continue
-        if row.limit == "min" and row.measured < row.required:
-            side, word = "under", "minimum"
-        elif row.limit == "max" and row.measured > row.required:
-            side, word = "over", "limit"
-        else:
-            continue
-        measured, required = _show(row.measured, row.unit), _show(row.required, row.unit)
-        if measured == required:
-            measured = _show(row.measured, row.unit, precise=True)
-            required = _show(row.required, row.unit, precise=True)
-        benefit = YARD_BENEFIT_OF_DOUBT if row.rule.startswith("yard:") else BENEFIT_OF_DOUBT
-        row.explanation = f"About {measured}, a little {side} the {required} {word}. {benefit}"
+        if not row.explanation:
+            row.explanation = margin_explanation(row)
+
+
+def height_explanation(peak: float, height: float, why: str) -> str:
+    """Give a home's roof peak and its height as the zoning rules measure it, and how it was guessed."""
+    if height < peak:
+        numbers = (f"Roof peak about {format_feet(peak)}; measured the ordinance's way, "
+                   f"about {format_feet(height)}.")
+    else:
+        numbers = f"About {format_feet(height)} to the top of the roof."
+    return f"{numbers} {why}"
 
 
 def frontage_about(street: str, zone_label: str, required: float | None,

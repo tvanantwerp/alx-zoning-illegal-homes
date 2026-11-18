@@ -495,23 +495,56 @@ def test_special_approval_explains_other_rows_without_a_rule():
 
 def test_height_passing_within_the_margin_says_so():
     limit = ZONES["R-8"].max_height["single"]
-    _, f = check(BIG_LOT, box(20, 35, 60, 75), "R-8", height=limit + 3)
+    # Three stories reach nearly to the top, so the roof is taken as flat.
+    _, f = check(BIG_LOT, box(20, 35, 60, 75), "R-8", height=limit + 3, stories=3)
     row = rows(f)["height"]
     assert row.status == PASSES
-    assert row.explanation.startswith(f"About {limit + 3:.0f} ft, a little over the {limit:.0f} ft limit.")
+    assert f"About {limit + 3:.0f} ft, a little over the {limit:.0f} ft limit." in row.explanation
     assert "benefit of the doubt" in row.explanation
 
 
 def test_clearly_passing_row_gets_no_margin_explanation():
-    _, f = check(BIG_LOT, box(20, 35, 60, 75), "R-8", height=20)
+    _, f = check(BIG_LOT, box(20, 35, 60, 75), "R-8", height=20, stories=2)
     row = rows(f)["height"]
-    assert row.status == PASSES and row.explanation is None
+    assert row.status == PASSES and "benefit of the doubt" not in row.explanation
 
 
 def test_failing_row_gets_no_margin_explanation():
     _, f = check(BIG_LOT, box(20, 35, 60, 75), "R-8", height=60)
     row = rows(f)["height"]
-    assert row.status == FAILS and row.explanation is None
+    assert row.status == FAILS and "benefit of the doubt" not in row.explanation
+
+
+def test_pitched_roof_height_row_gives_peak_and_measured_height():
+    limit = ZONES["R-8"].max_height["single"]
+    # A 2.5-story house with a 37 ft peak: eaves about 22 ft up, so it is
+    # measured at 29.5 ft and passes, where the peak alone would have failed.
+    kinds, f = check(BIG_LOT, box(20, 35, 60, 75), "R-8", height=37, stories=2.5)
+    row = rows(f)["height"]
+    assert "height" not in kinds and row.status == PASSES
+    assert row.measured == pytest.approx(29.5) and row.required == limit
+    assert row.explanation.startswith(
+        "Roof peak about 37 ft; measured the ordinance's way, about 30 ft.")
+    assert row.detail == "roof peak 37 ft"
+    assert "gable or hip" in row.about
+
+
+def test_too_tall_pitched_roof_reason_names_the_peak():
+    _, f = check(BIG_LOT, box(20, 35, 60, 75), "R-8", height=50, stories=3)
+    assert rows(f)["height"].status == FAILS
+    assert f.reasons[0].text.startswith(
+        "Too tall: about 42 ft measured the ordinance's way (roof peak about 50 ft)")
+
+
+def test_apartment_building_roof_is_taken_as_flat():
+    lot = box(0, 0, 200, 200)
+    rules = ZONES["RA"]
+    limit = rules.max_height["multi"]
+    _, f = check(lot, box(40, 40, 160, 160), "RA", home_type="multi", units=4,
+                 height=limit + 10, stories=2)
+    row = rows(f)["height"]
+    assert row.status == FAILS and row.measured == limit + 10
+    assert row.detail is None
 
 
 def test_side_yard_short_by_a_roof_overhang_passes_and_says_why():

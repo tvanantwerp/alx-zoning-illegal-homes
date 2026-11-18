@@ -370,7 +370,9 @@ export function drawLot(container, lot, results) {
     const corner = ring.reduce((best, p) => (p[0] + p[1] > best[0] + best[1] ? p : best));
     tag(v3(corner, limit), `${showValue(limit, heightRow.unit)} height limit`, "fail", "height");
     const { at, top } = spotFor(heightRow);
-    tag(v3(at, top + 4), `${showValue(heightRow.measured, heightRow.unit)} tall`, "fail", "height");
+    // When the roof is pitched, the measured height sits below the drawn peak, so the label names both.
+    const peak = heightRow.detail ? ` · ${heightRow.detail}` : "";
+    tag(v3(at, top + 4), `${showValue(heightRow.measured, heightRow.unit)} tall${peak}`, "fail", "height");
   }
 
   const controls = new OrbitControls(camera, renderer.domElement);
