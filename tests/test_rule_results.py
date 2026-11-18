@@ -514,6 +514,29 @@ def test_failing_row_gets_no_margin_explanation():
     assert row.status == FAILS and row.explanation is None
 
 
+def test_side_yard_short_by_a_roof_overhang_passes_and_says_why():
+    # R-5 needs a 7 ft side yard. A wall right at 7 ft with a 30 inch overhang
+    # is drawn about 4.5 ft from the line.
+    row = rows(check(YARD_LOT, box(4.5, 35, 44.5, 75), "R-5",
+                     neighbors=between_neighbors(YARD_LOT))[1])["yard:left"]
+    assert row.status == PASSES and row.required == 7
+    assert row.explanation.startswith("About 4.5 ft, a little under the 7.0 ft minimum.")
+    assert "roof overhangs" in row.explanation
+
+
+def test_side_yard_short_by_more_than_an_overhang_fails():
+    row = rows(check(YARD_LOT, box(4.3, 35, 44.3, 75), "R-5",
+                     neighbors=between_neighbors(YARD_LOT))[1])["yard:left"]
+    assert row.status == FAILS
+
+
+def test_counted_side_yard_within_the_margin_mentions_overhangs():
+    r = rows(check(RM_LOT, box(2.6, 20, 29, 60), "RM", neighbors=between_neighbors(RM_LOT))[1])
+    assert r["yard:left"].status == r["yard:right"].status == PASSES
+    assert "roof overhangs" in r["yard:left"].explanation
+    assert "roof overhangs" not in r["yard:right"].explanation
+
+
 def test_lot_size_within_the_margin_uses_square_feet():
     lot = box(0, 0, 80, 98)   # 7,840 sq ft against R-8's 8,000
     _, f = check(lot, box(20, 35, 60, 75), "R-8", neighbors=between_neighbors(lot))

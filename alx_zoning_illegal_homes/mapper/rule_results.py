@@ -53,6 +53,11 @@ ROOF_OPEN_SPACE = (
     "apartment building may have more open space than it shows.")
 BENEFIT_OF_DOUBT = ("Measurements from the city's map and records aren't exact, so "
                     "the map gives it the benefit of the doubt.")
+YARD_BENEFIT_OF_DOUBT = (
+    "The city's building outlines are traced from roof edges, and the zoning rules "
+    "let eaves and roof overhangs reach up to 30 inches into a yard, so the walls "
+    "may well be far enough back. With that and some room for measuring error, "
+    "the map gives it the benefit of the doubt.")
 
 # Rows the approved site plan of a planned district sets, along with every yard row.
 SITE_PLAN_RULES = ("lot_area", "frontage", "width")
@@ -147,7 +152,8 @@ def explain_margin(results: list[RuleResult]) -> None:
     The checks only fail a rule when a home misses it by more than that margin,
     so a row can pass with a number on the wrong side of the limit, such as a
     33 ft home under a 30 ft height limit. Each such row without an explanation
-    of its own gets one saying so. Changes the rows in place.
+    of its own gets one saying so; yard rows also mention roof overhangs, which
+    the margin allows for. Changes the rows in place.
     """
     for row in results:
         if (row.status != PASSES or row.explanation
@@ -163,8 +169,8 @@ def explain_margin(results: list[RuleResult]) -> None:
         if measured == required:
             measured = _show(row.measured, row.unit, precise=True)
             required = _show(row.required, row.unit, precise=True)
-        row.explanation = (f"About {measured}, a little {side} the {required} {word}. "
-                           f"{BENEFIT_OF_DOUBT}")
+        benefit = YARD_BENEFIT_OF_DOUBT if row.rule.startswith("yard:") else BENEFIT_OF_DOUBT
+        row.explanation = f"About {measured}, a little {side} the {required} {word}. {benefit}"
 
 
 def frontage_about(street: str, zone_label: str, required: float | None,

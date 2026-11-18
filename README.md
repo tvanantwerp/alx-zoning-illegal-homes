@@ -171,7 +171,10 @@ Other details that matter:
 - Measurements come from public map data, not surveys. Every check leaves a
   margin, but any single finding can be wrong. Yard findings are the least
   certain: building outlines are traced from roofs, and lot lines and
-  buildings come from different sources. A home drawn touching or crossing a
+  buildings come from different sources. Yards get 2.5 ft of slack, which
+  covers measuring error and the 30 inches that eaves and roof overhangs may
+  reach into a yard. It applies to every home, even ones with little or no
+  overhang. A home drawn touching or crossing a
   lot line is assumed to be a mapping error and its yards are skipped.
 - Front yards are mostly not checked. In most zones the rule depends on the
   neighbors' front yards, which an existing home meets almost by definition.

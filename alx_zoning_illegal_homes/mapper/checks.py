@@ -15,17 +15,19 @@ from shapely.ops import nearest_points, unary_union
 
 from .lot_lines import LotLines, largest_polygon, lot_width, lot_width_line
 from .rule_results import (
-    BENEFIT_OF_DOUBT, CORNER_NO_REAR, CROSSES_LOT_LINE, FAILS, MAPPING_ERROR, NO_FLOOR_AREA, NO_HEIGHT,
+    CORNER_NO_REAR, CROSSES_LOT_LINE, FAILS, MAPPING_ERROR, NO_FLOOR_AREA, NO_HEIGHT,
     NO_OUTLINES, NO_REAR_FOUND, NO_RULE, NO_SIDE_LINE, NO_STREET, NOT_CHECKED, NOT_REQUIRED, PASSES, RULE_IDS,
-    SHARED_LOT, SHARED_WALL, SIDE_COUNT_ON_CORNER, TOO_SHALLOW, RuleResult,
+    SHARED_LOT, SHARED_WALL, SIDE_COUNT_ON_CORNER, TOO_SHALLOW, YARD_BENEFIT_OF_DOUBT, RuleResult,
     eisenhower_older_home_note, eisenhower_special_permit_explanation,
     explain_margin, format_feet as _feet, front_yard_explanation, frontage_about,
     no_front_yard_explanation, no_rule_explanation, older_rules_explanation, open_space_about,
     side_count_explanation)
 from .rules import HOME_TYPE_NAMES, OlderHomeAllowance, ZoneRules
 
-# Slack given to distance measurements, in feet.
-DISTANCE_MARGIN = 2.0
+# Slack given to distance measurements, in feet. Covers measuring error and
+# the 30 inches that eaves and roof overhangs may reach into a yard, since
+# building outlines are traced from roof edges.
+DISTANCE_MARGIN = 2.5
 AREA_MARGIN = 0.03
 WIDTH_MARGIN = 0.05
 FLOOR_AREA_MARGIN = 0.10
@@ -653,6 +655,9 @@ def _counted_side_row(facts, key, gap, shared, measure, needed, short):
         return _yard_row(facts, role, NOT_REQUIRED, explanation=SHARED_WALL)
     if gap is None:
         return _yard_row(facts, role, NOT_CHECKED, explanation=NO_SIDE_LINE)
+    if has_yard and gap.gap < 5:
+        text += (f" This side is about {_feet(gap.gap)}, a little under 5 ft, and "
+                 f"counts as a side yard. {YARD_BENEFIT_OF_DOUBT}")
     return _yard_row(facts, role, PASSES, gap, 5, detail="needs", explanation=text)
 
 
@@ -712,7 +717,7 @@ def _rear_row(facts, record, gap, shared, touching, parts):
                 f"the lot also counts, which brings the rear yard to about "
                 f"{_feet(credited)} against the {_feet(required)} needed.")
             if credited < required:
-                explanation += " " + BENEFIT_OF_DOUBT
+                explanation += " " + YARD_BENEFIT_OF_DOUBT
     return _yard_row(facts, "rear", FAILS if fails else PASSES, shown, required,
                      detail=detail, explanation=explanation)
 
