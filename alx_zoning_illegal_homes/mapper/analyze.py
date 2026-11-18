@@ -351,6 +351,22 @@ def _add_district_totals(records):
                 f"{district.homes_per_acre_cap:g} allowed.")
 
 
+def _paving_on(shape, tree, paving_shapes, is_parking):
+    """Return the roads, driveways and parking on a lot, and the parking alone.
+
+    Either is None when the lot has none.
+    """
+    nearby = tree.query(shape, predicate="intersects")
+    if nearby.size == 0:
+        return None, None
+    paved = unary_union(paving_shapes[nearby]).intersection(shape)
+    parking_parts = paving_shapes[nearby[is_parking[nearby]]]
+    parking = (unary_union(parking_parts).intersection(shape)
+               if parking_parts.size else None)
+    return (paved if paved.area > 0 else None,
+            parking if parking is not None and parking.area > 0 else None)
+
+
 def _lot_area(lot):
     """Prefer the assessor's recorded land area when it agrees with the map."""
     drawn = lot.geometry.area
@@ -426,6 +442,9 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
     }
     projects = loader.load_development_projects()
     project_tree = shapely.STRtree(projects.geometry.values)
+    paving = loader.load_paving()
+    paving_shapes, paving_is_parking = paving.geometry.values, paving["is_parking"].values
+    paving_tree = shapely.STRtree(paving_shapes)
 
     records = []
     for lot_id, lot in lots.iterrows():
@@ -498,6 +517,8 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
                                    predicate="intersects")
         attached = [home_shapes[i] for i in touching if home_lots[i] != lot_id]
 
+        paved, parking = _paving_on(shape, paving_tree, paving_shapes, paving_is_parking)
+
         units = 1
         if home_type == "multi":
             recorded_units = (homes["BUNITS"].fillna(0) * homes["share"]).sum()
@@ -527,6 +548,8 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
             in_historic_district=is_historic,
             year_built=record["year_built"],
             near_eisenhower_avenue=near_eisenhower_avenue(shape, places["eisenhower"]),
+            paved=paved,
+            parking=parking,
         )
         findings = check_lot(facts)
         if keep_facts is not None:

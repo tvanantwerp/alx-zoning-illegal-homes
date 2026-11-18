@@ -46,10 +46,16 @@ CG, CD, CDX, OC, OCM, OCH, W-1, CRMU, KR) and in planned districts:
 - **Floor space** compared with lot size. In the KR and OCH zones the limit
   is looser within 1,000 ft of a Metro station.
 - **Height**
-- **Open space** or building coverage. The RM zone asks for 35% of the lot
-  and never less than 300 sq ft. It also lets a lot keep the open space it
-  had on June 24, 1992 if that was less, which the map can't know, so an
-  older RM home may be fine as it stands.
+- **Open space** or building coverage. Open space is the land not under a
+  building, road, alley, driveway or parking lot, leaving out every strip
+  narrower than 8 ft, as the ordinance's definition of "open and usable
+  space" says. The RM zone asks for 35% of the lot and never less than
+  300 sq ft. It also lets a lot keep the open space it had on June 24, 1992
+  if that was less, and lets a lot that already fell short then count strips
+  narrower than 8 ft. The map can't know any of that, so an older RM home
+  may be fine as it stands. The RD zone lets half the land used for parking count,
+  up to 90% of the open space it requires. Building coverage (the RT zone's
+  rule) counts buildings only.
 - **Home type**, e.g. townhouses in a zone that allows only houses. A few
   zones carry their own exceptions for older homes, and those homes pass:
   apartment buildings in the RB zone built before 1978 (the exception also
@@ -173,9 +179,12 @@ Other details that matter:
   apartment buildings, though the extra
   street setbacks along Duke Street, King Street and four other streets
   (section 7-1006) aren't checked yet.
-- Open space is all the land not under a building outline. Driveways,
-  patios and parking pads aren't in the data, so open space looks bigger
-  than the ordinance would count it.
+- Roads, driveways and parking lots come from the city's planimetric map,
+  traced from aerial photos. Patios, small parking pads and paving missing
+  from that map still count as open space, so open space can look bigger
+  than the ordinance would count it. Many zones also let a landscaped roof
+  count, with the planning director's approval, which the map can't see, so
+  an apartment building may have more open space than it shows.
 - Parking rules are not checked.
 - Height comes from the city's 3D building layer and floor space from the
   city's building records; neither matches the ordinance's definitions
@@ -196,6 +205,9 @@ From the [City of Alexandria open data site](https://cityofalexandria-alexgis.op
 - [Historic Districts](https://cityofalexandria-alexgis.opendata.arcgis.com/datasets/AlexGIS::historic-districts/explore)
 - [Development Projects](https://maps.alexandriava.gov/arcgis/rest/services/alxPlanningDevelopmentWm/MapServer)
   (links planned-district lots to their approval cases)
+- [Roads, driveways and parking lots](https://maps.alexandriava.gov/arcgis/rest/services/alxBasemapWm/MapServer/17)
+  from the city's basemap (left out of open space). The open data site has
+  older copies from 2017, so the map uses the city's own map server.
 - [Zoning Map](https://cityofalexandria-alexgis.opendata.arcgis.com/datasets/AlexGIS::zoning/explore) and
   [Height Districts](https://cityofalexandria-alexgis.opendata.arcgis.com/datasets/AlexGIS::height-districts/explore)
   (downloaded but not yet used; zoning comes from the parcel layer)

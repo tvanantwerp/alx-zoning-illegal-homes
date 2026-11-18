@@ -38,6 +38,9 @@ STREET_KINDS = {
     "PRIMARY ROAD",
     "SECONDARY ROAD",
 }
+# Codes in the city's roads, driveways and parking layer.
+PARKING_LOT = 3
+OFF_STREET_PARKING = 2
 
 
 def load_layer(name: str) -> gpd.GeoDataFrame:
@@ -146,6 +149,23 @@ def load_streets() -> gpd.GeoDataFrame:
     ].copy()
     streets["name"] = streets["STREET_NAM"].fillna(streets["FULL_NAME"]).fillna("?")
     return streets[["name", "geometry"]].reset_index(drop=True)
+
+
+def load_paving() -> gpd.GeoDataFrame:
+    """Load the city's outlines of roads, alleys, driveways and parking lots.
+
+    These come from the city's planimetric map, traced from aerial photos.
+    None of this land counts as open space. "is_parking" marks parking lots
+    and driveways the city tags as off-street parking, for the RD zone,
+    which lets part of its parking count toward open space.
+    """
+    paving = gpd.read_file(DATA_DIR / "Roads_Driveways_Parking.geojson")
+    paving = paving.to_crs(FEET_CRS)
+    paving["geometry"] = paving.geometry.make_valid()
+    paving = paving[~paving.geometry.is_empty & paving.geometry.notna()]
+    paving["is_parking"] = (paving["FEATURE"] == PARKING_LOT) | (
+        paving["PARKING"] == OFF_STREET_PARKING)
+    return paving[["is_parking", "geometry"]].reset_index(drop=True)
 
 
 def load_historic_districts():

@@ -149,6 +149,10 @@ class ZoneRules:
     min_open_space_area: float = 0.0
     # Shown on the open space row's name, where the zone's rule needs explaining.
     open_space_note: str = ""
+    # Share of the land used for parking that may count as open space, and
+    # the most of the required open space that parking may make up (RD only).
+    parking_counted_as_open: float = 0.0
+    parking_open_space_cap: float = 0.0
     # Largest share of the lot that buildings may cover.
     max_coverage: float | None = None
     # Home types the open space rule applies to. Empty means all.
@@ -314,6 +318,13 @@ ZONES = {
         rear_yard=Yard(16, 1 / 2),
         max_height={"multi": 150},
         min_open_space=0.40,
+        parking_counted_as_open=0.5,
+        parking_open_space_cap=0.9,
+        open_space_note=(
+            "The RD zone requires 40% of each lot to be open, usable space. Half of "
+            "the land used for parking may count toward it, as long as parking makes "
+            "up no more than 90% of the open space required. The map counts parking "
+            "that way."),
     ),
     "RM": ZoneRules(
         name="RM",
@@ -335,11 +346,10 @@ ZONES = {
         open_space_note=(
             "The RM zone requires each home lot to keep open, usable space: 35% "
             "of the lot, and never less than 300 sq ft. A lot may instead keep "
-            "the open space it had on June 24, 1992, if that was less, so an "
-            "older home may be fine as it stands. The map judges whether these "
-            "buildings could be built new. Driveways and parking pads don't count "
-            "as open space, but the map only knows building outlines, so open "
-            "space here looks bigger than the ordinance would count it."),
+            "the open space it had on June 24, 1992, if that was less, and a lot "
+            "that already fell short then may count strips narrower than 8 ft, so "
+            "an older home may be fine as it stands. The map judges whether these "
+            "buildings could be built new."),
     ),
     "RS": ZoneRules(
         name="RS",

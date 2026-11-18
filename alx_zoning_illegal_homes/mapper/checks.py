@@ -9,6 +9,7 @@ import math
 from dataclasses import dataclass, field
 
 import numpy as np
+import shapely
 from shapely.geometry import LineString
 from shapely.ops import nearest_points, unary_union
 
@@ -19,7 +20,7 @@ from .rule_results import (
     SHARED_LOT, SHARED_WALL, SIDE_COUNT_ON_CORNER, TOO_SHALLOW, RuleResult,
     eisenhower_older_home_note, eisenhower_special_permit_explanation,
     explain_margin, format_feet as _feet, front_yard_explanation, frontage_about,
-    no_front_yard_explanation, no_rule_explanation, older_rules_explanation,
+    no_front_yard_explanation, no_rule_explanation, older_rules_explanation, open_space_about,
     side_count_explanation)
 from .rules import HOME_TYPE_NAMES, OlderHomeAllowance, ZoneRules
 
@@ -30,6 +31,11 @@ WIDTH_MARGIN = 0.05
 FLOOR_AREA_MARGIN = 0.10
 HEIGHT_MARGIN = 5.0
 COVERAGE_MARGIN = 0.03
+# Open space must be at least this wide and long to count.
+MIN_OPEN_WIDTH = 8.0
+OVERLAY_GRID = 0.01
+OPEN_SPACE_LEFT_OUT = ("once buildings, roads, driveways, parking and strips "
+                       "narrower than 8 ft are left out")
 # The 3D layer measures to the top of a roof. The ordinance measures a
 # pitched roof to halfway up the slope, so we shave the height before
 # using it to size a yard.
@@ -114,6 +120,12 @@ class LotFacts:
     year_built: int | None = None
     # Whether the lot lies within 1,000 ft of Eisenhower Avenue's centerline.
     near_eisenhower_avenue: bool = False
+    # Roads, alleys, driveways and parking lots on the lot, from the city's
+    # map, or None. None of this counts as open space.
+    paved: object = None
+    # The parking part of `paved`, for zones that count some parking as
+    # open space (RD).
+    parking: object = None
 
 
 @dataclass
@@ -865,10 +877,49 @@ def _check_height(facts, findings):
         ))
 
 
+def _polygons(shape):
+    """Keep only the areas in a shape, dropping stray lines and points."""
+    parts = [part for part in shapely.get_parts(shape)
+             if part.geom_type in ("Polygon", "MultiPolygon")]
+    return shapely.union_all(parts) if parts else shapely.Polygon()
+
+
+def open_and_usable_area(facts: LotFacts, covered) -> tuple[float, float]:
+    """Measure the lot's open and usable space, in sq ft.
+
+    The ordinance counts only land at ground level that is at least 8 ft
+    wide and long and isn't used for buildings, roads, alleys, driveways or
+    parking. We take the land left over once buildings and paving are
+    removed, then shrink it by half that width and grow it back. Any piece
+    narrower than 8 ft vanishes in the shrinking and doesn't come back.
+
+    Returns the open land's area and, for zones that let some parking
+    count (RD), the area of parking counted on top of it, up to the zone's cap.
+    """
+    rules = facts.rules
+    # Snapping to a hundredth of a foot keeps the city's slightly
+    # mismatched outlines from tripping up the shape arithmetic.
+    open_land = shapely.difference(_polygons(facts.shape), _polygons(covered),
+                                   grid_size=OVERLAY_GRID)
+    if facts.paved is not None:
+        open_land = shapely.difference(open_land, _polygons(facts.paved),
+                                       grid_size=OVERLAY_GRID)
+    open_land = _polygons(open_land)
+    opened = (open_land.buffer(-MIN_OPEN_WIDTH / 2, join_style="mitre")
+              .buffer(MIN_OPEN_WIDTH / 2, join_style="mitre"))
+    usable = shapely.intersection(opened, open_land, grid_size=OVERLAY_GRID)
+    credit = 0.0
+    if rules.parking_counted_as_open and facts.parking is not None:
+        need = (rules.min_open_space or 0.0) * facts.shape.area
+        credit = min(rules.parking_counted_as_open * facts.parking.area,
+                     rules.parking_open_space_cap * need)
+    return usable.area, credit
+
+
 def _check_open_space(facts, findings):
     rules, kind = facts.rules, facts.home_type
     open_row = RuleResult("open_space", "Open space", NO_RULE, unit="share",
-                          about=rules.open_space_note or None)
+                          about=open_space_about(rules.open_space_note, kind))
     cover_row = RuleResult("coverage", "Land covered by buildings", NO_RULE,
                            unit="share", limit="max")
     row = cover_row if rules.max_coverage else open_row
@@ -883,16 +934,22 @@ def _check_open_space(facts, findings):
         findings.results.append(row)
         row.status, row.explanation = NOT_CHECKED, NO_OUTLINES
         return
-    covered = unary_union(facts.all_buildings).intersection(facts.shape).area
-    share = covered / facts.shape.area
+    covered = unary_union(facts.all_buildings).intersection(facts.shape)
+    share = covered.area / facts.shape.area
     findings.measurements["coverage"] = share
     too_much = bool(rules.max_coverage) and share > rules.max_coverage + COVERAGE_MARGIN
     # A floor in sq ft is turned into a share of this lot, so one number and
     # one margin cover both parts of the rule.
     need_open = max(rules.min_open_space or 0.0,
                     rules.min_open_space_area / facts.shape.area)
+    open_area = open_share = None
+    credit = 0.0
+    if need_open > 0:
+        open_area, credit = open_and_usable_area(facts, covered)
+        open_share = (open_area + credit) / facts.shape.area
+        findings.measurements["open_space"] = open_share
     too_little = (not too_much and need_open > 0
-                  and 1 - share < need_open - COVERAGE_MARGIN)
+                  and open_share < need_open - COVERAGE_MARGIN)
     if too_little:
         row = open_row
     elif too_much:
@@ -900,7 +957,7 @@ def _check_open_space(facts, findings):
     if row is cover_row:
         row.measured, row.required = share, rules.max_coverage
     else:
-        row.measured, row.required, row.limit = 1 - share, need_open, "min"
+        row.measured, row.required, row.limit = open_share, need_open, "min"
     row.status = FAILS if (too_much or too_little) else PASSES
     row.buildings = list(range(len(facts.all_buildings)))
     findings.results.append(row)
@@ -911,16 +968,17 @@ def _check_open_space(facts, findings):
             f"the {rules.label} allows {rules.max_coverage:.0%}.",
         ))
     elif too_little and need_open > (rules.min_open_space or 0.0):
-        open_area = (1 - share) * facts.shape.area
         findings.reasons.append(Reason(
             "open_space",
-            f"Not enough open space: buildings alone leave about {open_area:,.0f} sq ft "
-            f"of the lot open, but the {rules.label} requires at least "
+            f"Not enough open space: only about {open_area:,.0f} sq ft of the lot is "
+            f"left open {OPEN_SPACE_LEFT_OUT}, but the {rules.label} requires at least "
             f"{rules.min_open_space_area:,.0f} sq ft.",
         ))
     elif too_little:
         findings.reasons.append(Reason(
             "open_space",
-            f"Not enough open space: buildings alone cover about {share:.0%} "
-            f"of the lot, but {rules.min_open_space:.0%} must be left open.",
+            f"Not enough open space: only about {open_share:.0%} of the lot is left "
+            f"open {OPEN_SPACE_LEFT_OUT}, but {rules.min_open_space:.0%} must be left open."
+            + (f" That counts {credit:,.0f} sq ft of parking, as the {rules.label} allows."
+               if credit else ""),
         ))

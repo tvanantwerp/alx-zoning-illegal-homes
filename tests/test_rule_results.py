@@ -261,8 +261,9 @@ def test_rm_open_space_is_checked_for_every_home_type(home_type):
                  neighbors=between_neighbors(lot))
     row = rows(f)["open_space"]
     assert row.status == PASSES and row.required == pytest.approx(0.35)
-    assert row.measured == pytest.approx(1 - 800 / 3000)
-    assert "June 24, 1992" in row.about and "Driveways" in row.about
+    # The 5 ft strips beside the home are too narrow to count.
+    assert row.measured == pytest.approx((30 * 20 + 30 * 40) / 3000)
+    assert "June 24, 1992" in row.about and "driveway" in row.about
 
 
 def test_rm_lot_mostly_covered_fails_open_space():
@@ -291,11 +292,80 @@ def test_open_space_zone_gets_an_open_space_row():
     _, f = check(lot, box(5, 20, 75, 110), zone, home_type=kind)
     r = rows(f)
     assert "coverage" not in r and r["open_space"].limit == "min"
-    assert r["open_space"].measured == pytest.approx(1 - 70 * 90 / 9600)
+    # Only the 20 ft front and 10 ft rear strips count; the 5 ft sides don't.
+    assert r["open_space"].measured == pytest.approx(80 * 30 / 9600)
 
 
 BIG_LOT = box(0, 0, 80, 120)
 BIG_HOME = box(5, 20, 75, 110)   # covers about 66% of the lot
+
+
+def open_space_facts(zone, home_type, lot, home, paved=None, parking=None):
+    """Facts for a lot with one home and, optionally, paving and parking on it."""
+    return LotFacts(
+        shape=lot, area=lot.area, rules=ZONES[zone], home_type=home_type,
+        homes=[Home(shape=home, height=20, floor_area=1000)],
+        lines=classify(lot, None, [], ""), all_buildings=[home],
+        paved=paved, parking=parking)
+
+
+def test_strips_narrower_than_8_ft_are_not_open_space():
+    lot = box(0, 0, 40, 100)
+    # 7 ft on the left, 13 ft on the right, 30 ft in front and 30 ft behind.
+    f = check_lot(open_space_facts("RA", "single", lot, box(7, 30, 27, 70)))
+    row = rows(f)["open_space"]
+    assert row.measured == pytest.approx((40 * 60 + 13 * 40) / 4000)
+
+
+def test_driveways_and_parking_are_not_open_space():
+    lot = box(0, 0, 40, 100)
+    home = box(10, 30, 30, 70)
+    driveway = box(0, 0, 10, 100)
+    f = check_lot(open_space_facts("RA", "single", lot, home, paved=driveway))
+    row = rows(f)["open_space"]
+    # Left: the driveway. Right: a 10 ft strip beside the home.
+    assert row.measured == pytest.approx((30 * 60 + 10 * 40) / 4000)
+    assert row.status == PASSES
+
+
+def test_lot_paved_over_fails_open_space():
+    lot = box(0, 0, 100, 100)
+    home = box(20, 20, 60, 60)
+    parking = lot.difference(home.buffer(5, join_style="mitre"))
+    f = check_lot(open_space_facts("RA", "single", lot, home, paved=parking))
+    assert rows(f)["open_space"].status == FAILS
+    assert any("driveways, parking" in r.text for r in f.reasons)
+
+
+def test_rd_counts_half_its_parking_as_open_space():
+    lot = box(0, 0, 200, 200)              # 40,000 sq ft, 16,000 must be open
+    home = box(20, 20, 180, 120)           # 16,000 sq ft
+    parking = box(0, 130, 200, 200)        # 14,000 sq ft
+    paved = unary_union([parking, box(0, 0, 200, 15)])
+    f = check_lot(open_space_facts("RD", "multi", lot, home, paved=paved, parking=parking))
+    row = rows(f)["open_space"]
+    # Open: two 20 ft strips beside the home and a 10 ft strip behind it. The
+    # 5 ft strip in front is too narrow. Half the parking (7,000 sq ft) counts.
+    open_land = 20 * 115 * 2 + 160 * 10
+    assert row.measured == pytest.approx((open_land + 7000) / 40000)
+    assert "Half of" in row.about and "roof" in row.about
+
+
+def test_rd_parking_counts_no_more_than_90_percent_of_required_open_space():
+    lot = box(0, 0, 200, 200)
+    home = box(40, 40, 60, 60)
+    f = check_lot(open_space_facts("RD", "multi", lot, home, paved=lot, parking=lot))
+    row = rows(f)["open_space"]
+    assert row.measured == pytest.approx(0.9 * 0.40)
+    assert row.status == FAILS
+    assert any("sq ft of parking" in r.text for r in f.reasons)
+
+
+def test_paving_does_not_change_building_coverage():
+    lot = box(0, 0, 80, 120)
+    f = check_lot(open_space_facts("RT", "townhouse", lot, box(20, 35, 60, 75), paved=lot))
+    row = rows(f)["coverage"]
+    assert row.measured == pytest.approx(1600 / 9600) and row.status == PASSES
 
 
 def test_height_unknown_is_not_checked():
@@ -356,7 +426,7 @@ def test_zone_with_both_limits_shows_the_row_that_failed():
     r = rows(f)
     assert "open_space" in reasons
     assert r["open_space"].status == FAILS and "coverage" not in r
-    assert r["open_space"].measured == pytest.approx(1 - 6300 / 9600)
+    assert r["open_space"].measured == pytest.approx(80 * 30 / 9600)
 
 
 def test_zone_with_both_limits_shows_coverage_when_both_pass():

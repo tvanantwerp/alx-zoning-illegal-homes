@@ -40,6 +40,17 @@ NO_FLOOR_AREA = ("City records don't give this home's floor space, and it couldn
                  "estimated from the number of stories.")
 NO_HEIGHT = "The city's 3D building data has no height for this home."
 NO_OUTLINES = "The city's map has no building outlines on this lot."
+OPEN_SPACE_MEASURED = (
+    "Open space is land at ground level at least 8 ft wide that isn't under a "
+    "building, a road, a driveway or parking. The map takes buildings, roads, "
+    "driveways and parking lots from the city's map, which is traced from aerial "
+    "photos, and leaves out every strip of open land narrower than 8 ft. Patios, "
+    "small parking pads and other paving missing from the city's map still count "
+    "as open here, so a lot may have less open space than the map finds.")
+ROOF_OPEN_SPACE = (
+    "Many zones also let a landscaped roof or other outdoor space above the ground "
+    "count, if the city's planning director agrees. The map can't see those, so an "
+    "apartment building may have more open space than it shows.")
 BENEFIT_OF_DOUBT = ("Measurements from the city's map and records aren't exact, so "
                     "the map gives it the benefit of the doubt.")
 
@@ -87,6 +98,15 @@ def format_feet(value: float) -> str:
 def no_rule_explanation(zone_label: str, home_type_name: str, what: str) -> str:
     """Say that the zone's rules set no limit of this kind for this kind of home."""
     return f"The map's rules for the {zone_label} include no {what} for a {home_type_name}."
+
+
+def open_space_about(zone_note: str, home_type: str) -> str:
+    """Say what the open space rule asks and what the map counts as open space."""
+    parts = [zone_note] if zone_note else []
+    parts.append(OPEN_SPACE_MEASURED)
+    if home_type == "multi":
+        parts.append(ROOF_OPEN_SPACE)
+    return " ".join(parts)
 
 
 def older_rules_explanation(zone_label: str, before: str) -> str:

@@ -30,10 +30,45 @@ def download_file(url: str, destination: Path, attempts: int = 20) -> None:
     raise TimeoutError(f"The server never finished preparing {url}")
 
 
+def _get_page(url: str, params: dict, attempts: int = 5) -> list:
+    """Fetch one page of shapes, trying again if the connection drops."""
+    for attempt in range(attempts):
+        try:
+            response = requests.get(url, params=params, timeout=120)
+            response.raise_for_status()
+            return response.json().get("features", [])
+        except (requests.RequestException, ValueError):
+            if attempt == attempts - 1:
+                raise
+            time.sleep(5)
+    return []
+
+
+def download_in_pages(url: str, destination: Path, page_size: int) -> None:
+    """Download a GeoJSON layer from a city map server, a page at a time.
+
+    The city's map servers hand back at most about a thousand shapes per
+    request, so we ask for one page after another and join them into a
+    single file.
+    """
+    features = []
+    while True:
+        page = _get_page(url, {"resultOffset": len(features),
+                               "resultRecordCount": page_size})
+        if not page:
+            break
+        features.extend(page)
+    partial = destination.with_name(destination.name + ".part")
+    partial.write_text(json.dumps({"type": "FeatureCollection", "features": features}),
+                       encoding="utf-8")
+    partial.replace(destination)
+
+
 def get_data(refresh: bool = False) -> None:
     """Download every layer listed in files.json into the data folder.
 
-    Files that already exist are skipped unless refresh is True.
+    Files that already exist are skipped unless refresh is True. An entry
+    with a "page_size" is fetched in pages of that many shapes.
     """
     DATA_DIR.mkdir(exist_ok=True)
     for entry in json.loads(FILE_LIST.read_text(encoding="utf-8")):
@@ -41,7 +76,10 @@ def get_data(refresh: bool = False) -> None:
         if destination.exists() and not refresh:
             continue
         print(f"Downloading {destination.name}...")
-        download_file(entry["url"], destination)
+        if "page_size" in entry:
+            download_in_pages(entry["url"], destination, entry["page_size"])
+        else:
+            download_file(entry["url"], destination)
 
 
 def main() -> None:

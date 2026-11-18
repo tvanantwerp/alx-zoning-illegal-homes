@@ -38,5 +38,11 @@
         "name": "Development_Projects",
         "url": "https://maps.alexandriava.gov/arcgis/rest/services/alxPlanningDevelopmentWm/MapServer/0/query?where=1%3D1&outFields=*&outSR=4326&f=geojson",
         "filetype": "geojson"
+    },
+    {
+        "name": "Roads_Driveways_Parking",
+        "url": "https://maps.alexandriava.gov/arcgis/rest/services/alxBasemapWm/MapServer/17/query?where=FEATURE+IN+%281%2C2%2C3%2C5%2C7%29&outFields=FEATURE%2CSURFACE%2CPARKING&orderByFields=OBJECTID&outSR=4326&f=geojson",
+        "filetype": "geojson",
+        "page_size": 1000
     }
 ]
