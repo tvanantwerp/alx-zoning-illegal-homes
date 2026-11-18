@@ -740,7 +740,8 @@ def _home_indexes(facts) -> list[int]:
 def _check_floor_area(facts, findings):
     kind = facts.home_type
     limit = facts.rules.floor_area_ratio_for(kind, facts.in_historic_district)
-    row = RuleResult("floor_area", "Floor space", NO_RULE, unit="sq ft", limit="max")
+    row = RuleResult("floor_area", "Floor space", NO_RULE, unit="sq ft", limit="max",
+                     about=facts.rules.floor_area_note or None)
     findings.results.append(row)
     if not limit:
         row.explanation = no_rule_explanation(

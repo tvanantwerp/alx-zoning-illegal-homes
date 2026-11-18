@@ -166,10 +166,18 @@ def test_king_street_retail_floor_space_is_stricter_east_of_peyton():
     from alx_zoning_illegal_homes.mapper.rules import king_street_retail_rules
     lot = box(0, 0, 40, 100)  # 4,000 sq ft
     home = box(0, 0, 40, 80)
-    # 6,400 sq ft of floor space is a ratio of 1.6: under 2.0, over 1.25.
-    kinds, _ = check(lot, home, "KR", home_type="multi", units=8, floor_area=6400,
+    # 7,200 sq ft of floor space is a ratio of 1.8: under 2.0, well over 1.5.
+    kinds, _ = check(lot, home, "KR", home_type="multi", units=8, floor_area=7200,
                      rules=king_street_retail_rules(False))
     assert "floor_area" not in kinds
-    kinds, _ = check(lot, home, "KR", home_type="multi", units=8, floor_area=6400,
+    kinds, _ = check(lot, home, "KR", home_type="multi", units=8, floor_area=7200,
                      rules=king_street_retail_rules(True))
     assert "floor_area" in kinds
+
+
+def test_king_street_retail_floor_space_row_explains_the_shops():
+    lot = box(0, 0, 40, 100)
+    _, findings = check(lot, box(0, 0, 40, 80), "KR", home_type="multi", units=8,
+                        floor_area=6000)
+    row = next(r for r in findings.results if r.rule == "floor_area")
+    assert "shops below included" in row.about
