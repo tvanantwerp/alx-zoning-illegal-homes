@@ -132,6 +132,10 @@ class ZoneRules:
     # Lot width is measured this far back from the street.
     width_measured_at: float = 0.0
     side_yard: dict = field(default_factory=dict)
+    # Whether each half of a twin house may sit on a lot of its own, with
+    # the lot line running along the shared wall. Where it may not (R-20
+    # through R-5), that lot line leaves the half with no side yard there.
+    split_twin_lots_allowed: bool = True
     # One rear yard rule for the zone, or a dict keyed by home type.
     rear_yard: Yard | dict | None = None
     # Fixed front yard. None where the rule depends on neighboring homes.
@@ -192,7 +196,8 @@ def _low_density(name, area, corner_area, width, corner_width, frontage,
     These zones allow a detached house, a two-home building, or a building
     with up to four homes. Each building needs its own full-size lot, except
     in R-2-5 where each half of a twin house may have its own smaller lot.
-    `semi` holds R-2-5's own numbers for twin houses, keyed like the tables.
+    `semi` holds R-2-5's own numbers for twin houses, keyed like the tables;
+    the other four zones, which pass none, keep a twin house whole on one lot.
     """
     types = ("single", "semi", "two_unit", "multi")
     semi = semi or {}
@@ -210,6 +215,7 @@ def _low_density(name, area, corner_area, width, corner_width, frontage,
         curved_frontage={t: curved for t in types} if curved else {},
         width_measured_at=measured_at,
         side_yard={t: Yard(yard, side_share) for t in types},
+        split_twin_lots_allowed=bool(semi),
         rear_yard=Yard(yard, 1.0),
         max_floor_area_ratio=far,
         max_height={t: 30 for t in types},

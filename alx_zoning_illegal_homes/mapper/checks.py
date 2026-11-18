@@ -22,7 +22,7 @@ from .rule_results import (
     eisenhower_older_home_note, eisenhower_special_permit_explanation,
     explain_margin, format_feet as _feet, front_yard_explanation, frontage_about,
     no_front_yard_explanation, no_rule_explanation, older_rules_explanation, open_space_about,
-    side_count_explanation)
+    side_count_explanation, split_twin_explanation, split_twin_reason)
 from .rules import HOME_TYPE_NAMES, OlderHomeAllowance, ZoneRules
 
 # Slack given to distance measurements, in feet. Covers measuring error and
@@ -447,13 +447,14 @@ def _part_gaps(gap: YardGap, parts: list[tuple]) -> list[YardGap]:
     return measured
 
 
-def _yard_gaps(facts, home) -> tuple[dict, set]:
+def _yard_gaps(facts, home) -> tuple[dict, dict]:
     """Measure a home's gap to each side, the rear, and the street.
 
     Returns a dict with keys -1 and +1 (the two sides), "rear" and "front",
     each a YardGap, or missing when the lot has no such edge. Also returns
-    the set of keys that share a wall with a neighbor. Sides with a shared
-    wall are left out of the dict; a rear only loses the lines on the wall.
+    the keys that share a wall with a neighbor, each with the lot lines
+    along that wall. Sides with a shared wall are left out of the first
+    dict; a rear only loses the lines on the wall.
     """
     lines = facts.lines
     along, inward = lines.front_direction, lines.inward
@@ -467,7 +468,7 @@ def _yard_gaps(facts, home) -> tuple[dict, set]:
     rear_starts = home_depth + 0.6 * (deepest - home_depth)
     has_rear = not (lines.is_corner or lines.is_through)
 
-    gaps, shared_wall = {}, set()
+    gaps, shared_wall = {}, {}
     for piece in lines.pieces:
         gap = piece.line.distance(home.shape)
         if piece.kind == "street":
@@ -482,13 +483,13 @@ def _yard_gaps(facts, home) -> tuple[dict, set]:
             )
             if has_rear and runs_along_front and behind_home:
                 if on_shared_wall:
-                    shared_wall.add("rear")
+                    shared_wall.setdefault("rear", []).append(piece.line)
                     continue
                 key = "rear"
             else:
                 key = _side_of(facts, piece.midpoint, home)
                 if on_shared_wall:
-                    shared_wall.add(key)
+                    shared_wall.setdefault(key, []).append(piece.line)
         if key not in gaps:
             gaps[key] = YardGap(gap, piece.kind == "open",
                                 _nearest_line(home, piece.line), [piece.line],
@@ -500,7 +501,7 @@ def _yard_gaps(facts, home) -> tuple[dict, set]:
         if gap < entry.gap:
             entry.gap, entry.on_open = gap, piece.kind == "open"
             entry.nearest = _nearest_line(home, piece.line)
-    for key in shared_wall - {"rear"}:
+    for key in shared_wall.keys() - {"rear"}:
         gaps.pop(key, None)
     return gaps, shared_wall
 
@@ -523,10 +524,14 @@ def _yard_row(facts, role, status, gap=None, required=None, **fields) -> RuleRes
         row.measured = gap.gap
         row.shapes["gap"] = gap.nearest
         if required:
-            row.shapes["strip"] = unary_union(
-                [line.buffer(required, cap_style="flat") for line in gap.lines]
-            ).intersection(facts.shape)
+            row.shapes["strip"] = _strip(facts, gap.lines, required)
     return row
+
+
+def _strip(facts, lines, depth):
+    """The part of the lot within `depth` of the given lot lines."""
+    return unary_union(
+        [line.buffer(depth, cap_style="flat") for line in lines]).intersection(facts.shape)
 
 
 def _keep_worst(rows: dict, row: RuleResult):
@@ -681,6 +686,8 @@ def _side_row(facts, record, key, gap, shared, touching, parts, width):
             return _yard_row(facts, role, NOT_CHECKED, gap, explanation=explanation)
     if key in touching:
         return _yard_row(facts, role, NOT_CHECKED, explanation=MAPPING_ERROR)
+    if key in shared and kind == "semi" and not rules.split_twin_lots_allowed:
+        return _split_twin_row(facts, record, role, shared[key])
     if key in shared:
         return _yard_row(facts, role, NOT_REQUIRED, explanation=SHARED_WALL)
     if width is not None and width < rules.no_side_yard_below_width:
@@ -696,6 +703,22 @@ def _side_row(facts, record, key, gap, shared, touching, parts, width):
         record, "side", "Side", gap, _part_gaps(gap, parts), rules.side_yard[kind])
     return _yard_row(facts, role, FAILS if fails else PASSES, shown, required,
                      detail=detail)
+
+
+def _split_twin_row(facts, record, role, wall_lines):
+    """Fail the shared-wall side of a twin half on a lot of its own, where the zone forbids that.
+
+    The lot line runs along the wall the two halves share, so this side has
+    no yard at all. The row shows the zone's least side yard as a strip
+    along that line.
+    """
+    rules = facts.rules
+    minimum = rules.side_yard["semi"].minimum
+    record("split twin", minimum, split_twin_reason(rules.label))
+    row = _yard_row(facts, role, FAILS, required=minimum, measured=0.0, detail="needs",
+                    explanation=split_twin_explanation(rules.label, minimum))
+    row.shapes["strip"] = _strip(facts, wall_lines, minimum)
+    return row
 
 
 def _rear_row(facts, record, gap, shared, touching, parts):

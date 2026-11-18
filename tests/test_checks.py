@@ -464,3 +464,57 @@ def test_older_two_unit_house_passes_in_rc():
     _, findings = check(lot, box(10, 20, 50, 60), "RC", home_type="two_unit", units=2,
                         year_built=1950)
     assert _home_type_row(findings).status == "passes"
+
+
+@pytest.mark.parametrize("zone, allowed", [
+    ("R-20", False), ("R-12", False), ("R-8", False), ("R-5", False), ("R-2-5", True),
+    ("RA", True), ("RB", True), ("RM", True), ("CD", True), ("CL", True),
+    ("OCM(50)", True), ("CRMU/L", True), ("W-1", True),
+])
+def test_which_zones_let_twin_halves_have_lots_of_their_own(zone, allowed):
+    from alx_zoning_illegal_homes.mapper.rules import ZONES
+    assert ZONES[zone].split_twin_lots_allowed is allowed
+
+
+# Half of a twin on a 30 ft lot of its own, its other half attached to the
+# west, with a roomy yard on the east.
+TWIN_HALF_LOT = box(0, 0, 30, 200)
+TWIN_HALF = box(0, 30, 18, 70)
+OTHER_HALF = box(-18, 30, 0, 70)
+
+
+def _twin_half(zone, home_type="semi"):
+    return check(TWIN_HALF_LOT, TWIN_HALF, zone, home_type=home_type,
+                 neighbors=between_neighbors(TWIN_HALF_LOT), attached=OTHER_HALF)
+
+
+def test_twin_half_on_its_own_lot_has_no_side_yard_at_the_shared_wall_in_r5():
+    kinds, findings = _twin_half("R-5")
+    assert "yards" in kinds
+    text = " ".join(r.text for r in findings.reasons)
+    assert ("In the R-5 zone the two halves of a twin house must share one lot; "
+            "this half has a lot line through the building.") in text
+    left = next(r for r in findings.results if r.rule == "yard:left")
+    assert left.status == "fails" and left.measured == 0 and left.required == 7
+    assert "at least 7.0 ft" in left.explanation
+    # Drawn along the stretch of lot line that runs beside the shared wall.
+    x0, y0, x1, y1 = left.shapes["strip"].bounds
+    assert (x0, x1) == pytest.approx((0, 7)) and y0 < 30 and y1 > 70
+    right = next(r for r in findings.results if r.rule == "yard:right")
+    assert right.status == "passes"
+
+
+def test_twin_half_on_its_own_lot_is_fine_at_the_shared_wall_in_r2_5():
+    kinds, findings = _twin_half("R-2-5")
+    assert "yards" not in kinds
+    left = next(r for r in findings.results if r.rule == "yard:left")
+    assert left.status == "not_required" and "shares a wall" in left.explanation
+
+
+def test_whole_two_unit_house_in_r5_needs_no_extra_side_yard():
+    lot = box(0, 0, 60, 200)
+    halves = [box(12, 30, 30, 70), box(30, 30, 48, 70)]
+    kinds, findings = check(lot, unary_union(halves), "R-5", home_type="two_unit",
+                            units=2, neighbors=between_neighbors(lot),
+                            all_buildings=halves)
+    assert "yards" not in kinds

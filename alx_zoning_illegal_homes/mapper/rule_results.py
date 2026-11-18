@@ -223,6 +223,22 @@ def front_yard_explanation(rules: ZoneRules, in_historic_district: bool) -> str:
     return f"The map doesn't check front yards in the {label}."
 
 
+def split_twin_reason(zone_label: str) -> str:
+    """Say that this zone keeps a twin house whole on one lot."""
+    return (f"In the {zone_label} the two halves of a twin house must share one lot; "
+            "this half has a lot line through the building.")
+
+
+def split_twin_explanation(zone_label: str, minimum: float) -> str:
+    """Explain the failing side yard where a twin's halves sit on lots of their own."""
+    return (f"{split_twin_reason(zone_label)} The {zone_label} allows a two-unit house "
+            "only as one building on one lot, and asks every home for two side yards. "
+            "Here the lot line runs along the wall shared with the other half, so "
+            f"this side has no yard at all, where it needs at least "
+            f"{format_feet(minimum)}. The map can't tell whether the lot was split "
+            "with the city's approval or before today's rules.")
+
+
 def side_count_explanation(zone_label: str, width: float, needed: int) -> str:
     """Explain the zones where the number of side yards depends on lot width."""
     ending = {0: "none.", 1: "a 5 ft yard on at least one side."}.get(

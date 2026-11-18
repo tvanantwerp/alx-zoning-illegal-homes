@@ -164,7 +164,9 @@ Other details that matter:
   where it meets its neighbor.
 - Lots that one owner has built a single house across are joined.
 - Homes that share a wall (twins, townhouses) are not expected to have a yard
-  on that side. Rows of three or more attached homes are treated as
+  on that side. The exception is half of a twin on a lot of its own in R-20,
+  R-12, R-8 or R-5: those zones allow a twin only as one building on one lot,
+  so a lot line along the shared wall counts as a missing side yard. Rows of three or more attached homes are treated as
   townhouses whatever the assessor's label says.
 - A lot the assessor calls half of a twin is checked the same way. If both
   halves stand on that one lot, attached to no home on another lot, it is a
