@@ -9,14 +9,14 @@ import shapely.ops
 from shapely.ops import unary_union
 
 from . import loader
-from .places import near_a_station, station_points
+from .places import near_a_station, near_eisenhower_avenue, station_points
 from .checks import Home, LotFacts, check_lot
 from .lot_lines import MAX_STREET_DISTANCE, classify
 from .rule_results import under_special_approval
 from .rules import (HOME_TYPE_NAMES, PLANNED_DISTRICTS, braddock_gateway_fallback,
                     duke_street_floor_area, king_street_retail_rules,
-                    normalize_zone, planned_district_rules, potomac_yard_zone,
-                    route_1_properties_fallback, rules_for)
+                    normalize_zone, office_high_rules, planned_district_rules,
+                    potomac_yard_zone, route_1_properties_fallback, rules_for)
 
 # A building counts as sitting on a second lot when this much of it does.
 STRADDLE_SHARE = 0.15
@@ -420,6 +420,7 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
         "route_1": route_1,
         "stations": stations,
         "commonwealth": _street(streets, "COMMONWEALTH"),
+        "eisenhower": _street(streets, "EISENHOWER"),
         "first_and_fayette": _street(streets, "FIRST").intersection(
             _street(streets, "FAYETTE")),
     }
@@ -461,6 +462,8 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
                     kr_is_east(lot_points.loc[lot_id]),
                     residential_only=on_lot["BUSE"].eq("Residential").fillna(False).all(),
                     near_station=near_a_station(lot.geometry, stations))
+            elif zone == "OCH":
+                rules = office_high_rules(near_a_station(lot.geometry, stations))
         else:
             sub_zone, changes = None, {}
             if isinstance(label, str):
@@ -523,6 +526,7 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
             attached_neighbors=unary_union(attached) if attached else None,
             in_historic_district=is_historic,
             year_built=record["year_built"],
+            near_eisenhower_avenue=near_eisenhower_avenue(shape, places["eisenhower"]),
         )
         findings = check_lot(facts)
         if keep_facts is not None:

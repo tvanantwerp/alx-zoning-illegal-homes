@@ -6,7 +6,7 @@ reason, so the table and the reasons never disagree.
 """
 from dataclasses import dataclass, field, replace
 
-from .rules import PlannedDistrict, ZoneRules
+from .rules import OlderHomeAllowance, PlannedDistrict, ZoneRules
 
 FAILS, PASSES, NOT_CHECKED, NO_RULE, NOT_REQUIRED = (
     "fails", "passes", "not_checked", "no_rule", "not_required")
@@ -98,6 +98,20 @@ def older_rules_explanation(zone_label: str, before: str) -> str:
     return (f"This home was built before {before}, so the {zone_label} lets it be "
             "rebuilt under the limits in force when it was built. The map doesn't "
             "know those older limits.")
+
+
+def eisenhower_special_permit_explanation(zone_label: str) -> str:
+    """Say why a home near Eisenhower Avenue fails the home type rule."""
+    return (f"The {zone_label} allows homes on lots within 1,000 ft of the centerline of "
+            "Eisenhower Avenue only with a special permit from City Council. This lot is "
+            "that close. The map has no record of special permits, so it can't tell "
+            "whether this home has one.")
+
+
+def eisenhower_older_home_note(allowance: OlderHomeAllowance, year_built: int) -> str:
+    """Say that an older home near Eisenhower Avenue may need no special permit."""
+    return (f"{allowance.rule} The oldest home on this lot was built in {year_built}, "
+            "so it may qualify. The map judges whether this home could be built new.")
 
 
 def _show(value: float, unit: str, precise: bool = False) -> str:

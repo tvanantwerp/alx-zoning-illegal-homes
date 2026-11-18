@@ -352,3 +352,64 @@ def test_braddock_gateway_fallback_near_first_and_fayette():
     assert rules.name == "CRMU-H" and rules.max_floor_area_ratio == 1.25
     _, _, rules = planned_district_rules("CDD#15", changes=braddock_gateway_fallback(600)[1])
     assert rules.name == "OCM(50)" and rules.max_floor_area_ratio == 1.50
+
+
+@pytest.mark.parametrize("zone", ["OCM(100)", "OCH"])
+def test_homes_near_eisenhower_avenue_need_a_special_permit(zone):
+    lot = box(0, 0, 80, 120)
+    home = box(20, 35, 60, 75)
+    kinds, _ = check(lot, home, zone, neighbors=between_neighbors(lot))
+    assert "home_type" not in kinds
+    kinds, findings = check(lot, home, zone, neighbors=between_neighbors(lot),
+                            near_eisenhower=True)
+    assert "home_type" in kinds
+    assert "would need a special permit from City Council" in findings.reasons[0].text
+    assert _home_type_row(findings).status == "fails"
+    # The rule is only in these two office zones.
+    assert "home_type" not in check(lot, home, "OCM(50)", neighbors=between_neighbors(lot),
+                                    near_eisenhower=True)[0]
+
+
+def test_older_och_homes_near_eisenhower_get_a_note():
+    lot = box(0, 0, 80, 120)
+    home = box(20, 35, 60, 75)
+    kinds, findings = check(lot, home, "OCH", neighbors=between_neighbors(lot),
+                            near_eisenhower=True, year_built=1999)
+    assert "home_type" in kinds
+    assert any("November 9, 1999" in note and "may" in note for note in findings.notes)
+    assert "1999" in _home_type_row(findings).explanation
+    _, findings = check(lot, home, "OCH", neighbors=between_neighbors(lot),
+                        near_eisenhower=True, year_built=2000)
+    assert not findings.notes
+    # OCM(100) has no such exception.
+    _, findings = check(lot, home, "OCM(100)", neighbors=between_neighbors(lot),
+                        near_eisenhower=True, year_built=1950)
+    assert not findings.notes
+
+
+def test_south_carlyle_fallback_keeps_the_eisenhower_rule():
+    from alx_zoning_illegal_homes.mapper.rules import planned_district_rules
+    _, plan, fallback = planned_district_rules("CDD#11")
+    lot = box(0, 0, 80, 120)
+    home = box(20, 35, 60, 75)
+    assert "home_type" in check(lot, home, "OCM(100)", rules=fallback,
+                                near_eisenhower=True)[0]
+    assert "home_type" not in check(lot, home, "OCM(100)", rules=plan,
+                                    near_eisenhower=True)[0]
+
+
+def test_och_floor_space_depends_on_metro_and_historic_district():
+    from alx_zoning_illegal_homes.mapper.rules import office_high_rules
+    far, near = office_high_rules(False), office_high_rules(True)
+    assert far.floor_area_ratio_for("multi", False) == 1.25
+    assert far.floor_area_ratio_for("townhouse", True) == 1.50
+    assert far.floor_area_ratio_for("multi", True) == 1.25
+    assert near.floor_area_ratio_for("multi", False) == 2.0
+    assert near.floor_area_ratio_for("townhouse", True) == 2.0
+    lot = box(0, 0, 80, 120)  # 9,600 sq ft
+    home = box(20, 35, 60, 75)
+    # 15,000 sq ft of floor space is a ratio of about 1.56: under 2.0, over 1.25.
+    assert "floor_area" in check(lot, home, "OCH", rules=far, floor_area=15000,
+                                 neighbors=between_neighbors(lot))[0]
+    assert "floor_area" not in check(lot, home, "OCH", rules=near, floor_area=15000,
+                                     neighbors=between_neighbors(lot))[0]

@@ -43,7 +43,8 @@ CG, CD, CDX, OC, OCM, OCH, W-1, CRMU, KR) and in planned districts:
 - **Lot size**, **lot width** and **street frontage**
 - **Side and rear yards**, both the fixed minimum and the deeper yard taller
   buildings need
-- **Floor space** compared with lot size
+- **Floor space** compared with lot size. In the KR and OCH zones the limit
+  is looser within 1,000 ft of a Metro station.
 - **Height**
 - **Open space** or building coverage
 - **Home type**, e.g. townhouses in a zone that allows only houses. A few
@@ -53,6 +54,12 @@ CG, CD, CDX, OC, OCM, OCH, W-1, CRMU, KR) and in planned districts:
   detached and twin houses in the RC and RCX zones built before June 24, 1992.
   Those RC and RCX houses may be rebuilt under the limits they were built
   under, which the map doesn't know.
+- **Homes near Eisenhower Avenue.** The OCM(100) and OCH zones allow homes on
+  lots within 1,000 ft of the avenue's centerline only with a special permit
+  from City Council, so homes there count as breaking the rules. OCH homes
+  built by 1999 get a note that they may be kept without one (homes there by
+  November 9, 1999 are exempt), but are still judged as new construction.
+  South Carlyle's ordinary-zoning view (OCM(100)) gets the same rule.
 
 The rules live as plain data in `alx_zoning_illegal_homes/mapper/rules.py`.
 They come from Articles III, IV and V of the Zoning Ordinance as amended

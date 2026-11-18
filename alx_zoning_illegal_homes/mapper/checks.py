@@ -17,6 +17,7 @@ from .rule_results import (
     BENEFIT_OF_DOUBT, CORNER_NO_REAR, CROSSES_LOT_LINE, FAILS, MAPPING_ERROR, NO_FLOOR_AREA, NO_HEIGHT,
     NO_OUTLINES, NO_REAR_FOUND, NO_RULE, NO_SIDE_LINE, NO_STREET, NOT_CHECKED, NOT_REQUIRED, PASSES, RULE_IDS,
     RM_OPEN_SPACE, SHARED_LOT, SHARED_WALL, SIDE_COUNT_ON_CORNER, TOO_SHALLOW, RuleResult,
+    eisenhower_older_home_note, eisenhower_special_permit_explanation,
     explain_margin, format_feet as _feet, front_yard_explanation, frontage_about,
     no_front_yard_explanation, no_rule_explanation, older_rules_explanation,
     side_count_explanation)
@@ -111,6 +112,8 @@ class LotFacts:
     in_historic_district: bool = False
     # Year the oldest home on the lot was built, from city records.
     year_built: int | None = None
+    # Whether the lot lies within 1,000 ft of Eisenhower Avenue's centerline.
+    near_eisenhower_avenue: bool = False
 
 
 @dataclass
@@ -241,6 +244,22 @@ def _check_home_type(facts, findings) -> OlderHomeAllowance | None:
             "home_type",
             f"Has {facts.units} homes in one building; the {rules.label} allows at most {rules.max_multi_units}.",
         ))
+    elif facts.near_eisenhower_avenue and kind in rules.special_permit_near_eisenhower:
+        status = FAILS
+        summary = f"{name} near Eisenhower Avenue needs a special permit in the {rules.label}"
+        explanation = eisenhower_special_permit_explanation(rules.label)
+        findings.reasons.append(Reason(
+            "home_type",
+            f"This kind of home ({name}) is on a lot within 1,000 ft of the centerline of "
+            f"Eisenhower Avenue, where the {rules.label} allows it only with a special "
+            "permit. It would need a special permit from City Council.",
+        ))
+        older = rules.eisenhower_older_homes
+        if (older is not None and facts.year_built is not None
+                and facts.year_built < older.before_year):
+            note = eisenhower_older_home_note(older, facts.year_built)
+            explanation = f"{explanation} {note}"
+            findings.notes.append(note)
     findings.results.append(RuleResult(
         "home_type", "Home type", status, summary=summary, explanation=explanation))
     return allowance

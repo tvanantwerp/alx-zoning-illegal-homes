@@ -99,6 +99,12 @@ class ZoneRules:
     # Home types the zone allows only when built before a date, keyed by
     # home type, each an OlderHomeAllowance.
     allowed_if_built_before: dict = field(default_factory=dict)
+    # Home types that need a special permit from City Council on lots within
+    # 1,000 ft of the centerline of Eisenhower Avenue.
+    special_permit_near_eisenhower: frozenset = frozenset()
+    # Homes near Eisenhower Avenue old enough to need no special permit
+    # (OCH only), as an OlderHomeAllowance.
+    eisenhower_older_homes: OlderHomeAllowance | None = None
     # How messages refer to these rules, after the word "the".
     described_as: str = ""
     # Largest apartment building allowed, counted in homes. None = no cap.
@@ -393,6 +399,16 @@ _OFFICE = {
     "frontage": {"single": 50, "semi": 25},
 }
 
+# OCH homes near Eisenhower Avenue that were there by November 9, 1999 need
+# no special permit (section 4-1107). Homes built in 1999 count too, since
+# most of that year came before the date and the note only says "may".
+_OCH_OLDER_HOMES = OlderHomeAllowance(
+    before_year=2000,
+    before="November 9, 1999",
+    rule=("The OCH zone lets homes here that existed on November 9, 1999, or had a "
+          "building permit or site plan filed by then, stay without a special permit."),
+)
+
 ZONES |= {
     "CL": _commercial("CL", 1980, 0.75, 35, historic_far=True),
     "CC": _commercial("CC", 1980, 0.75, 35),
@@ -403,9 +419,14 @@ ZONES |= {
     "CDX": _commercial("CDX", 1245, 1.25, None, historic_far=True,
                        end_lot_width={}, corner_lot_width={}),
     "OCM(50)": _commercial("OCM(50)", 800, 1.50, 50, **_OFFICE),
-    "OCM(100)": _commercial("OCM(100)", 800, 1.50, 100, **_OFFICE),
-    # OCH floor area rules for homes have several special cases; skipped.
-    "OCH": _commercial("OCH", 800, None, 100, **_OFFICE),
+    # Both OCM(100) and OCH allow homes near Eisenhower Avenue only with a
+    # special permit (sections 4-1003(AA) and 4-1103(W)).
+    "OCM(100)": _commercial("OCM(100)", 800, 1.50, 100,
+                            special_permit_near_eisenhower=ALL_TYPES, **_OFFICE),
+    # Floor space near a Metro station is looser; see office_high_rules().
+    "OCH": _commercial("OCH", 800, 1.25, 100, historic_far=True,
+                       special_permit_near_eisenhower=ALL_TYPES,
+                       eisenhower_older_homes=_OCH_OLDER_HOMES, **_OFFICE),
     "CD": ZoneRules(
         name="CD",
         allowed=ALL_TYPES,
@@ -545,6 +566,21 @@ def king_street_retail_rules(east_of_peyton_and_harvard: bool, residential_only=
         return replace(rules, max_floor_area_ratio=1.25, max_height={"multi": 50},
                        floor_area_note="City records identify residential use throughout this lot.")
     return replace(rules, max_floor_area_ratio=1.5, max_height={"multi": 50})
+
+
+def office_high_rules(near_metro: bool) -> ZoneRules:
+    """The OCH zone's rules, with the floor space limit for homes set by where the lot is.
+
+    Section 4-1105(C)(2) gives homes a floor area ratio of 1.25, or 2.0 within
+    1,000 ft of a Metro station, or 1.50 for houses, twin houses and
+    townhouses in the Old and Historic Alexandria and Parker-Gray districts.
+    The ordinance doesn't say which wins for a house-like home both near a
+    station and in a historic district, so it gets the looser 2.0.
+    """
+    rules = ZONES["OCH"]
+    if near_metro:
+        return replace(rules, max_floor_area_ratio=2.0, historic_floor_area_ratio={})
+    return rules
 
 
 @dataclass(frozen=True)
