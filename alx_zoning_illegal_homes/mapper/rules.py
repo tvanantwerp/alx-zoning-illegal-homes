@@ -52,6 +52,10 @@ class ZoneRules:
     corner_lot_width: dict = field(default_factory=dict)
     end_lot_width: dict = field(default_factory=dict)
     frontage: dict = field(default_factory=dict)
+    # Most zones give a townhouse lot the same minimum at the front lot line
+    # (frontage) as at the building line (width), including the larger end
+    # and corner lot numbers. False where the zone sets width only (RT).
+    townhouse_frontage_matches_width: bool = True
     # Lower frontage allowed on curving streets (R-20 and R-12 only).
     curved_frontage: dict = field(default_factory=dict)
     # Lot width is measured this far back from the street.
@@ -273,7 +277,9 @@ ZONES = {
         lot_width={"townhouse": 22},
         end_lot_width={"townhouse": 45},
         corner_lot_width={"townhouse": 45},
+        # Section 3-1305(C) sets lot widths only, with no frontage rule.
         frontage={},
+        townhouse_frontage_matches_width=False,
         width_measured_at=6,
         side_yard={"townhouse": Yard(12, 1 / 2)},
         rear_yard=Yard(12, 1.0),

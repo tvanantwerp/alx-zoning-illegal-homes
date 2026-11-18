@@ -274,7 +274,10 @@ def _check_width_and_frontage(facts, findings, position):
     where = {"corner": " for a corner lot", "end": " for an end-of-row lot"}.get(
         position, "")
 
-    need_frontage = need_width if kind == "townhouse" else rules.frontage.get(kind)
+    if kind == "townhouse" and rules.townhouse_frontage_matches_width:
+        need_frontage = need_width
+    else:
+        need_frontage = rules.frontage.get(kind)
     if lines.front_is_curved and kind in rules.curved_frontage:
         need_frontage = rules.curved_frontage[kind]
 

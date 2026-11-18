@@ -192,3 +192,24 @@ def test_king_street_retail_floor_space_row_explains_the_shops():
                         floor_area=6000)
     row = next(r for r in findings.results if r.rule == "floor_area")
     assert "shops below included" in row.about
+
+
+def test_rt_townhouse_needs_no_street_frontage():
+    # 23 ft wide where width is measured (6 ft back), but only 15 ft on the
+    # street: the lot narrows to a 15 ft stem at the front.
+    from shapely.geometry import Polygon
+    lot = Polygon([(4, 0), (19, 0), (19, 3), (23, 3), (23, 140), (0, 140), (0, 3), (4, 3)])
+    kinds, findings = check(lot, box(1, 20, 22, 60), "RT", home_type="townhouse",
+                            neighbors=between_neighbors(lot), floor_area=500)
+    rows = {row.rule: row for row in findings.results}
+    assert rows["frontage"].status == "no_rule"
+    assert rows["width"].status == "passes"
+    assert "lot_width" not in kinds
+
+
+def test_ra_townhouse_frontage_still_follows_width():
+    lot = box(0, 0, 14, 140)
+    kinds, findings = check(lot, box(0, 20, 14, 60), "RA", home_type="townhouse",
+                            neighbors=between_neighbors(lot))
+    rows = {row.rule: row for row in findings.results}
+    assert rows["frontage"].required == 18 and rows["frontage"].status == "fails"
