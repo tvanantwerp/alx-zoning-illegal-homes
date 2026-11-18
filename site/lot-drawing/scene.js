@@ -188,7 +188,9 @@ export function drawLot(container, lot, results) {
 
   const scene = new THREE.Scene();
   const lotBox = bounds(pointsOf(lot.lot));
-  const heightOf = (b) => b.height ?? DEFAULT_HEIGHT;
+  /** A building's pieces, each with its own roof height. A building with no `parts` is one piece. */
+  const piecesOf = (b) => b.parts || [{ outline: b.outline, height: b.height ?? DEFAULT_HEIGHT }];
+  const heightOf = (b) => Math.max(...piecesOf(b).map((p) => p.height));
   const heightRow = failingRule("height");
   const limit = heightRow && heightRow.required ? heightRow.required : null;
   const maxH = Math.max(0, ...lot.buildings.map(heightOf), limit || 0);
@@ -328,13 +330,14 @@ export function drawLot(container, lot, results) {
   lot.buildings.forEach((b, i) => {
     const rules = rulesFor.get(i) || null;
     const base = !b.is_home ? C.shed : rules ? softRed : C.building;
-    const h = heightOf(b);
-    for (const poly of b.outline) {
-      if (limit && h > limit) {
-        extrude(poly, 0, limit, base, rules);
-        extrude(poly, limit, h, C.accent, rules || ["height"]);
-      } else {
-        extrude(poly, 0, h, base, rules);
+    for (const { outline, height: h } of piecesOf(b)) {
+      for (const poly of outline) {
+        if (limit && h > limit) {
+          extrude(poly, 0, limit, base, rules);
+          extrude(poly, limit, h, C.accent, rules || ["height"]);
+        } else {
+          extrude(poly, 0, h, base, rules);
+        }
       }
     }
   });

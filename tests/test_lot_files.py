@@ -3,7 +3,7 @@ import json
 
 import geopandas as gpd
 import pytest
-from shapely.geometry import LineString, MultiPolygon, box
+from shapely.geometry import LineString, MultiPolygon, Polygon, box
 
 from alx_zoning_illegal_homes.mapper.checks import Home, LotFacts, check_lot
 from alx_zoning_illegal_homes.mapper.lot_files import lot_drawing, replace_lot_files, write_lot_files
@@ -58,6 +58,38 @@ def test_multipart_lot_keeps_every_piece():
     drawing = lot_drawing(7, record_for(facts), facts)
     assert len(drawing["lot"]) == 2
     assert len(drawing["buildings"][0]["outline"][0]) == 2
+
+
+def test_sections_of_different_heights_become_parts():
+    building = box(10, 20, 30, 80)
+    facts = facts_for(box(0, 0, 40, 100), building=building)
+    facts.building_sections = [[(box(10, 20, 30, 50), 24.0), (box(10, 50, 30, 65), 24.0),
+                                (box(10, 65, 30, 80), 14.0)]]
+    drawn = lot_drawing(7, record_for(facts), facts)["buildings"][0]
+    parts = sorted(drawn["parts"], key=lambda part: part["height"])
+    assert [part["height"] for part in parts] == [14, 24]
+    # Same-height sections are merged into one part.
+    assert [len(part["outline"]) for part in parts] == [1, 1]
+    assert drawn["height"] == 20   # the home's measured height is kept for labels
+
+
+def test_sections_of_one_height_add_no_parts():
+    building = box(10, 20, 30, 80)
+    facts = facts_for(box(0, 0, 40, 100), building=building)
+    facts.building_sections = [[(box(10, 20, 30, 50), 24.0), (box(10, 50, 30, 80), 24.0)]]
+    assert "parts" not in lot_drawing(7, record_for(facts), facts)["buildings"][0]
+
+
+def test_sections_are_trimmed_and_gaps_keep_the_building_height():
+    building = box(10, 20, 30, 80)
+    facts = facts_for(box(0, 0, 40, 100), building=building)
+    # The first section spills past the outline; nothing covers y 60-80.
+    facts.building_sections = [[(box(0, 20, 30, 40), 30.0), (box(10, 40, 30, 60), 14.0)]]
+    parts = lot_drawing(7, record_for(facts), facts)["buildings"][0]["parts"]
+    area = {part["height"]: sum(Polygon(poly[0], poly[1:]).area for poly in part["outline"])
+            for part in parts}
+    assert area == {30: pytest.approx(400, abs=1), 14: pytest.approx(400, abs=1),
+                    20: pytest.approx(400, abs=1)}
 
 
 def test_rows_round_trip_with_shapes_and_no_nulls():

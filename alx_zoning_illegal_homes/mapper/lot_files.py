@@ -11,7 +11,7 @@ from shapely import affinity
 from shapely.geometry.base import BaseGeometry
 from shapely.ops import linemerge
 
-from .checks import LotFacts
+from .checks import LotFacts, roof_parts
 from .rule_results import RuleResult
 from .rules import HOME_TYPE_NAMES
 
@@ -106,17 +106,36 @@ def _rows(results, frame) -> list[dict]:
     return [_row(result, frame) for result in results]
 
 
+def _parts(outline: BaseGeometry, sections: list, height: float, frame) -> list[dict]:
+    """Pieces of a building outline at their own roof heights, or [] when it has one height."""
+    found = roof_parts(outline, sections, height)
+    if len(found) < 2:
+        return []
+    parts = []
+    for shape, part_height in found:
+        drawn = polygons(frame(shape))
+        if drawn:
+            parts.append({"outline": drawn, "height": _number(float(part_height))})
+    return parts
+
+
 def _buildings(facts: LotFacts, frame) -> list[dict]:
     buildings = []
-    for outline in facts.all_buildings:
+    for index, outline in enumerate(facts.all_buildings):
         home = next((h for h in facts.homes if h.shape.equals(outline)), None)
+        height = float(home.height) if home and home.height else DEFAULT_HEIGHT
         building = {
             "outline": polygons(frame(outline)),
-            "height": _number(float(home.height)) if home and home.height else DEFAULT_HEIGHT,
+            "height": _number(height),
             "is_home": home is not None,
         }
         if home is not None and home.floor_area:
             building["floor_area"] = _number(float(home.floor_area))
+        sections = (facts.building_sections[index]
+                    if index < len(facts.building_sections) else [])
+        parts = _parts(outline, sections, height, frame)
+        if parts:
+            building["parts"] = parts
         buildings.append(building)
     return buildings
 

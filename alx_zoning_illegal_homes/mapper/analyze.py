@@ -188,7 +188,7 @@ def _place_buildings(lots, buildings, pairs):
         geometry="geometry", crs=lots.crs)
     details = buildings.set_index("building_id")[
         ["is_home", "BTYPE", "BSIZE", "BUNITS", "STORIES", "YEARBLT", "height",
-         "footprint"]]
+         "footprint", "sections"]]
     return placed.join(details, on="building_id")
 
 
@@ -447,6 +447,7 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
             lines=lines,
             units=units,
             all_buildings=list(on_lot.geometry.values),
+            building_sections=list(on_lot["sections"]),
             attached_neighbors=unary_union(attached) if attached else None,
             in_historic_district=is_historic,
         )

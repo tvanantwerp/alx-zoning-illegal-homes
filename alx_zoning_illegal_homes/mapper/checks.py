@@ -43,6 +43,8 @@ TOUCHING_GAP = 0.5
 # A building with more than this share of its outline outside the lot is
 # probably one outline drawn across several lots; its yards can't be judged.
 MAX_SHARE_OUTSIDE_LOT = 0.12
+# Roof pieces smaller than this, in square feet, are dropped as slivers.
+MIN_PART_AREA = 5.0
 
 YARD_ROLES = ("front", "left", "right", "rear")
 YARD_NAMES = {"front": "Front yard", "left": "Left side yard",
@@ -61,6 +63,29 @@ class Home:
     year_built: int | None = None
 
 
+def roof_parts(outline, sections: list, height: float) -> list[tuple]:
+    """Split a building outline into parts by roof height, as (shape, height) pairs.
+
+    Sections are trimmed to the outline and merged when they share a height.
+    Any piece of the outline no section covers gets `height`, the building's
+    overall height. With no usable sections the whole outline is one part.
+    Pieces smaller than MIN_PART_AREA are slivers where the 3D data and the
+    outline don't quite line up, and are dropped.
+    """
+    by_height: dict[float, list] = {}
+    for shape, section_height in sections:
+        piece = shape.intersection(outline)
+        if piece.area >= MIN_PART_AREA:
+            by_height.setdefault(round(float(section_height), 1), []).append(piece)
+    if not by_height:
+        return [(outline, height)]
+    uncovered = outline.difference(unary_union([shape for shape, _ in sections]))
+    if uncovered.area >= MIN_PART_AREA:
+        by_height.setdefault(height, []).append(uncovered)
+    return [(unary_union(pieces), part_height)
+            for part_height, pieces in sorted(by_height.items())]
+
+
 @dataclass
 class LotFacts:
     """Everything known about a lot before checking it."""
@@ -74,6 +99,10 @@ class LotFacts:
     units: int = 1
     # Outlines of every building on the lot, sheds included.
     all_buildings: list = field(default_factory=list)
+    # Roof sections from the city's 3D data, one list per entry in
+    # all_buildings, each a list of (shape, height) pairs. Used only for
+    # drawing; empty or missing when there is no 3D data.
+    building_sections: list = field(default_factory=list)
     # Homes on other lots that touch this lot's homes.
     attached_neighbors: object = None
     in_historic_district: bool = False
