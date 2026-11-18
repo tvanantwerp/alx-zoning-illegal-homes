@@ -441,6 +441,7 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
                     shape=part.geometry,
                     height=part["height"] if pd.notna(part["height"]) else None,
                     floor_area=_floor_area(part),
+                    sections=part["sections"],
                 )
                 for _, part in homes.iterrows()
             ],

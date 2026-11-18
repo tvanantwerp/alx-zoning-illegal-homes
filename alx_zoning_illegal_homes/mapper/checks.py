@@ -60,6 +60,8 @@ class Home:
     shape: object
     height: float | None = None
     floor_area: float | None = None
+    # Roof sections from the city's 3D data, as (shape, height) pairs.
+    sections: list = field(default_factory=list)
     year_built: int | None = None
 
 
@@ -323,14 +325,38 @@ class YardGap:
     on_open: bool
     # From the closest point on the home to the closest point on the lot line.
     nearest: LineString
-    # Every lot line on this side.
+    # Every lot line on this side, and whether each borders open land.
     lines: list[LineString]
+    lines_open: list[bool] = field(default_factory=list)
+    # Height of the part of the home this gap is measured from, for the
+    # setback ratio. Already shaved by HEIGHT_DISCOUNT.
+    height: float = 0.0
 
 
 def _nearest_line(home, line) -> LineString:
     """The shortest line between a home and a lot line."""
     on_home, on_line = nearest_points(home.shape, line)
     return LineString([on_home, on_line])
+
+
+def _part_gaps(gap: YardGap, parts: list[tuple]) -> list[YardGap]:
+    """The same side's gap, measured again from each part of the home.
+
+    The setback ratio pairs each part of a building with its own height
+    (section 2-193), so a low rear wing is judged by its own height and a
+    taller block behind it by its own distance.
+    """
+    measured = []
+    for shape, height in parts:
+        distance, line, is_open = min(
+            ((line.distance(shape), line, is_open)
+             for line, is_open in zip(gap.lines, gap.lines_open)),
+            key=lambda found: found[0])
+        on_part, on_line = nearest_points(shape, line)
+        measured.append(YardGap(distance, is_open, LineString([on_part, on_line]),
+                                gap.lines, gap.lines_open,
+                                (height or 0) * HEIGHT_DISCOUNT))
+    return measured
 
 
 def _yard_gaps(facts, home) -> tuple[dict, set]:
@@ -377,10 +403,12 @@ def _yard_gaps(facts, home) -> tuple[dict, set]:
                     shared_wall.add(key)
         if key not in gaps:
             gaps[key] = YardGap(gap, piece.kind == "open",
-                                _nearest_line(home, piece.line), [piece.line])
+                                _nearest_line(home, piece.line), [piece.line],
+                                [piece.kind == "open"])
             continue
         entry = gaps[key]
         entry.lines.append(piece.line)
+        entry.lines_open.append(piece.kind == "open")
         if gap < entry.gap:
             entry.gap, entry.on_open = gap, piece.kind == "open"
             entry.nearest = _nearest_line(home, piece.line)
@@ -459,7 +487,7 @@ def _check_yards(facts, findings, width):
 
     for home in homes:
         gaps, shared = _yard_gaps(facts, home)
-        height = (home.height or 0) * HEIGHT_DISCOUNT
+        parts = roof_parts(home.shape, home.sections, home.height or 0)
         # Where side yards are simply counted (RM, historic RB), a wall on
         # the line is normal, so only the rear is screened there.
         screened = ("rear",) if rules.side_yards_by_lot_width else (-1, 1, "rear")
@@ -476,10 +504,10 @@ def _check_yards(facts, findings, width):
             )
 
         _keep_worst(rows, _front_row(facts, record, gaps["front"]))
-        for row in _side_rows(facts, record, gaps, shared, touching, height, width):
+        for row in _side_rows(facts, record, gaps, shared, touching, parts, width):
             _keep_worst(rows, row)
         _keep_worst(rows, _rear_row(facts, record, gaps.get("rear"), shared,
-                                    touching, height))
+                                    touching, parts))
 
     findings.results += rows.values()
     for _, text in worst.values():
@@ -501,12 +529,15 @@ def _front_row(facts, record, gap):
                      rules.front_yard, detail="needs")
 
 
-def _side_rows(facts, record, gaps, shared, touching, height, width):
-    """Judge both side yards. Returns the left and right rows."""
+def _side_rows(facts, record, gaps, shared, touching, parts, width):
+    """Judge both side yards. Returns the left and right rows.
+
+    `parts` is the home split by roof height, as (shape, height) pairs.
+    """
     rules, lines = facts.rules, facts.lines
     if not rules.side_yards_by_lot_width:
         return [_side_row(facts, record, key, gaps.get(key), shared, touching,
-                          height, width) for key in (-1, 1)]
+                          parts, width) for key in (-1, 1)]
 
     measure = width if width is not None else lines.frontage
     needed = 2 if measure >= 35 else 1 if measure >= 25 else 0
@@ -544,7 +575,7 @@ def _counted_side_row(facts, key, gap, shared, measure, needed, short):
     return _yard_row(facts, role, PASSES, gap, 5, detail="needs", explanation=text)
 
 
-def _side_row(facts, record, key, gap, shared, touching, height, width):
+def _side_row(facts, record, key, gap, shared, touching, parts, width):
     """A side yard row where the zone sets a side yard depth."""
     rules, kind = facts.rules, facts.home_type
     role = _side_name(facts, key)
@@ -561,13 +592,13 @@ def _side_row(facts, record, key, gap, shared, touching, height, width):
             rules.label, HOME_TYPE_NAMES[kind], "side yard rule"))
     if gap is None:
         return _yard_row(facts, role, NOT_CHECKED, explanation=NO_SIDE_LINE)
-    fails, required, detail = _judge_yard(
-        record, "side", "Side", gap.gap, gap.gap, rules.side_yard[kind], height)
-    return _yard_row(facts, role, FAILS if fails else PASSES, gap, required,
+    fails, required, detail, shown = _judge_yard(
+        record, "side", "Side", gap, _part_gaps(gap, parts), rules.side_yard[kind])
+    return _yard_row(facts, role, FAILS if fails else PASSES, shown, required,
                      detail=detail)
 
 
-def _rear_row(facts, record, gap, shared, touching, height):
+def _rear_row(facts, record, gap, shared, touching, parts):
     """The rear yard row, crediting half of an alley behind the lot."""
     rules, kind = facts.rules, facts.home_type
     if "rear" in touching:
@@ -582,45 +613,68 @@ def _rear_row(facts, record, gap, shared, touching, height):
     if not rear_yard:
         return _yard_row(facts, "rear", NO_RULE, gap, explanation=no_rule_explanation(
             rules.label, HOME_TYPE_NAMES[kind], "rear yard rule"))
-    credited = gap.gap + (ALLEY_CREDIT if gap.on_open else 0)
-    fails, required, detail = _judge_yard(
-        record, "rear", "Rear", gap.gap, credited, rear_yard, height)
+    fails, required, detail, shown = _judge_yard(
+        record, "rear", "Rear", gap, _part_gaps(gap, parts), rear_yard, alley_credit=True)
     explanation = None
-    if gap.on_open:
+    if shown.on_open:
+        credited = _credited(shown, True)
         detail += ", counting half the alley"
-        if not fails and gap.gap < required:
+        if not fails and shown.gap < required:
             explanation = (
-                f"About {_feet(gap.gap)} to the back lot line. Half of the alley behind "
+                f"About {_feet(shown.gap)} to the back lot line. Half of the alley behind "
                 f"the lot also counts, which brings the rear yard to about "
                 f"{_feet(credited)} against the {_feet(required)} needed.")
             if credited < required:
                 explanation += " " + BENEFIT_OF_DOUBT
-    return _yard_row(facts, "rear", FAILS if fails else PASSES, gap, required,
+    return _yard_row(facts, "rear", FAILS if fails else PASSES, shown, required,
                      detail=detail, explanation=explanation)
 
 
-def _judge_yard(record, name, label, gap, credited_gap, yard, height):
+def _credited(gap: YardGap, alley_credit: bool) -> float:
+    """A gap plus half the alley, when the line borders one and the yard allows it."""
+    return gap.gap + (ALLEY_CREDIT if alley_credit and gap.on_open else 0)
+
+
+def _judge_yard(record, name, label, gap, part_gaps, yard, alley_credit=False):
     """Judge one yard, recording it when it is too small.
 
+    The fixed minimum is measured from the closest part of the home (`gap`).
+    The setback ratio is checked for each part in `part_gaps` at that part's
+    own distance and height, and the part that comes off worst decides.
     The fixed minimum is a firm finding. The taller-building rule leans on
-    an estimated height, so its wording says so. Returns whether the yard
-    fails, the depth it was judged against, and a short label for that
-    depth ("needs", or "a home this tall needs" when height sets it).
+    an estimated height, so its wording says so.
+
+    Returns whether the yard fails, the depth it was judged against, a
+    short label for that depth ("needs", or "a home this tall needs" when
+    height sets it), and the gap to show: the closest one, or the deciding
+    part's when the setback ratio sets the depth.
     """
-    if gap + DISTANCE_MARGIN < yard.minimum:
-        record(name, yard.minimum - gap + 1000,
-               f"{label} yard is too small: about {_feet(gap)}, but at least "
+    if gap.gap + DISTANCE_MARGIN < yard.minimum:
+        record(name, yard.minimum - gap.gap + 1000,
+               f"{label} yard is too small: about {_feet(gap.gap)}, but at least "
                f"{_feet(yard.minimum)} is required.")
-        return True, yard.minimum, "needs"
-    required = yard.required(height)
-    detail = "a home this tall needs" if required > yard.minimum else "needs"
-    if credited_gap + DISTANCE_MARGIN < required:
-        record(name, required - credited_gap,
-               f"{label} yard is too small for the building's height: about "
-               f"{_feet(gap)}, but a building this tall (roughly "
-               f"{_feet(height)}) needs about {_feet(required)}.")
-        return True, required, detail
-    return False, required, detail
+        return True, yard.minimum, "needs", gap
+    worst = max(part_gaps, key=lambda part: (yard.required(part.height)
+                                             - _credited(part, alley_credit)))
+    required = yard.required(worst.height)
+    if required <= yard.minimum:
+        return False, yard.minimum, "needs", gap
+    several = len(part_gaps) > 1
+    detail = (f"its {_feet(worst.height)} tall part needs" if several
+              else "a home this tall needs")
+    if _credited(worst, alley_credit) + DISTANCE_MARGIN < required:
+        if several:
+            text = (f"{label} yard is too small for the building's height: the part "
+                    f"of the home roughly {_feet(worst.height)} tall is about "
+                    f"{_feet(worst.gap)} from the lot line, but needs about "
+                    f"{_feet(required)}.")
+        else:
+            text = (f"{label} yard is too small for the building's height: about "
+                    f"{_feet(worst.gap)}, but a building this tall (roughly "
+                    f"{_feet(worst.height)}) needs about {_feet(required)}.")
+        record(name, required - _credited(worst, alley_credit), text)
+        return True, required, detail, worst
+    return False, required, detail, worst
 
 
 def _check_yards_without_front(facts, findings, homes):
