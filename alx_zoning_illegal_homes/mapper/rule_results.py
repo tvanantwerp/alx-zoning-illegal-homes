@@ -19,6 +19,10 @@ NO_STREET = ("The map couldn't find a public street next to this lot, so it "
              "can't tell which edge is the front.")
 SHARED_LOT = ("Several homes share this one lot, so no single home has lot "
               "lines of its own to measure.")
+TWO_UNIT_LOT = (
+    "This lot holds a whole two-unit house: two homes side by side, sharing a wall, "
+    "on one lot. The lot size and street frontage rules here are for the whole house, "
+    "which in most zones means room for each of its two homes.")
 TOO_SHALLOW = ("The lot is shallower than the depth where this zone measures "
                "width, so the map couldn't measure it.")
 SHARED_WALL = ("This side of the home shares a wall with the house next door, "

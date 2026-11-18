@@ -413,3 +413,54 @@ def test_och_floor_space_depends_on_metro_and_historic_district():
                                  neighbors=between_neighbors(lot))[0]
     assert "floor_area" not in check(lot, home, "OCH", rules=near, floor_area=15000,
                                      neighbors=between_neighbors(lot))[0]
+
+
+def test_every_home_type_has_a_name():
+    from alx_zoning_illegal_homes.mapper.rules import ALL_TYPES, HOME_TYPE_NAMES
+    assert set(HOME_TYPE_NAMES) == ALL_TYPES
+
+
+def test_zones_that_allow_twin_halves_allow_whole_two_unit_houses():
+    from alx_zoning_illegal_homes.mapper.rules import RB_HISTORIC, ZONES
+    for rules in [*ZONES.values(), RB_HISTORIC]:
+        for table in ("allowed", "allowed_if_built_before", "lot_area", "lot_width",
+                      "frontage", "side_yard", "max_height"):
+            kinds = getattr(rules, table)
+            assert ("semi" in kinds) == ("two_unit" in kinds), (rules.name, table)
+
+
+@pytest.mark.parametrize("zone, area, frontage", [
+    ("R-8", 8000, 40), ("R-2-5", 5000, 50), ("RA", 3960, 50), ("RB", 3960, 50),
+    ("RM", 2904, 50), ("CD", 1452, 50), ("CL", 5000, 50), ("OCM(50)", 5000, 50),
+    ("CRMU/L", 5000, 50), ("CRMU/X", 5000, 50), ("W-1", 5000, 50),
+])
+def test_two_unit_house_needs_room_for_the_whole_house(zone, area, frontage):
+    from alx_zoning_illegal_homes.mapper.rules import ZONES
+    rules = ZONES[zone]
+    assert rules.lot_area["two_unit"] == area
+    assert rules.frontage["two_unit"] == frontage
+
+
+def test_two_unit_house_on_a_twin_halfs_lot_is_too_small():
+    # 40 by 75 ft: 3,000 sq ft, enough for half of a twin in the RB zone
+    # (1,980) but not for both halves (3,960).
+    lot = box(0, 0, 40, 75)
+    halves = [box(8, 20, 20, 50), box(20, 20, 32, 50)]
+    kinds, findings = check(lot, halves[0], "RB", home_type="semi",
+                            neighbors=between_neighbors(lot), attached=box(-12, 20, 0, 50))
+    assert "lot_size" not in kinds
+    kinds, findings = check(lot, halves[0], "RB", home_type="two_unit", units=2,
+                            neighbors=between_neighbors(lot), all_buildings=halves)
+    assert {"lot_size", "lot_width"} <= kinds
+    text = " ".join(r.text for r in findings.reasons)
+    assert "requires 3,960 sq ft for a two-unit house" in text
+    assert "requires 50 ft for a two-unit house" in text
+    row = next(r for r in findings.results if r.rule == "lot_area")
+    assert row.name == "Lot size" and "whole two-unit house" in row.about
+
+
+def test_older_two_unit_house_passes_in_rc():
+    lot = box(0, 0, 60, 100)
+    _, findings = check(lot, box(10, 20, 50, 60), "RC", home_type="two_unit", units=2,
+                        year_built=1950)
+    assert _home_type_row(findings).status == "passes"

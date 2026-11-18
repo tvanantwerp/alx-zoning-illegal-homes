@@ -166,6 +166,14 @@ Other details that matter:
 - Homes that share a wall (twins, townhouses) are not expected to have a yard
   on that side. Rows of three or more attached homes are treated as
   townhouses whatever the assessor's label says.
+- A lot the assessor calls half of a twin is checked the same way. If both
+  halves stand on that one lot, attached to no home on another lot, it is a
+  whole two-unit house, and its lot needs room for both homes: in most zones
+  twice the land and street frontage that one half needs on a lot of its
+  own. If the lot holds just one outline drawn as a detached house, with no
+  other home within 6 ft, it is judged as a detached house. A detached
+  house with an apartment inside keeps its detached-house label and is
+  never treated as a two-unit house.
 
 ## Limits
 
@@ -195,6 +203,11 @@ Other details that matter:
 - Height comes from the city's 3D building layer and floor space from the
   city's building records; neither matches the ordinance's definitions
   exactly.
+- When one owner holds both halves of a twin, each half on its own parcel,
+  and the city's outline pokes a little over the line between them, the two
+  parcels are joined and judged as one lot with a two-unit house on it. In
+  most zones the land and frontage needed come out about the same as for
+  two halves, but the map can't tell if one half's own parcel is too small.
 - A few hundred home lots are left unchecked because the city's data gives
   them no zone, two zones, or no matching building.
 - Variances and special approvals for individual properties are unknown.

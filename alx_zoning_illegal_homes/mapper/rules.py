@@ -8,14 +8,21 @@ and areas in square feet.
 Home types used throughout:
     single     a detached house with one home in it
     semi       one half of a twin house, sitting on its own lot
+    two_unit   a whole two-unit house (both halves of a twin) on one lot
     townhouse  one of a row of three or more attached homes
     multi      a building with three or more homes (apartments, condos)
+
+The ordinance's "two-unit dwelling" covers both a twin (two homes side by
+side, sharing a wall) and a duplex (one home above the other). Where the
+two get different street frontage, a whole two-unit house on one lot uses
+the twin's: the map finds these houses as two attached outlines side by
+side, which a stacked duplex would not show.
 """
 from dataclasses import dataclass, field, replace
 
 
-ALL_TYPES = frozenset({"single", "semi", "townhouse", "multi"})
-HOUSE_LIKE = ("single", "semi", "townhouse")
+ALL_TYPES = frozenset({"single", "semi", "two_unit", "townhouse", "multi"})
+HOUSE_LIKE = ("single", "semi", "two_unit", "townhouse")
 
 
 @dataclass(frozen=True)
@@ -87,7 +94,7 @@ def _older_houses(zone: str) -> dict:
               "rules, and lets them be rebuilt under the limits they were built under."),
         older_rules=True,
     )
-    return {"single": allowance, "semi": allowance}
+    return {"single": allowance, "semi": allowance, "two_unit": allowance}
 
 
 @dataclass(frozen=True)
@@ -185,8 +192,9 @@ def _low_density(name, area, corner_area, width, corner_width, frontage,
     These zones allow a detached house, a two-home building, or a building
     with up to four homes. Each building needs its own full-size lot, except
     in R-2-5 where each half of a twin house may have its own smaller lot.
+    `semi` holds R-2-5's own numbers for twin houses, keyed like the tables.
     """
-    types = ("single", "semi", "multi")
+    types = ("single", "semi", "two_unit", "multi")
     semi = semi or {}
     return ZoneRules(
         name=name,
@@ -228,50 +236,58 @@ ZONES = {
             "area": {"semi": 2500},
             "corner_area": {"semi": 3250},
             "width": {"semi": 25},
-            "frontage": {"semi": 25},
+            # A whole twin on one lot needs 25 ft for each of its two homes.
+            "frontage": {"semi": 25, "two_unit": 50},
         },
     ),
     "RA": ZoneRules(
         name="RA",
-        allowed=frozenset({"single", "semi", "townhouse", "multi"}),
-        lot_area={"single": 1980, "semi": 1980, "townhouse": 1980},
-        lot_width={"single": 50, "semi": 25, "multi": 50, "townhouse": 18},
+        allowed=ALL_TYPES,
+        # 1,980 sq ft for each home, so a two-unit house needs twice that.
+        lot_area={"single": 1980, "semi": 1980, "two_unit": 3960, "townhouse": 1980},
+        lot_width={"single": 50, "semi": 25, "two_unit": 50, "multi": 50,
+                   "townhouse": 18},
         end_lot_width={"townhouse": 26},
         corner_lot_width={"townhouse": 38},
-        frontage={"single": 50, "semi": 25, "multi": 50, "townhouse": 18},
+        frontage={"single": 50, "semi": 25, "two_unit": 50, "multi": 50,
+                  "townhouse": 18},
         width_measured_at=20,
         side_yard={
             "single": Yard(7, 1 / 3),
             "semi": Yard(7, 1 / 3),
+            "two_unit": Yard(7, 1 / 3),
             "townhouse": Yard(8, 1 / 3),
             "multi": Yard(16, 1 / 2),
         },
         rear_yard=Yard(8, 1.0),
         no_side_yard_below_width=25,
         max_floor_area_ratio=0.75,
-        max_height={"single": 30, "semi": 30, "townhouse": 45, "multi": 45},
+        max_height={"single": 30, "semi": 30, "two_unit": 30, "townhouse": 45,
+                    "multi": 45},
         min_open_space=0.35,
     ),
     "RB": ZoneRules(
         name="RB",
-        allowed=frozenset({"single", "semi", "townhouse"}),
+        allowed=frozenset(HOUSE_LIKE),
         allowed_if_built_before={"multi": _RB_OLDER_APARTMENTS},
-        lot_area={"single": 1980, "semi": 1980, "townhouse": 1980},
-        lot_width={"single": 50, "semi": 25, "townhouse": 18},
+        lot_area={"single": 1980, "semi": 1980, "two_unit": 3960, "townhouse": 1980},
+        lot_width={"single": 50, "semi": 25, "two_unit": 50, "townhouse": 18},
         end_lot_width={"townhouse": 26},
         corner_lot_width={"townhouse": 38},
-        frontage={"single": 50, "semi": 25, "townhouse": 18},
+        frontage={"single": 50, "semi": 25, "two_unit": 50, "townhouse": 18},
         width_measured_at=20,
         side_yard={
             "single": Yard(8, 1 / 3),
             "semi": Yard(8, 1 / 3),
+            "two_unit": Yard(8, 1 / 3),
             "townhouse": Yard(8, 1 / 3),
             "multi": Yard(16, 1 / 2),
         },
         rear_yard=Yard(8, 1.0),
         no_side_yard_below_width=25,
         max_floor_area_ratio=0.75,
-        max_height={"single": 30, "semi": 30, "townhouse": 45, "multi": 45},
+        max_height={"single": 30, "semi": 30, "two_unit": 30, "townhouse": 45,
+                    "multi": 45},
         min_open_space=0.35,
     ),
     "RCX": ZoneRules(
@@ -328,16 +344,18 @@ ZONES = {
     ),
     "RM": ZoneRules(
         name="RM",
-        allowed=frozenset({"single", "semi", "townhouse"}),
-        lot_area={"single": 1452, "semi": 1452, "townhouse": 1452},
-        lot_width={"single": 25, "semi": 25, "townhouse": 18},
-        frontage={"single": 25, "semi": 25, "townhouse": 18},
+        allowed=frozenset(HOUSE_LIKE),
+        # 1,452 sq ft and 25 ft of frontage for each home, so a two-unit
+        # house needs twice both.
+        lot_area={"single": 1452, "semi": 1452, "two_unit": 2904, "townhouse": 1452},
+        lot_width={"single": 25, "semi": 25, "two_unit": 25, "townhouse": 18},
+        frontage={"single": 25, "semi": 25, "two_unit": 50, "townhouse": 18},
         side_yards_by_lot_width=True,
         rear_yard=Yard(16, 1 / 2),
         max_floor_area_ratio=1.50,
         # 35 feet by default; 45 is allowed for some roof shapes, so we
         # only count a building as too tall above 45.
-        max_height={"single": 45, "semi": 45, "townhouse": 45},
+        max_height={kind: 45 for kind in HOUSE_LIKE},
         # The zone also lets a lot keep the open space it had on June 24,
         # 1992 if that was less. That says nothing about building on an
         # empty lot today, so only the note mentions it.
@@ -394,15 +412,20 @@ def _commercial(name, townhouse_area, far, height, historic_far=False,
     settings = {
         "name": name,
         "allowed": ALL_TYPES,
-        "lot_area": {"single": 5000, "semi": 2500, "townhouse": townhouse_area},
-        "lot_width": {"single": 50, "semi": 25, "multi": 50, "townhouse": 18},
+        # A two-unit house needs 2,500 sq ft and 25 ft of frontage for each home.
+        "lot_area": {"single": 5000, "semi": 2500, "two_unit": 5000,
+                     "townhouse": townhouse_area},
+        "lot_width": {"single": 50, "semi": 25, "two_unit": 50, "multi": 50,
+                      "townhouse": 18},
         "end_lot_width": {"townhouse": 26},
         "corner_lot_width": {"townhouse": 38},
-        "frontage": {"single": 50, "semi": 25, "multi": 50, "townhouse": 18},
+        "frontage": {"single": 50, "semi": 25, "two_unit": 50, "multi": 50,
+                     "townhouse": 18},
         "width_measured_at": 20,
         "side_yard": {
             "single": Yard(8, 1 / 3),
             "semi": Yard(8, 1 / 3),
+            "two_unit": Yard(8, 1 / 3),
             "townhouse": Yard(8, 1 / 3),
             "multi": Yard(16, 1 / 2),
         },
@@ -420,10 +443,10 @@ def _commercial(name, townhouse_area, far, height, historic_far=False,
 # Office zones set no lot size for townhouses, only a cap of one home per
 # 800 sq ft of land, and no lot width for townhouses or apartments.
 _OFFICE = {
-    "lot_width": {"single": 50, "semi": 25},
+    "lot_width": {"single": 50, "semi": 25, "two_unit": 50},
     "end_lot_width": {},
     "corner_lot_width": {},
-    "frontage": {"single": 50, "semi": 25},
+    "frontage": {"single": 50, "semi": 25, "two_unit": 50},
 }
 
 # OCH homes near Eisenhower Avenue that were there by November 9, 1999 need
@@ -457,26 +480,21 @@ ZONES |= {
     "CD": ZoneRules(
         name="CD",
         allowed=ALL_TYPES,
+        # Section 4-505(B) asks 1,452 sq ft of each house, two-unit house and
+        # townhouse ("dwelling"), not of each home in it as the RM zone does.
         lot_area={kind: 1452 for kind in HOUSE_LIKE},
-        lot_width={"single": 25, "semi": 25, "townhouse": 18, "multi": 50},
-        frontage={"single": 25, "semi": 25, "townhouse": 18, "multi": 50},
-        side_yard={
-            "single": Yard(5),
-            "semi": Yard(5),
-            "townhouse": Yard(5),
-            "multi": Yard(25, 1 / 3),
-        },
-        rear_yard={
-            "single": Yard(16, 1 / 2),
-            "semi": Yard(16, 1 / 2),
-            "townhouse": Yard(16, 1 / 2),
-            "multi": Yard(25, 1.0),
-        },
+        lot_width={"single": 25, "semi": 25, "two_unit": 25, "townhouse": 18,
+                   "multi": 50},
+        # A twin needs 25 ft of frontage for each of its homes.
+        frontage={"single": 25, "semi": 25, "two_unit": 50, "townhouse": 18,
+                  "multi": 50},
+        side_yard={kind: Yard(5) for kind in HOUSE_LIKE} | {"multi": Yard(25, 1 / 3)},
+        rear_yard={kind: Yard(16, 1 / 2) for kind in HOUSE_LIKE}
+        | {"multi": Yard(25, 1.0)},
         no_side_yard_below_width=25,
-        max_floor_area_ratio={"single": 1.50, "semi": 1.50, "townhouse": 1.50,
-                              "multi": 1.25},
+        max_floor_area_ratio={kind: 1.50 for kind in HOUSE_LIKE} | {"multi": 1.25},
         # Houses: 35 feet, or 45 for some roof shapes, so we use 45.
-        max_height={"single": 45, "semi": 45, "townhouse": 45, "multi": 50},
+        max_height={kind: 45 for kind in HOUSE_LIKE} | {"multi": 50},
         min_open_space=0.35,
         open_space_applies_to=frozenset({"multi"}),
     ),
@@ -488,14 +506,17 @@ ZONES |= {
         # Section 5-506(A) asks no front yard of any building, but 5-512
         # gives houses and townhouses one set by the neighboring homes.
         no_front_yard_for=frozenset({"multi"}),
-        lot_area={"single": 5000, "semi": 2500, "townhouse": 1452},
-        lot_width={"single": 50, "semi": 25, "townhouse": 18, "multi": 50},
+        lot_area={"single": 5000, "semi": 2500, "two_unit": 5000, "townhouse": 1452},
+        lot_width={"single": 50, "semi": 25, "two_unit": 50, "townhouse": 18,
+                   "multi": 50},
         end_lot_width={"townhouse": 26},
-        frontage={"single": 50, "semi": 25, "townhouse": 18, "multi": 50},
+        frontage={"single": 50, "semi": 25, "two_unit": 50, "townhouse": 18,
+                  "multi": 50},
         side_yard={"single": Yard(8, 1 / 3), "semi": Yard(8, 1 / 3),
-                   "townhouse": Yard(8), "multi": Yard(16, 1 / 2)},
-        rear_yard={"single": Yard(8, 1.0), "semi": Yard(8, 1.0),
-                   "townhouse": Yard(8, 1.0), "multi": Yard(16, 1 / 2)},
+                   "two_unit": Yard(8, 1 / 3), "townhouse": Yard(8),
+                   "multi": Yard(16, 1 / 2)},
+        rear_yard={kind: Yard(8, 1.0) for kind in HOUSE_LIKE}
+        | {"multi": Yard(16, 1 / 2)},
         no_side_yard_below_width=25,
         max_floor_area_ratio=1.0,
         historic_floor_area_ratio={kind: 1.50 for kind in HOUSE_LIKE},
@@ -507,12 +528,12 @@ ZONES |= {
 # 5-311 and 5-404(B)): lot size, frontage, and side and rear yards like a
 # commercial zone's, with a rear yard that grows with height.
 _MIXED_USE_HOUSES = {
-    "lot_area": {"single": 5000, "semi": 2500},
-    "lot_width": {"single": 50, "semi": 25},
-    "frontage": {"single": 50, "semi": 25},
+    "lot_area": {"single": 5000, "semi": 2500, "two_unit": 5000},
+    "lot_width": {"single": 50, "semi": 25, "two_unit": 50},
+    "frontage": {"single": 50, "semi": 25, "two_unit": 50},
     "width_measured_at": 20,
-    "side_yard": {"single": Yard(8, 1 / 3), "semi": Yard(8, 1 / 3)},
-    "rear_yard": {"single": Yard(8, 1.0), "semi": Yard(8, 1.0)},
+    "side_yard": {kind: Yard(8, 1 / 3) for kind in ("single", "semi", "two_unit")},
+    "rear_yard": {kind: Yard(8, 1.0) for kind in ("single", "semi", "two_unit")},
     "no_side_yard_below_width": 25,
 }
 
@@ -844,13 +865,14 @@ RB_HISTORIC = ZoneRules(
     side_yards_by_lot_width=True,
     rear_yard=Yard(8, 1.0),
     max_floor_area_ratio=1.50,
-    max_height={"single": 45, "semi": 45, "townhouse": 45, "multi": 45},
+    max_height={kind: 45 for kind in ALL_TYPES},
     min_open_space=0.35,
 )
 
 HOME_TYPE_NAMES = {
     "single": "detached house",
     "semi": "twin house (one half)",
+    "two_unit": "two-unit house (both homes on one lot)",
     "townhouse": "townhouse",
     "multi": "apartment or condo building",
 }

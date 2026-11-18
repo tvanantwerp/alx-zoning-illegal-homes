@@ -1,10 +1,11 @@
 """Tests for deciding which lot each building stands on."""
 import geopandas as gpd
+import pandas as pd
 import pytest
 from shapely.geometry import box
 
 from alx_zoning_illegal_homes.mapper.analyze import (
-    _match_buildings_to_lots, _place_buildings, _row_sizes)
+    _home_type, _match_buildings_to_lots, _place_buildings, _row_sizes)
 
 
 def place(lot_shapes, building_shapes):
@@ -67,3 +68,42 @@ def test_piece_mostly_off_every_lot_is_still_dropped():
     # A house drawn mostly over unmapped land barely touches the only lot.
     placed = place([box(0, 0, 30, 100)], [box(28, 20, 68, 60)])
     assert placed.empty
+
+
+def _lot(land_use, condo_units=0):
+    return pd.Series({"land_use": land_use, "condo_units": condo_units})
+
+
+def _homes(*shapes, btype="Duplex"):
+    return gpd.GeoDataFrame({"BTYPE": [btype] * len(shapes)}, geometry=list(shapes))
+
+
+TWIN = "SEMI-DETACHED HOUSE"
+HALVES = (box(0, 0, 20, 40), box(20, 0, 40, 40))
+
+
+def test_both_halves_of_a_twin_on_one_lot_make_a_two_unit_house():
+    assert _home_type(_lot(TWIN), _homes(*HALVES), row_size=1) == "two_unit"
+
+
+def test_twin_half_attached_to_its_neighbor_stays_a_half():
+    assert _home_type(_lot(TWIN), _homes(HALVES[0]), row_size=2) == "semi"
+
+
+def test_two_unit_house_needs_its_homes_to_touch():
+    apart = _homes(box(0, 0, 20, 40), box(40, 0, 60, 40))
+    assert _home_type(_lot(TWIN), apart, row_size=1) == "semi"
+
+
+def test_detached_house_label_never_makes_a_two_unit_house():
+    # A house with an apartment inside, drawn as two outlines.
+    homes = _homes(*HALVES, btype="Detached house")
+    assert _home_type(_lot("DETACHED HOUSE"), homes, row_size=1) == "single"
+
+
+def test_lone_detached_house_labeled_a_twin_is_a_detached_house():
+    house = _homes(box(0, 0, 30, 40), btype="Detached house")
+    assert _home_type(_lot(TWIN), house, row_size=1, alone=True) == "single"
+    assert _home_type(_lot(TWIN), house, row_size=1, alone=False) == "semi"
+    duplex = _homes(box(0, 0, 30, 40))
+    assert _home_type(_lot(TWIN), duplex, row_size=1, alone=True) == "semi"

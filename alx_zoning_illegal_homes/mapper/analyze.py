@@ -41,6 +41,18 @@ POTOMAC_YARD_WEST_EDGE = -77.06
 ATTACHED_GAP = 1.5
 # Homes this close together count as one attached row.
 ROW_GAP = 1.0
+# A lot the assessor calls half of a twin, holding one detached house with
+# no other home this close, is judged as a detached house.
+LONE_HOUSE_GAP = 6.0
+TWIN_LAND_USE = "SEMI-DETACHED HOUSE"
+TWO_UNIT_NOTE = (
+    "City land records call this a semi-detached house, and the map finds both "
+    "halves of the twin on this one lot, so it is judged as a whole two-unit house. "
+    "Both of its homes need room on this lot.")
+LONE_HOUSE_NOTE = (
+    "City land records call this a semi-detached house (one half of a twin), but "
+    "the city's map shows a detached house here with no other home within "
+    f"{LONE_HOUSE_GAP:.0f} ft, so it is judged as a detached house.")
 HOME_TYPE_BY_BUILDING = {
     "Townhouse": "townhouse",
     "Detached house": "single",
@@ -254,11 +266,26 @@ def _row_sizes(home_shapes, home_lots):
     return roots.map(roots.value_counts()).to_dict()
 
 
-def _home_type(lot, homes, row_size):
+def _has_attached_homes(shapes) -> bool:
+    """Whether at least two of these home outlines touch, or nearly touch."""
+    left, right = shapely.STRtree(shapes).query(shapes, predicate="dwithin",
+                                                distance=ROW_GAP)
+    return bool((left != right).any())
+
+
+def _home_type(lot, homes, row_size, alone=False):
     """Decide the zoning home type from land use and how homes attach.
 
     The assessor's labels are loose about twins versus townhouses, so for
     one-home lots the number of attached neighbors has the final say.
+
+    A lot labeled as half of a twin needs a closer look when its homes
+    attach to no home on another lot. If it holds two or more attached
+    home outlines, both halves stand on this one lot: a whole two-unit
+    house. If it holds a single outline drawn as a detached house, and
+    `alone` says no other home stands within LONE_HOUSE_GAP, it is judged
+    as the detached house it looks like. A detached house with an apartment
+    inside is labeled a detached house, so it never becomes a two-unit house.
     """
     land_use = lot["land_use"]
     if land_use in loader.HOME_TYPE_BY_LAND_USE:
@@ -268,6 +295,12 @@ def _home_type(lot, homes, row_size):
                 return "townhouse"
             if row_size == 2:
                 return "semi"
+            if land_use == TWIN_LAND_USE and len(homes) >= 2 and _has_attached_homes(
+                    homes.geometry.values):
+                return "two_unit"
+            if (land_use == TWIN_LAND_USE and alone and len(homes) == 1
+                    and homes["BTYPE"].iloc[0] == "Detached house"):
+                return "single"
         return home_type
     if land_use in loader.HOME_TYPE_FROM_BUILDINGS and len(homes):
         common = homes["BTYPE"].mode()
@@ -499,8 +532,14 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
         if on_lot is None:
             continue
         homes = on_lot[on_lot["is_home"]]
-        home_type = _home_type(lot, homes, row_sizes.get(lot_id, 1))
-        if home_type is None or homes.empty:
+        if homes.empty:
+            continue
+        home_union = unary_union(homes.geometry.values)
+        nearby_homes = home_tree.query(home_union, predicate="dwithin",
+                                       distance=LONE_HOUSE_GAP)
+        alone = not (home_lots[nearby_homes] != lot_id).any()
+        home_type = _home_type(lot, homes, row_sizes.get(lot_id, 1), alone)
+        if home_type is None:
             continue
         years = homes["YEARBLT"][homes["YEARBLT"] > 1600]
         record["home_type"] = HOME_TYPE_NAMES[home_type]
@@ -548,7 +587,6 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
             lot["address_street"],
         )
 
-        home_union = unary_union(homes.geometry.values)
         touching = home_tree.query(home_union.buffer(ATTACHED_GAP),
                                    predicate="intersects")
         attached = [home_shapes[i] for i in touching if home_lots[i] != lot_id]
@@ -561,6 +599,8 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
             units = int(max(lot["condo_units"], round(recorded_units), 1))
         elif home_type == "townhouse":
             units = int(max(lot["condo_units"], len(homes), 1))
+        elif home_type == "two_unit":
+            units = 2
 
         facts = LotFacts(
             shape=shape,
@@ -588,6 +628,9 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
             parking=parking,
         )
         findings = check_lot(facts)
+        if lot["land_use"] == TWIN_LAND_USE and home_type in ("two_unit", "single"):
+            findings.notes.append(
+                TWO_UNIT_NOTE if home_type == "two_unit" else LONE_HOUSE_NOTE)
         if keep_facts is not None:
             keep_facts[lot_id] = facts
         if district:

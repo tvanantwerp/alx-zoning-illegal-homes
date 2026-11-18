@@ -17,7 +17,8 @@ from .lot_lines import LotLines, largest_polygon, lot_width, lot_width_line
 from .rule_results import (
     CORNER_NO_REAR, CROSSES_LOT_LINE, FAILS, MAPPING_ERROR, NO_FLOOR_AREA, NO_HEIGHT,
     NO_OUTLINES, NO_REAR_FOUND, NO_RULE, NO_SIDE_LINE, NO_STREET, NOT_CHECKED, NOT_REQUIRED, PASSES, RULE_IDS,
-    SHARED_LOT, SHARED_WALL, SIDE_COUNT_ON_CORNER, TOO_SHALLOW, YARD_BENEFIT_OF_DOUBT, RuleResult,
+    SHARED_LOT, SHARED_WALL, SIDE_COUNT_ON_CORNER, TOO_SHALLOW, TWO_UNIT_LOT, YARD_BENEFIT_OF_DOUBT,
+    RuleResult,
     eisenhower_older_home_note, eisenhower_special_permit_explanation,
     explain_margin, format_feet as _feet, front_yard_explanation, frontage_about,
     no_front_yard_explanation, no_rule_explanation, older_rules_explanation, open_space_about,
@@ -150,6 +151,11 @@ class Findings:
 
 def _square_feet(value: float) -> str:
     return f"{value:,.0f} sq ft"
+
+
+def _for_whole_house(kind: str) -> str:
+    """Words that make clear a lot rule covers a whole two-unit house, or nothing."""
+    return " for a two-unit house" if kind == "two_unit" else ""
 
 
 def check_lot(facts: LotFacts) -> Findings:
@@ -285,7 +291,8 @@ def _check_lot_area(facts, findings, position):
     required = table.get(kind, rules.lot_area.get(kind))
     per_home = kind == "townhouse" and facts.units > 1
     row = RuleResult("lot_area", "Land per home" if per_home else "Lot size",
-                     NO_RULE, unit="sq ft")
+                     NO_RULE, unit="sq ft",
+                     about=TWO_UNIT_LOT if kind == "two_unit" else None)
     findings.results.append(row)
     if not required:
         row.explanation = no_rule_explanation(
@@ -301,7 +308,8 @@ def _check_lot_area(facts, findings, position):
         findings.reasons.append(Reason(
             "lot_size",
             f"{what} is too small: {_square_feet(area)}, but the "
-            f"{rules.label} requires {_square_feet(required)}{corner}.",
+            f"{rules.label} requires {_square_feet(required)}{corner}"
+            f"{_for_whole_house(kind)}.",
         ))
 
 
@@ -391,7 +399,7 @@ def _check_width_and_frontage(facts, findings, position):
             "lot_width",
             f"Too little street frontage: about {_feet(lines.frontage)}, "
             f"but the {rules.label} requires {_feet(need_frontage)}"
-            f"{where if kind == 'townhouse' else ''}.",
+            f"{where if kind == 'townhouse' else _for_whole_house(kind)}.",
         ))
     return width
 
