@@ -409,3 +409,21 @@ def test_width_measured_at_the_street_is_drawn_along_the_front_line():
     assert row.status == FAILS and row.detail == "measured at the street"
     assert row.shapes["line"].length == pytest.approx(40, abs=0.5)
     assert row.shapes["line"].equals(rows(f)["frontage"].shapes["line"])
+
+
+@pytest.mark.parametrize("zone, home_type", [
+    ("RC", "townhouse"), ("RCX", "townhouse"), ("RD", "multi"), ("W-1", "single"),
+    ("KR", "multi")])
+def test_front_yard_not_required_where_the_zone_asks_for_none(zone, home_type):
+    lot = box(0, 0, 80, 120)
+    _, findings = check(lot, box(20, 35, 60, 75), zone, home_type=home_type,
+                        neighbors=between_neighbors(lot))
+    row = rows(findings)["yard:front"]
+    assert row.status == NOT_REQUIRED
+    assert "requires no front yard" in row.explanation
+    assert "Duke Street" in row.explanation
+
+
+def test_cdx_houses_get_the_historic_floor_space_limit():
+    assert ZONES["CDX"].floor_area_ratio_for("townhouse", historic=True) == 1.50
+    assert ZONES["CDX"].floor_area_ratio_for("townhouse", historic=False) == 1.25

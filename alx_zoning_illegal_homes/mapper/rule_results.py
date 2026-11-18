@@ -149,6 +149,18 @@ def frontage_about(street: str, zone_label: str, required: float | None,
     return text
 
 
+def no_front_yard_explanation(rules: ZoneRules) -> str:
+    """Why no front yard is required in this lot's zone."""
+    text = (f"The {rules.label} requires no front yard. Six streets have extra setbacks "
+            "of their own (Duke Street, King Street, Seminary Road, Beauregard Street, "
+            "South Pickett Street and Mount Vernon Avenue), which the map doesn't "
+            "check yet.")
+    if rules.name == "RC":
+        text += (" RC lots along the George Washington Memorial Parkway also have a "
+                 "deep setback from Washington Street.")
+    return text
+
+
 def front_yard_explanation(rules: ZoneRules, in_historic_district: bool) -> str:
     """Why the front yard isn't checked in this lot's zone."""
     label = rules.label

@@ -18,7 +18,7 @@ from .rule_results import (
     NO_OUTLINES, NO_REAR_FOUND, NO_RULE, NO_SIDE_LINE, NO_STREET, NOT_CHECKED, NOT_REQUIRED, PASSES, RULE_IDS,
     RM_OPEN_SPACE, SHARED_LOT, SHARED_WALL, SIDE_COUNT_ON_CORNER, TOO_SHALLOW, RuleResult,
     explain_margin, format_feet as _feet, front_yard_explanation, frontage_about,
-    no_rule_explanation, side_count_explanation)
+    no_front_yard_explanation, no_rule_explanation, side_count_explanation)
 from .rules import HOME_TYPE_NAMES, ZoneRules
 
 # Slack given to distance measurements, in feet.
@@ -517,6 +517,9 @@ def _check_yards(facts, findings, width):
 def _front_row(facts, record, gap):
     """Judge the front yard, where the zone sets a fixed one."""
     rules = facts.rules
+    if not rules.front_yard_required:
+        return _yard_row(facts, "front", NOT_REQUIRED, gap,
+                         explanation=no_front_yard_explanation(rules))
     if not rules.front_yard:
         return _yard_row(facts, "front", NOT_CHECKED, gap, explanation=(
             front_yard_explanation(rules, facts.in_historic_district)))

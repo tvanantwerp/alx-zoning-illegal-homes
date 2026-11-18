@@ -137,6 +137,9 @@ Other details that matter:
   lot line is assumed to be a mapping error and its yards are skipped.
 - Front yards are mostly not checked. In most zones the rule depends on the
   neighbors' front yards, which an existing home meets almost by definition.
+  RC, RCX, RD, W-1 and KR require no front yard at all, though the extra
+  street setbacks along Duke Street, King Street and four other streets
+  (section 7-1006) aren't checked yet.
 - Parking rules are not checked.
 - Height comes from the city's 3D building layer and floor space from the
   city's building records; neither matches the ordinance's definitions
@@ -163,6 +166,6 @@ From the [City of Alexandria open data site](https://cityofalexandria-alexgis.op
 
 The Zoning Ordinance is published at
 [library.municode.com](https://library.municode.com/va/alexandria/codes/zoning).
-That site blocks automated readers, so the rule text was read from the copy at
-[zoneomics.com](https://www.zoneomics.com/code/alexandria-VA/chapter_5)
-(chapters 4 to 9 there).
+That site blocks automated readers, so the rules were first read from the copy
+at [zoneomics.com](https://www.zoneomics.com/code/alexandria-VA/chapter_5), then
+checked against a saved copy of the ordinance kept as one file per section.

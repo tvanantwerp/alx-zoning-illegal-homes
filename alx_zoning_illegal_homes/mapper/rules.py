@@ -57,6 +57,9 @@ class ZoneRules:
     rear_yard: Yard | dict | None = None
     # Fixed front yard. None where the rule depends on neighboring homes.
     front_yard: float | None = None
+    # False in zones that ask for no front yard at all, apart from the extra
+    # setbacks along a few named streets (section 7-1006).
+    front_yard_required: bool = True
     # Zones where side yards depend only on lot width (RM, historic RB).
     side_yards_by_lot_width: bool = False
     # Lots narrower than this need no side yards.
@@ -191,6 +194,7 @@ ZONES = {
     "RCX": ZoneRules(
         name="RCX",
         allowed=frozenset({"townhouse", "multi"}),
+        front_yard_required=False,
         lot_area={"townhouse": 1600},
         lot_width={"multi": 50, "townhouse": 18},
         end_lot_width={"townhouse": 26},
@@ -206,6 +210,7 @@ ZONES = {
     "RC": ZoneRules(
         name="RC",
         allowed=frozenset({"townhouse", "multi"}),
+        front_yard_required=False,
         lot_area={"townhouse": 1600},
         lot_width={"multi": 50, "townhouse": 18},
         end_lot_width={"townhouse": 26},
@@ -221,6 +226,7 @@ ZONES = {
     "RD": ZoneRules(
         name="RD",
         allowed=frozenset({"multi"}),
+        front_yard_required=False,
         lot_area={"multi": 43560},
         frontage={"multi": 100},
         side_yard={"multi": Yard(16, 1 / 2)},
@@ -325,8 +331,8 @@ ZONES |= {
     "CG": _commercial("CG", 1980, 0.75, 50),
     "OC": _commercial("OC", 1600, 1.25, 50, historic_far=True),
     # Height in CDX comes from a neighborhood plan, so it is not checked.
-    "CDX": _commercial("CDX", 1245, 1.25, None, end_lot_width={},
-                       corner_lot_width={}),
+    "CDX": _commercial("CDX", 1245, 1.25, None, historic_far=True,
+                       end_lot_width={}, corner_lot_width={}),
     "OCM(50)": _commercial("OCM(50)", 800, 1.50, 50, **_OFFICE),
     "OCM(100)": _commercial("OCM(100)", 800, 1.50, 100, **_OFFICE),
     # OCH floor area rules for homes have several special cases; skipped.
@@ -361,6 +367,7 @@ ZONES |= {
     "W-1": ZoneRules(
         name="W-1",
         allowed=ALL_TYPES,
+        front_yard_required=False,
         lot_area={"townhouse": 1452},
         lot_width={"townhouse": 18, "multi": 50},
         end_lot_width={"townhouse": 26},
@@ -401,7 +408,7 @@ ZONES |= {
     ),
     # King Street retail zone: no lot or yard rules for homes. Its floor
     # area limit depends on the block, so it is not checked.
-    "KR": ZoneRules(name="KR", allowed=ALL_TYPES),
+    "KR": ZoneRules(name="KR", allowed=ALL_TYPES, front_yard_required=False),
     # Industrial and utility zones do not allow homes at all.
     "I": ZoneRules(name="I (industrial)", allowed=frozenset()),
     "UT": ZoneRules(name="UT (utility)", allowed=frozenset()),
