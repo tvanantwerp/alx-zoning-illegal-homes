@@ -5,14 +5,16 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 import shapely
+import shapely.ops
 from shapely.ops import unary_union
 
 from . import loader
 from .checks import Home, LotFacts, check_lot
 from .lot_lines import MAX_STREET_DISTANCE, classify
 from .rule_results import under_special_approval
-from .rules import (HOME_TYPE_NAMES, PLANNED_DISTRICTS, normalize_zone,
-                    planned_district_rules, potomac_yard_zone, rules_for)
+from .rules import (HOME_TYPE_NAMES, PLANNED_DISTRICTS, king_street_retail_rules,
+                    normalize_zone, planned_district_rules, potomac_yard_zone,
+                    rules_for)
 
 # A building counts as sitting on a second lot when this much of it does.
 STRADDLE_SHARE = 0.15
@@ -249,6 +251,30 @@ def _potomac_yard_zone(point, lon_lat, route_1):
     return potomac_yard_zone(lon_lat.x, lon_lat.y, distance)
 
 
+def _king_street_divide(streets):
+    """Where the KR zone's two parts meet, as a function of a lot's location.
+
+    The ordinance splits the zone at South Peyton Street on the south side of
+    King Street and Harvard Street on the north side. Returns a function
+    that says whether a point lies east of that line, or None when the
+    streets aren't in the data.
+    """
+    by_name = {name: unary_union(streets.geometry[streets["name"] == name].values)
+               for name in ("KING", "PEYTON", "HARVARD")}
+    if any(shape.is_empty for shape in by_name.values()):
+        return None
+    king = by_name["KING"]
+    # Each cross street's x where it meets King Street.
+    peyton_x = shapely.ops.nearest_points(by_name["PEYTON"], king)[0].x
+    harvard_x = shapely.ops.nearest_points(by_name["HARVARD"], king)[0].x
+
+    def is_east(point) -> bool:
+        on_king = king.interpolate(king.project(point))
+        north_side = point.y > on_king.y
+        return point.x > (harvard_x if north_side else peyton_x)
+    return is_east
+
+
 def _project_for(point, projects, project_tree):
     """Name the city development case whose outline contains a point.
 
@@ -358,6 +384,7 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
     in_historic = lot_points.within(historic)
     lot_lon_lat = lot_points.to_crs("EPSG:4326")
     route_1 = unary_union(streets.geometry[streets["name"] == "RICHMOND"].values)
+    kr_is_east = _king_street_divide(streets)
     projects = loader.load_development_projects()
     project_tree = shapely.STRtree(projects.geometry.values)
 
@@ -391,6 +418,8 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
         district = fallback_rules = None
         if zone is not None:
             rules = rules_for(zone, is_historic)
+            if zone == "KR" and kr_is_east is not None:
+                rules = king_street_retail_rules(kr_is_east(lot_points.loc[lot_id]))
         else:
             sub_zone = None
             if isinstance(label, str) and label.strip().upper() == "CDD#10":

@@ -408,13 +408,33 @@ ZONES |= {
         no_side_yard_below_width=25,
         max_floor_area_ratio=1.50,
     ),
-    # King Street retail zone: no lot or yard rules for homes. Its floor
-    # area limit depends on the block, so it is not checked.
-    "KR": ZoneRules(name="KR", allowed=ALL_TYPES, no_front_yard_for=ALL_TYPES),
+    # King Street retail zone (section 6-700). Homes are allowed only as
+    # apartments above or behind the shops, with no lot or yard rules. These
+    # are the limits west of South Peyton and Harvard Streets, where homes
+    # within 1,000 ft of a Metro station may reach a floor area ratio of 2.0
+    # and 1.25 elsewhere. Metro stations aren't in the map's data, so the
+    # looser 2.0 is used throughout. See king_street_retail_rules() for the
+    # stricter limits east of those streets.
+    "KR": ZoneRules(name="KR", allowed=frozenset({"multi"}),
+                    no_front_yard_for=ALL_TYPES, max_floor_area_ratio=2.0),
     # Industrial and utility zones do not allow homes at all.
     "I": ZoneRules(name="I (industrial)", allowed=frozenset()),
     "UT": ZoneRules(name="UT (utility)", allowed=frozenset()),
 }
+
+def king_street_retail_rules(east_of_peyton_and_harvard: bool) -> ZoneRules:
+    """The KR zone's rules for a lot on one side or the other of its dividing line.
+
+    East of South Peyton Street (south side of King Street) and Harvard
+    Street (north side), homes get a floor area ratio of 1.25 and a height
+    limit of 50 ft (section 6-705(C)(1) and (D)(1)). West of them, height
+    follows the King Street Metro height district, which isn't checked here.
+    """
+    rules = ZONES["KR"]
+    if not east_of_peyton_and_harvard:
+        return rules
+    return replace(rules, max_floor_area_ratio=1.25, max_height={"multi": 50})
+
 
 @dataclass(frozen=True)
 class PlannedDistrict:
