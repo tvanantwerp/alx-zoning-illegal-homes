@@ -254,12 +254,34 @@ def test_unknown_floor_space_is_not_checked():
     assert rows(f)["floor_area"].status == NOT_CHECKED
 
 
-def test_rm_open_space_not_checked_until_the_rule_exists():
+@pytest.mark.parametrize("home_type", ["single", "semi", "townhouse"])
+def test_rm_open_space_is_checked_for_every_home_type(home_type):
     lot = box(0, 0, 30, 100)
-    _, f = check(lot, box(5, 20, 25, 60), "RM", home_type="single", neighbors=between_neighbors(lot))
-    r = rows(f)
-    assert "coverage" not in r and r["open_space"].status == NOT_CHECKED
-    assert "June 24, 1992" in r["open_space"].explanation
+    _, f = check(lot, box(5, 20, 25, 60), "RM", home_type=home_type,
+                 neighbors=between_neighbors(lot))
+    row = rows(f)["open_space"]
+    assert row.status == PASSES and row.required == pytest.approx(0.35)
+    assert row.measured == pytest.approx(1 - 800 / 3000)
+    assert "June 24, 1992" in row.about and "Driveways" in row.about
+
+
+def test_rm_lot_mostly_covered_fails_open_space():
+    lot = box(0, 0, 18, 100)
+    reasons, f = check(lot, box(0, 10, 18, 90), "RM", home_type="townhouse",
+                       neighbors=between_neighbors(lot))
+    assert "open_space" in reasons
+    assert rows(f)["open_space"].status == FAILS
+    assert any("35% must be left open" in r.text for r in f.reasons)
+
+
+def test_small_rm_lot_needs_at_least_300_sq_ft_open():
+    lot = box(0, 0, 16, 50)   # 800 sq ft, so 35% would be only 280 sq ft
+    reasons, f = check(lot, box(0, 10, 16, 43.5), "RM", home_type="townhouse",
+                       neighbors=between_neighbors(lot))
+    row = rows(f)["open_space"]
+    assert "open_space" in reasons and row.status == FAILS
+    assert row.required == pytest.approx(300 / 800)
+    assert any("300 sq ft" in r.text for r in f.reasons)
 
 
 def test_open_space_zone_gets_an_open_space_row():

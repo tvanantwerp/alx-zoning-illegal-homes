@@ -46,7 +46,10 @@ CG, CD, CDX, OC, OCM, OCH, W-1, CRMU, KR) and in planned districts:
 - **Floor space** compared with lot size. In the KR and OCH zones the limit
   is looser within 1,000 ft of a Metro station.
 - **Height**
-- **Open space** or building coverage
+- **Open space** or building coverage. The RM zone asks for 35% of the lot
+  and never less than 300 sq ft. It also lets a lot keep the open space it
+  had on June 24, 1992 if that was less, which the map can't know, so an
+  older RM home may be fine as it stands.
 - **Home type**, e.g. townhouses in a zone that allows only houses. A few
   zones carry their own exceptions for older homes, and those homes pass:
   apartment buildings in the RB zone built before 1978 (the exception also
@@ -170,6 +173,9 @@ Other details that matter:
   apartment buildings, though the extra
   street setbacks along Duke Street, King Street and four other streets
   (section 7-1006) aren't checked yet.
+- Open space is all the land not under a building outline. Driveways,
+  patios and parking pads aren't in the data, so open space looks bigger
+  than the ordinance would count it.
 - Parking rules are not checked.
 - Height comes from the city's 3D building layer and floor space from the
   city's building records; neither matches the ordinance's definitions

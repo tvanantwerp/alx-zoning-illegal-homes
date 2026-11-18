@@ -16,7 +16,7 @@ from .lot_lines import LotLines, largest_polygon, lot_width, lot_width_line
 from .rule_results import (
     BENEFIT_OF_DOUBT, CORNER_NO_REAR, CROSSES_LOT_LINE, FAILS, MAPPING_ERROR, NO_FLOOR_AREA, NO_HEIGHT,
     NO_OUTLINES, NO_REAR_FOUND, NO_RULE, NO_SIDE_LINE, NO_STREET, NOT_CHECKED, NOT_REQUIRED, PASSES, RULE_IDS,
-    RM_OPEN_SPACE, SHARED_LOT, SHARED_WALL, SIDE_COUNT_ON_CORNER, TOO_SHALLOW, RuleResult,
+    SHARED_LOT, SHARED_WALL, SIDE_COUNT_ON_CORNER, TOO_SHALLOW, RuleResult,
     eisenhower_older_home_note, eisenhower_special_permit_explanation,
     explain_margin, format_feet as _feet, front_yard_explanation, frontage_about,
     no_front_yard_explanation, no_rule_explanation, older_rules_explanation,
@@ -867,19 +867,16 @@ def _check_height(facts, findings):
 
 def _check_open_space(facts, findings):
     rules, kind = facts.rules, facts.home_type
-    open_row = RuleResult("open_space", "Open space", NO_RULE, unit="share")
+    open_row = RuleResult("open_space", "Open space", NO_RULE, unit="share",
+                          about=rules.open_space_note or None)
     cover_row = RuleResult("coverage", "Land covered by buildings", NO_RULE,
                            unit="share", limit="max")
     row = cover_row if rules.max_coverage else open_row
     if (rules.open_space_applies_to and kind not in rules.open_space_applies_to) or (
             not rules.min_open_space and not rules.max_coverage):
-        if rules.name == "RM" and not rules.max_coverage:
-            row = open_row
-            row.status, row.explanation = NOT_CHECKED, RM_OPEN_SPACE
-        else:
-            row = cover_row
-            row.explanation = no_rule_explanation(
-                rules.label, HOME_TYPE_NAMES[kind], "open space or coverage limit")
+        row = cover_row
+        row.explanation = no_rule_explanation(
+            rules.label, HOME_TYPE_NAMES[kind], "open space or coverage limit")
         findings.results.append(row)
         return
     if not facts.all_buildings:
@@ -890,8 +887,12 @@ def _check_open_space(facts, findings):
     share = covered / facts.shape.area
     findings.measurements["coverage"] = share
     too_much = bool(rules.max_coverage) and share > rules.max_coverage + COVERAGE_MARGIN
-    too_little = (not too_much and bool(rules.min_open_space)
-                  and 1 - share < rules.min_open_space - COVERAGE_MARGIN)
+    # A floor in sq ft is turned into a share of this lot, so one number and
+    # one margin cover both parts of the rule.
+    need_open = max(rules.min_open_space or 0.0,
+                    rules.min_open_space_area / facts.shape.area)
+    too_little = (not too_much and need_open > 0
+                  and 1 - share < need_open - COVERAGE_MARGIN)
     if too_little:
         row = open_row
     elif too_much:
@@ -899,7 +900,7 @@ def _check_open_space(facts, findings):
     if row is cover_row:
         row.measured, row.required = share, rules.max_coverage
     else:
-        row.measured, row.required, row.limit = 1 - share, rules.min_open_space, "min"
+        row.measured, row.required, row.limit = 1 - share, need_open, "min"
     row.status = FAILS if (too_much or too_little) else PASSES
     row.buildings = list(range(len(facts.all_buildings)))
     findings.results.append(row)
@@ -908,6 +909,14 @@ def _check_open_space(facts, findings):
             "open_space",
             f"Buildings cover too much of the lot: about {share:.0%}, but "
             f"the {rules.label} allows {rules.max_coverage:.0%}.",
+        ))
+    elif too_little and need_open > (rules.min_open_space or 0.0):
+        open_area = (1 - share) * facts.shape.area
+        findings.reasons.append(Reason(
+            "open_space",
+            f"Not enough open space: buildings alone leave about {open_area:,.0f} sq ft "
+            f"of the lot open, but the {rules.label} requires at least "
+            f"{rules.min_open_space_area:,.0f} sq ft.",
         ))
     elif too_little:
         findings.reasons.append(Reason(

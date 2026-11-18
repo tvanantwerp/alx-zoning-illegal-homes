@@ -40,10 +40,6 @@ NO_FLOOR_AREA = ("City records don't give this home's floor space, and it couldn
                  "estimated from the number of stories.")
 NO_HEIGHT = "The city's 3D building data has no height for this home."
 NO_OUTLINES = "The city's map has no building outlines on this lot."
-RM_OPEN_SPACE = ("The RM zone requires each home lot to keep open, usable space: 35% of "
-                 "the lot, or the amount it had on June 24, 1992 if that is less, and "
-                 "never under 300 sq ft. Driveways don't count. The map doesn't check "
-                 "this rule yet.")
 BENEFIT_OF_DOUBT = ("Measurements from the city's map and records aren't exact, so "
                     "the map gives it the benefit of the doubt.")
 

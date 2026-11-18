@@ -145,6 +145,10 @@ class ZoneRules:
     max_height: dict = field(default_factory=dict)
     # Share of the lot that must stay open (0.35 = 35%).
     min_open_space: float | None = None
+    # Least open space in sq ft, however small the lot (RM only).
+    min_open_space_area: float = 0.0
+    # Shown on the open space row's name, where the zone's rule needs explaining.
+    open_space_note: str = ""
     # Largest share of the lot that buildings may cover.
     max_coverage: float | None = None
     # Home types the open space rule applies to. Empty means all.
@@ -323,6 +327,19 @@ ZONES = {
         # 35 feet by default; 45 is allowed for some roof shapes, so we
         # only count a building as too tall above 45.
         max_height={"single": 45, "semi": 45, "townhouse": 45},
+        # The zone also lets a lot keep the open space it had on June 24,
+        # 1992 if that was less. That says nothing about building on an
+        # empty lot today, so only the note mentions it.
+        min_open_space=0.35,
+        min_open_space_area=300,
+        open_space_note=(
+            "The RM zone requires each home lot to keep open, usable space: 35% "
+            "of the lot, and never less than 300 sq ft. A lot may instead keep "
+            "the open space it had on June 24, 1992, if that was less, so an "
+            "older home may be fine as it stands. The map judges whether these "
+            "buildings could be built new. Driveways and parking pads don't count "
+            "as open space, but the map only knows building outlines, so open "
+            "space here looks bigger than the ordinance would count it."),
     ),
     "RS": ZoneRules(
         name="RS",
