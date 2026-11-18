@@ -13,7 +13,7 @@ import shapely
 from shapely.geometry import LineString
 from shapely.ops import nearest_points, substring, unary_union
 
-from .heights import BuildingHeight, building_height, roof_parts
+from .heights import BuildingHeight, RoofHeight, building_height
 from .lot_lines import LotLines, largest_polygon, lot_width, lot_width_line
 from .rule_results import (
     CORNER_NO_REAR, CROSSES_LOT_LINE, FAILS, MAPPING_ERROR, NO_FLOOR_AREA, NO_HEIGHT,
@@ -24,7 +24,7 @@ from .rule_results import (
     explain_margin, format_feet as _feet, front_yard_explanation, frontage_about,
     height_explanation, margin_explanation, no_front_yard_explanation, no_rule_explanation,
     older_rules_explanation, open_space_about, side_count_explanation,
-    split_twin_explanation, split_twin_reason)
+    split_twin_explanation, split_twin_reason, yard_height_explanation)
 from .rules import HOME_TYPE_NAMES, OlderHomeAllowance, ZoneRules
 
 # Slack given to distance measurements, in feet. Covers measuring error and
@@ -41,10 +41,6 @@ MIN_OPEN_WIDTH = 8.0
 OVERLAY_GRID = 0.01
 OPEN_SPACE_LEFT_OUT = ("once buildings, roads, driveways, parking and strips "
                        "narrower than 8 ft are left out")
-# The 3D layer measures to the top of a roof. The ordinance measures a
-# pitched roof to halfway up the slope, so we shave the height before
-# using it to size a yard.
-HEIGHT_DISCOUNT = 0.85
 # Half of a typical alley, which the ordinance credits toward a rear yard.
 ALLEY_CREDIT = 5.0
 # Lot lines closer than this to both a home and its neighbor's home are
@@ -421,9 +417,14 @@ class YardGap:
     # Every lot line on this side, and whether each borders open land.
     lines: list[LineString]
     lines_open: list[bool] = field(default_factory=list)
-    # Height of the part of the home this gap is measured from, for the
-    # setback ratio. Already shaved by HEIGHT_DISCOUNT.
-    height: float = 0.0
+    # The roof of the part of the home this gap is measured from, whose
+    # height as the ordinance measures it sets the setback ratio's depth.
+    roof: RoofHeight | None = None
+
+    @property
+    def height(self) -> float:
+        """The part's height as the ordinance measures it, or 0 when unknown."""
+        return self.roof.height if self.roof is not None else 0.0
 
 
 def _nearest_line(home, line) -> LineString:
@@ -432,23 +433,24 @@ def _nearest_line(home, line) -> LineString:
     return LineString([on_home, on_line])
 
 
-def _part_gaps(gap: YardGap, parts: list[tuple]) -> list[YardGap]:
+def _part_gaps(gap: YardGap, parts: list[RoofHeight]) -> list[YardGap]:
     """The same side's gap, measured again from each part of the home.
 
     The setback ratio pairs each part of a building with its own height
-    (section 2-193), so a low rear wing is judged by its own height and a
-    taller block behind it by its own distance.
+    (the ordinance's definition of setback ratio), so a low rear wing is
+    judged by its own height and a taller block behind it by its own
+    distance. Each part's height is the one the ordinance measures: the top
+    of a flat roof, or halfway up a gable or hip roof (see `heights.py`).
     """
     measured = []
-    for shape, height in parts:
+    for roof in parts:
         distance, line, is_open = min(
-            ((line.distance(shape), line, is_open)
+            ((line.distance(roof.outline), line, is_open)
              for line, is_open in zip(gap.lines, gap.lines_open)),
             key=lambda found: found[0])
-        on_part, on_line = nearest_points(shape, line)
+        on_part, on_line = nearest_points(roof.outline, line)
         measured.append(YardGap(distance, is_open, LineString([on_part, on_line]),
-                                gap.lines, gap.lines_open,
-                                (height or 0) * HEIGHT_DISCOUNT))
+                                gap.lines, gap.lines_open, roof))
     return measured
 
 
@@ -582,7 +584,8 @@ def _check_yards(facts, findings, width):
 
     for home in homes:
         gaps, shared = _yard_gaps(facts, home)
-        parts = roof_parts(home.shape, home.sections, home.height or 0)
+        estimate = _home_height(facts, home)
+        parts = estimate.parts if estimate is not None else []
         # Where side yards are simply counted (RM, historic RB), a wall on
         # the line is normal, so only the rear is screened there.
         screened = ("rear",) if rules.side_yards_by_lot_width else (-1, 1, "rear")
@@ -630,7 +633,8 @@ def _front_row(facts, record, gap):
 def _side_rows(facts, record, gaps, shared, touching, parts, width):
     """Judge both side yards. Returns the left and right rows.
 
-    `parts` is the home split by roof height, as (shape, height) pairs.
+    `parts` is the home split by roof height, each part's roof estimated
+    the ordinance's way, or empty when the home's height is unknown.
     """
     rules, lines = facts.rules, facts.lines
     if not rules.side_yards_by_lot_width:
@@ -701,10 +705,13 @@ def _side_row(facts, record, key, gap, shared, touching, parts, width):
             rules.label, HOME_TYPE_NAMES[kind], "side yard rule"))
     if gap is None:
         return _yard_row(facts, role, NOT_CHECKED, explanation=NO_SIDE_LINE)
+    part_gaps = _part_gaps(gap, parts)
     fails, required, detail, shown = _judge_yard(
-        record, "side", "Side", gap, _part_gaps(gap, parts), rules.side_yard[kind])
-    return _yard_row(facts, role, FAILS if fails else PASSES, shown, required,
-                     detail=detail)
+        record, "side", "Side", gap, part_gaps, rules.side_yard[kind])
+    row = _yard_row(facts, role, FAILS if fails else PASSES, shown, required,
+                    detail=detail)
+    _explain_yard_height(row, rules.side_yard[kind], shown, len(part_gaps) > 1)
+    return row
 
 
 def _split_twin_row(facts, record, role, wall_lines):
@@ -738,8 +745,9 @@ def _rear_row(facts, record, gap, shared, touching, parts):
     if not rear_yard:
         return _yard_row(facts, "rear", NO_RULE, gap, explanation=no_rule_explanation(
             rules.label, HOME_TYPE_NAMES[kind], "rear yard rule"))
+    part_gaps = _part_gaps(gap, parts)
     fails, required, detail, shown = _judge_yard(
-        record, "rear", "Rear", gap, _part_gaps(gap, parts), rear_yard, alley_credit=True)
+        record, "rear", "Rear", gap, part_gaps, rear_yard, alley_credit=True)
     explanation = None
     if shown.on_open:
         credited = _credited(shown, True)
@@ -751,8 +759,24 @@ def _rear_row(facts, record, gap, shared, touching, parts):
                 f"{_feet(credited)} against the {_feet(required)} needed.")
             if credited < required:
                 explanation += " " + YARD_BENEFIT_OF_DOUBT
-    return _yard_row(facts, "rear", FAILS if fails else PASSES, shown, required,
-                     detail=detail, explanation=explanation)
+    row = _yard_row(facts, "rear", FAILS if fails else PASSES, shown, required,
+                    detail=detail, explanation=explanation)
+    _explain_yard_height(row, rear_yard, shown, len(part_gaps) > 1)
+    return row
+
+
+def _explain_yard_height(row: RuleResult, yard, shown: YardGap, several: bool) -> None:
+    """Say which height sized this yard, when the home's height set its depth.
+
+    Adds to the row's explanation, keeping whatever it already says (or the
+    note about the margin, which `explain_margin` would otherwise add later).
+    Rows judged against the fixed minimum are left alone.
+    """
+    if shown.roof is None or row.required is None or row.required <= yard.minimum:
+        return
+    row.explanation = " ".join(filter(None, [
+        row.explanation or margin_explanation(row),
+        yard_height_explanation(yard.per_foot_of_height, shown.roof, several)]))
 
 
 def _credited(gap: YardGap, alley_credit: bool) -> float:
@@ -766,6 +790,7 @@ def _judge_yard(record, name, label, gap, part_gaps, yard, alley_credit=False):
     The fixed minimum is measured from the closest part of the home (`gap`).
     The setback ratio is checked for each part in `part_gaps` at that part's
     own distance and height, and the part that comes off worst decides.
+    With no parts (the home's height is unknown) only the minimum is checked.
     The fixed minimum is a firm finding. The taller-building rule leans on
     an estimated height, so its wording says so.
 
@@ -779,6 +804,8 @@ def _judge_yard(record, name, label, gap, part_gaps, yard, alley_credit=False):
                f"{label} yard is too small: about {_feet(gap.gap)}, but at least "
                f"{_feet(yard.minimum)} is required.")
         return True, yard.minimum, "needs", gap
+    if not part_gaps:
+        return False, yard.minimum, "needs", gap
     worst = max(part_gaps, key=lambda part: (yard.required(part.height)
                                              - _credited(part, alley_credit)))
     required = yard.required(worst.height)
@@ -888,10 +915,18 @@ def _check_floor_area(facts, findings):
         ))
 
 
+def _home_height(facts: LotFacts, home: Home) -> BuildingHeight | None:
+    """A home's height as the ordinance measures it, part by part, or None when unknown.
+
+    The height check and the yard check both use this, so a home gets the
+    same height in each.
+    """
+    return building_height(home, apartment=facts.home_type == "multi")
+
+
 def home_heights(facts: LotFacts) -> list[tuple[Home, BuildingHeight]]:
     """Each home with a known height, paired with its height as the ordinance measures it."""
-    apartment = facts.home_type == "multi"
-    found = [(home, building_height(home, apartment)) for home in facts.homes]
+    found = [(home, _home_height(facts, home)) for home in facts.homes]
     return [(home, estimate) for home, estimate in found if estimate is not None]
 
 

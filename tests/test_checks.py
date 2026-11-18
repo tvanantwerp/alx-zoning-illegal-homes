@@ -120,6 +120,35 @@ def test_fixed_minimum_counts_the_closest_part():
     assert row.measured == pytest.approx(5) and row.required == 8
 
 
+def test_flat_roofed_apartment_side_yard_uses_its_full_height():
+    # RA asks an apartment building for 1 ft of side yard per 2 ft of height.
+    # At 60 ft tall it needs 30 ft; this one is 26 ft from its side line.
+    lot = box(0, 0, 200, 200)
+    home = box(26, 35, 174, 120)
+    kinds, findings = check(lot, home, "RA", home_type="multi",
+                            neighbors=between_neighbors(lot), height=60)
+    assert "yards" in kinds
+    left = next(row for row in findings.results if row.rule == "yard:left")
+    assert left.status == "fails" and left.required == pytest.approx(30)
+
+
+def test_rear_yard_counts_a_flat_roof_at_the_top_and_a_pitched_one_halfway():
+    # R-8 asks for 1 ft of rear yard per foot of height. The home is 30 ft
+    # to its peak and 27 ft from the rear line. With three stories the
+    # roof is flat and needs 30 ft; with two it is a pitched roof, measured
+    # halfway between eaves at about 22 ft and the peak: 26 ft.
+    lot = box(0, 0, 80, 120)
+    home = box(20, 35, 60, 93)
+    kinds, findings = check(lot, home, "R-8", neighbors=between_neighbors(lot),
+                            height=30, stories=3)
+    assert kinds == {"yards"}
+    assert _rear_row(findings).required == pytest.approx(30)
+    kinds, findings = check(lot, home, "R-8", neighbors=between_neighbors(lot),
+                            height=30, stories=2)
+    assert kinds == set()
+    assert _rear_row(findings).required == pytest.approx(26)
+
+
 def test_oversized_house_breaks_floor_area_limit():
     lot = box(0, 0, 80, 120)
     kinds, _ = check(lot, box(20, 35, 60, 75), "R-8",

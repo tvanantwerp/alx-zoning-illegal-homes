@@ -6,6 +6,7 @@ reason, so the table and the reasons never disagree.
 """
 from dataclasses import dataclass, field, replace
 
+from .heights import FLAT, RoofHeight
 from .rules import OlderHomeAllowance, PlannedDistrict, ZoneRules
 
 FAILS, PASSES, NOT_CHECKED, NO_RULE, NOT_REQUIRED = (
@@ -203,6 +204,28 @@ def height_explanation(estimate) -> str:
     else:
         numbers = f"About {format_feet(height)} to the top of the roof."
     return f"{numbers} {why}"
+
+
+def yard_height_explanation(per_foot_of_height: float, roof: RoofHeight, several: bool) -> str:
+    """Say which height sized a yard that grows with the home's height, and how it was found.
+
+    `roof` is the part of the home that set the yard's depth; `several` is
+    True when the home was split into parts of different heights.
+    """
+    feet = 1 / per_foot_of_height
+    every = "every foot" if feet == 1 else f"every {feet:g} ft"
+    text = (f"A taller home needs a deeper yard here (a setback ratio of 1:{feet:g}): "
+            f"1 ft of yard for {every} of height")
+    if several:
+        text += ", judged for each part of the home at its own height and distance"
+    whose = "The part of the home that sets this yard" if several else "This home"
+    if roof.shape == FLAT:
+        numbers = (f"{whose} is about {format_feet(roof.height)} to the top of its roof, "
+                   "treated as a flat roof.")
+    else:
+        numbers = (f"{whose} has a roof peak about {format_feet(roof.peak)}; measured the "
+                   f"ordinance's way, it is about {format_feet(roof.height)} tall.")
+    return f"{text}. {numbers} {roof.why}"
 
 
 def frontage_about(street: str, zone_label: str, required: float | None,

@@ -128,6 +128,27 @@ def test_tall_home_row_says_height_drives_the_yard():
     assert row.status == FAILS and row.detail == "a home this tall needs" and row.required > 11
 
 
+def test_yard_row_says_which_height_sized_it():
+    lot = box(0, 0, 80, 120)
+    home = box(20, 35, 60, 93)
+    rear = rows(check(lot, home, "R-8", neighbors=between_neighbors(lot),
+                      height=30, stories=3)[1])["yard:rear"]
+    assert "setback ratio of 1:1" in rear.explanation
+    assert "treated as a flat roof" in rear.explanation
+    rear = rows(check(lot, home, "R-8", neighbors=between_neighbors(lot),
+                      height=30, stories=2)[1])["yard:rear"]
+    assert "roof peak about 30 ft" in rear.explanation
+    assert "about 26 ft tall" in rear.explanation and "gable or hip" in rear.explanation
+
+
+def test_yard_row_set_by_the_minimum_says_nothing_about_height():
+    # An 8 ft shed-like home measures under R-8's 8 ft minimum rear yard.
+    lot = box(0, 0, 80, 120)
+    rear = rows(check(lot, box(20, 35, 60, 75), "R-8", neighbors=between_neighbors(lot),
+                      height=8)[1])["yard:rear"]
+    assert rear.status == PASSES and rear.required == 8 and not rear.explanation
+
+
 def test_shared_wall_side_is_not_required():
     r = yard_rows("shared walls")
     for side in ("yard:left", "yard:right"):

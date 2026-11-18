@@ -42,7 +42,11 @@ CG, CD, CDX, OC, OCM, OCH, W-1, CRMU, KR) and in planned districts:
 
 - **Lot size**, **lot width** and **street frontage**
 - **Side and rear yards**, both the fixed minimum and the deeper yard taller
-  buildings need
+  buildings need. The deeper yard is judged for each part of a home (a
+  low wing, a taller main block) at that part's own height and distance
+  from the lot line, with each part's height measured the same way as in
+  the height check below: a flat roof at its top, a gable or hip roof
+  halfway up.
 - **Floor space** compared with lot size. In the KR and OCH zones the limit
   is looser within 1,000 ft of a Metro station.
 - **Height**, measured as the ordinance does: to the top of a flat roof, but
@@ -222,7 +226,13 @@ Other details that matter:
   R-12, R-8, R-5 and R-2-5, and for houses and two-unit houses in RA and RB
   outside the historic districts, dormers wider in total than 30% of the
   roof move the measurement up to halfway up the dormers, so a house with
-  wide dormers may be taller than the map says.
+  wide dormers may be taller than the map says. On a flat roof the 3D layer
+  can't tell a parapet (a low wall around the roof's edge) from the roof
+  itself. The ordinance leaves out a parapet of 3 ft or less but counts a
+  taller one; the map counts the top of whatever the 3D layer shows, so a
+  flat-roofed building with a low parapet may be up to 3 ft shorter than
+  the map says. These guesses feed the yard check as well as the height
+  check.
 - When one owner holds both halves of a twin, each half on its own parcel,
   and the city's outline pokes a little over the line between them, the two
   parcels are joined and judged as one lot with a two-unit house on it. In
