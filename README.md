@@ -137,7 +137,8 @@ Other details that matter:
   lot line is assumed to be a mapping error and its yards are skipped.
 - Front yards are mostly not checked. In most zones the rule depends on the
   neighbors' front yards, which an existing home meets almost by definition.
-  RC, RCX, RD, W-1 and KR require no front yard at all, though the extra
+  RC, RCX, RD and KR require no front yard at all, nor does W-1 for
+  apartment buildings, though the extra
   street setbacks along Duke Street, King Street and four other streets
   (section 7-1006) aren't checked yet.
 - Parking rules are not checked.

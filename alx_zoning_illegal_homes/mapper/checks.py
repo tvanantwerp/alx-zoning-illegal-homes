@@ -517,7 +517,7 @@ def _check_yards(facts, findings, width):
 def _front_row(facts, record, gap):
     """Judge the front yard, where the zone sets a fixed one."""
     rules = facts.rules
-    if not rules.front_yard_required:
+    if facts.home_type in rules.no_front_yard_for:
         return _yard_row(facts, "front", NOT_REQUIRED, gap,
                          explanation=no_front_yard_explanation(rules))
     if not rules.front_yard:

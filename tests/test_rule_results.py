@@ -412,7 +412,7 @@ def test_width_measured_at_the_street_is_drawn_along_the_front_line():
 
 
 @pytest.mark.parametrize("zone, home_type", [
-    ("RC", "townhouse"), ("RCX", "townhouse"), ("RD", "multi"), ("W-1", "single"),
+    ("RC", "townhouse"), ("RCX", "townhouse"), ("RD", "multi"), ("W-1", "multi"),
     ("KR", "multi")])
 def test_front_yard_not_required_where_the_zone_asks_for_none(zone, home_type):
     lot = box(0, 0, 80, 120)
@@ -427,3 +427,9 @@ def test_front_yard_not_required_where_the_zone_asks_for_none(zone, home_type):
 def test_cdx_houses_get_the_historic_floor_space_limit():
     assert ZONES["CDX"].floor_area_ratio_for("townhouse", historic=True) == 1.50
     assert ZONES["CDX"].floor_area_ratio_for("townhouse", historic=False) == 1.25
+
+
+def test_w1_houses_still_have_a_front_yard_rule():
+    lot = box(0, 0, 80, 120)
+    _, findings = check(lot, box(20, 35, 60, 75), "W-1", neighbors=between_neighbors(lot))
+    assert rows(findings)["yard:front"].status == NOT_CHECKED

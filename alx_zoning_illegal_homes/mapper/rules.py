@@ -14,6 +14,10 @@ Home types used throughout:
 from dataclasses import dataclass, field, replace
 
 
+ALL_TYPES = frozenset({"single", "semi", "townhouse", "multi"})
+HOUSE_LIKE = ("single", "semi", "townhouse")
+
+
 @dataclass(frozen=True)
 class Yard:
     """A required yard: a fixed minimum plus a share of the building height.
@@ -57,9 +61,9 @@ class ZoneRules:
     rear_yard: Yard | dict | None = None
     # Fixed front yard. None where the rule depends on neighboring homes.
     front_yard: float | None = None
-    # False in zones that ask for no front yard at all, apart from the extra
+    # Home types the zone asks no front yard of at all, apart from the extra
     # setbacks along a few named streets (section 7-1006).
-    front_yard_required: bool = True
+    no_front_yard_for: frozenset = frozenset()
     # Zones where side yards depend only on lot width (RM, historic RB).
     side_yards_by_lot_width: bool = False
     # Lots narrower than this need no side yards.
@@ -194,7 +198,7 @@ ZONES = {
     "RCX": ZoneRules(
         name="RCX",
         allowed=frozenset({"townhouse", "multi"}),
-        front_yard_required=False,
+        no_front_yard_for=ALL_TYPES,
         lot_area={"townhouse": 1600},
         lot_width={"multi": 50, "townhouse": 18},
         end_lot_width={"townhouse": 26},
@@ -210,7 +214,7 @@ ZONES = {
     "RC": ZoneRules(
         name="RC",
         allowed=frozenset({"townhouse", "multi"}),
-        front_yard_required=False,
+        no_front_yard_for=ALL_TYPES,
         lot_area={"townhouse": 1600},
         lot_width={"multi": 50, "townhouse": 18},
         end_lot_width={"townhouse": 26},
@@ -226,7 +230,7 @@ ZONES = {
     "RD": ZoneRules(
         name="RD",
         allowed=frozenset({"multi"}),
-        front_yard_required=False,
+        no_front_yard_for=ALL_TYPES,
         lot_area={"multi": 43560},
         frontage={"multi": 100},
         side_yard={"multi": Yard(16, 1 / 2)},
@@ -277,10 +281,6 @@ ZONES = {
         max_coverage=0.30,
     ),
 }
-
-ALL_TYPES = frozenset({"single", "semi", "townhouse", "multi"})
-HOUSE_LIKE = ("single", "semi", "townhouse")
-
 
 def _commercial(name, townhouse_area, far, height, historic_far=False,
                 **overrides):
@@ -367,7 +367,9 @@ ZONES |= {
     "W-1": ZoneRules(
         name="W-1",
         allowed=ALL_TYPES,
-        front_yard_required=False,
+        # Section 5-506(A) asks no front yard of any building, but 5-512
+        # gives houses and townhouses one set by the neighboring homes.
+        no_front_yard_for=frozenset({"multi"}),
         lot_area={"townhouse": 1452},
         lot_width={"townhouse": 18, "multi": 50},
         end_lot_width={"townhouse": 26},
@@ -408,7 +410,7 @@ ZONES |= {
     ),
     # King Street retail zone: no lot or yard rules for homes. Its floor
     # area limit depends on the block, so it is not checked.
-    "KR": ZoneRules(name="KR", allowed=ALL_TYPES, front_yard_required=False),
+    "KR": ZoneRules(name="KR", allowed=ALL_TYPES, no_front_yard_for=ALL_TYPES),
     # Industrial and utility zones do not allow homes at all.
     "I": ZoneRules(name="I (industrial)", allowed=frozenset()),
     "UT": ZoneRules(name="UT (utility)", allowed=frozenset()),
