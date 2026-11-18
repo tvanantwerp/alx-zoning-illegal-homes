@@ -13,9 +13,10 @@ from .places import near_a_station, station_points
 from .checks import Home, LotFacts, check_lot
 from .lot_lines import MAX_STREET_DISTANCE, classify
 from .rule_results import under_special_approval
-from .rules import (HOME_TYPE_NAMES, PLANNED_DISTRICTS, king_street_retail_rules,
+from .rules import (HOME_TYPE_NAMES, PLANNED_DISTRICTS, braddock_gateway_fallback,
+                    duke_street_floor_area, king_street_retail_rules,
                     normalize_zone, planned_district_rules, potomac_yard_zone,
-                    rules_for)
+                    route_1_properties_fallback, rules_for)
 
 # A building counts as sitting on a second lot when this much of it does.
 STRADDLE_SHARE = 0.15
@@ -276,6 +277,34 @@ def _king_street_divide(streets):
     return is_east
 
 
+def _street(streets, name):
+    """One street's centerline, all its segments together."""
+    return unary_union(streets.geometry[streets["name"] == name].values)
+
+
+def _district_fallback(label, lot, point, places):
+    """The fallback zone and changes for planned districts where they depend on location.
+
+    Returns (zone, changes), where zone None keeps the district's usual
+    fallback zone, or "outside" for a Potomac Yard lot that lies elsewhere.
+    """
+    if label == "CDD#10":
+        return _potomac_yard_zone(point, places["lon_lat"], places["route_1"]), {}
+    if label == "CDD#1":
+        return None, duke_street_floor_area(near_a_station(
+            lot.geometry, places["stations"], ["King Street-Old Town"]))
+    if label == "CDD#7":
+        on_reed = str(lot["address_street"]).strip().upper() == "REED"
+        commonwealth = places["commonwealth"]
+        return route_1_properties_fallback(
+            on_reed, point.distance(commonwealth) if not commonwealth.is_empty else None)
+    if label == "CDD#15":
+        corner = places["first_and_fayette"]
+        return braddock_gateway_fallback(
+            point.distance(corner) if not corner.is_empty else None)
+    return None, {}
+
+
 def _project_for(point, projects, project_tree):
     """Name the city development case whose outline contains a point.
 
@@ -384,9 +413,16 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
     lot_points = lots.geometry.representative_point()
     in_historic = lot_points.within(historic)
     lot_lon_lat = lot_points.to_crs("EPSG:4326")
-    route_1 = unary_union(streets.geometry[streets["name"] == "RICHMOND"].values)
+    route_1 = _street(streets, "RICHMOND")
     kr_is_east = _king_street_divide(streets)
     stations = station_points()
+    places = {
+        "route_1": route_1,
+        "stations": stations,
+        "commonwealth": _street(streets, "COMMONWEALTH"),
+        "first_and_fayette": _street(streets, "FIRST").intersection(
+            _street(streets, "FAYETTE")),
+    }
     projects = loader.load_development_projects()
     project_tree = shapely.STRtree(projects.geometry.values)
 
@@ -426,11 +462,12 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
                     residential_only=on_lot["BUSE"].eq("Residential").fillna(False).all(),
                     near_station=near_a_station(lot.geometry, stations))
         else:
-            sub_zone = None
-            if isinstance(label, str) and label.strip().upper() == "CDD#10":
-                sub_zone = _potomac_yard_zone(
-                    lot_points.loc[lot_id], lot_lon_lat.loc[lot_id], route_1)
-            planned = (planned_district_rules(label, is_historic, sub_zone)
+            sub_zone, changes = None, {}
+            if isinstance(label, str):
+                places["lon_lat"] = lot_lon_lat.loc[lot_id]
+                sub_zone, changes = _district_fallback(
+                    label.strip().upper(), lot, lot_points.loc[lot_id], places)
+            planned = (planned_district_rules(label, is_historic, sub_zone, changes)
                        if sub_zone != "outside" else None)
             if planned is None:
                 continue

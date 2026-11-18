@@ -263,3 +263,43 @@ def test_crmu_townhouse_has_yards_but_no_lot_size():
     rows = {row.rule: row for row in findings.results}
     assert rows["lot_area"].status == "no_rule"
     assert rows["yard:rear"].status == "fails"
+
+
+def test_duke_street_fallback_floor_space_depends_on_the_metro():
+    from alx_zoning_illegal_homes.mapper.rules import (duke_street_floor_area,
+                                                       planned_district_rules)
+    _, _, near = planned_district_rules("CDD#1", changes=duke_street_floor_area(True))
+    _, _, far = planned_district_rules("CDD#1", changes=duke_street_floor_area(False))
+    assert near.max_floor_area_ratio == 1.25 and far.max_floor_area_ratio == 1.0
+    assert far.max_height["townhouse"] == 77
+
+
+def test_route_1_properties_fallback_by_street():
+    from alx_zoning_illegal_homes.mapper.rules import (planned_district_rules,
+                                                       route_1_properties_fallback)
+    assert route_1_properties_fallback(True, 50)[0] == "RB"
+    zone, changes = route_1_properties_fallback(False, 80)
+    _, _, rules = planned_district_rules("CDD#7", zone=zone, changes=changes)
+    assert rules.name == "RC" and rules.max_height["multi"] == 45
+    assert route_1_properties_fallback(False, 400) == ("OC", {})
+
+
+def test_triangle_sites_fallback_allows_no_houses():
+    from alx_zoning_illegal_homes.mapper.rules import planned_district_rules
+    _, _, rules = planned_district_rules("CDD#13")
+    assert rules.allowed == frozenset({"multi"})
+    lot = box(0, 0, 80, 120)
+    kinds, findings = check(lot, box(20, 35, 60, 75), "CL", home_type="townhouse",
+                            rules=rules)
+    assert "home_type" in kinds
+    assert "Triangle Sites" in findings.reasons[0].text
+
+
+def test_braddock_gateway_fallback_near_first_and_fayette():
+    from alx_zoning_illegal_homes.mapper.rules import (braddock_gateway_fallback,
+                                                       planned_district_rules)
+    zone, changes = braddock_gateway_fallback(100)
+    _, _, rules = planned_district_rules("CDD#15", zone=zone, changes=changes)
+    assert rules.name == "CRMU-H" and rules.max_floor_area_ratio == 1.25
+    _, _, rules = planned_district_rules("CDD#15", changes=braddock_gateway_fallback(600)[1])
+    assert rules.name == "OCM(50)" and rules.max_floor_area_ratio == 1.50

@@ -84,9 +84,21 @@ with its case name and number (for example "Cameron Station Phase VI
 (DSP2003-00018)") so the actual approval can be looked up. That layer mostly
 covers cases from about 2002 on.
 
-In Potomac Yard the ordinary zone depends on where the lot sits (near Route
-1, east of the Metro tracks, or elsewhere, where it is industrial and allows
-no homes); those boundaries are approximated.
+In a few districts the ordinary zone depends on where the lot sits, and
+those boundaries are approximated:
+
+- Potomac Yard: near Route 1, east of the Metro tracks, or elsewhere, where
+  it is industrial and allows no homes. The ordinance also lets the
+  "Piggyback Yard" and Slaters Lane parts use CRMU-L rules, but those areas
+  are drawn only on a 1995 rezoning plat the map doesn't have.
+- Route 1 Properties: RB along Reed Avenue, RC within 100 ft of Commonwealth
+  Avenue, OC on the rest.
+- Duke Street / Carlyle: a looser floor space limit within 1,000 ft of the
+  King Street Metro station.
+- Braddock Gateway: CRMU-H on one acre at First and Fayette Streets, OCM(50)
+  on the rest.
+
+Metro station locations aren't in the city's data, so `places.py` lists them.
 
 ### Mixed-use zones
 

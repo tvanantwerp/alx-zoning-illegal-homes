@@ -504,6 +504,8 @@ class PlannedDistrict:
     fallback_zone: str | None
     fallback_floor_area_ratio: float | None = None
     fallback_height: float | None = None
+    # Home types the fallback allows, where narrower than the zone's own.
+    fallback_allowed: frozenset | None = None
     plan_height: float | None = None
     plan_allowed: frozenset = ALL_TYPES
     # Cap on homes across the whole district, if the ordinance sets one.
@@ -514,6 +516,8 @@ class PlannedDistrict:
 
 
 PLANNED_DISTRICTS = {
+    # The fallback floor area ratio is 1.25 within 1,000 ft of the King
+    # Street Metro kiosk and 1.0 elsewhere; see duke_street_floor_area().
     "CDD#1": PlannedDistrict(
         "Duke Street / Carlyle", "OC", 1.25, 77, plan_height=200,
         plan_summary="The approval allows a mix of uses including homes, "
@@ -536,18 +540,27 @@ PLANNED_DISTRICTS = {
         "Stone Tract", "RA", plan_height=150, homes_per_acre_cap=54.45,
         plan_summary="The approval allows up to 54.45 homes per acre "
         "across the district, with buildings up to 150 ft."),
-    # RB and RC apply on two edges of this district; OC on the rest.
+    # RB along Reed Avenue, RC along Commonwealth Avenue, OC on the rest;
+    # see route_1_properties_fallback().
     "CDD#7": PlannedDistrict(
         "Route 1 Properties", "OC", plan_height=45,
         plan_summary="The approval allows homes among other uses, with "
         "buildings up to 45 ft."),
+    "CDD#8": PlannedDistrict(
+        "Trade Center", "CG",
+        plan_summary="The approval allows a mix of shops and homes with "
+        "limited offices; the ordinance sets no district-wide height or home "
+        "count."),
     "CDD#9": PlannedDistrict(
         "Cameron Station", "R-8", plan_height=120, home_cap=2510,
         plan_summary="The approval allows up to 2,510 homes on 97 acres. "
         "Heights run from 45 ft at the edges to 120 ft for a few buildings "
         "on the south side; this map only tests the 120 ft ceiling."),
     # Potomac Yard's fallback depends on where in the district the lot is;
-    # see potomac_yard_zone().
+    # see potomac_yard_zone(). The ordinance also lets the "Piggyback Yard"
+    # and Slaters Lane parts of the yard use CRMU-L rules, but those areas
+    # are drawn only on a 1995 rezoning plat (REZ #95-0004) that isn't in
+    # the map's data, so they are judged like the rest of the yard.
     "CDD#10": PlannedDistrict(
         "Potomac Yard / Potomac Greens", None, home_cap=2800,
         plan_summary="The approval allows up to 2,800 homes, mostly "
@@ -560,11 +573,14 @@ PLANNED_DISTRICTS = {
         "plan."),
     "CDD#13": PlannedDistrict(
         "Triangle Sites", "CL", plan_height=45,
+        fallback_allowed=frozenset({"multi"}),
         plan_allowed=frozenset({"multi"}),
         plan_summary="The approval allows apartments over shops, up to "
         "45 ft; houses and townhouses are not allowed."),
+    # OCM(50) on most of the site, CRMU-H on one acre at First and Fayette
+    # Streets; see braddock_gateway_fallback().
     "CDD#15": PlannedDistrict(
-        "Braddock Gateway", "OCM(50)", 1.50,
+        "Braddock Gateway", "OCM(50)", 1.50, 50,
         plan_summary="Floor space, height and home counts are set building "
         "by building in the district's approved concept plan."),
     "CDD#16": PlannedDistrict(
@@ -610,13 +626,57 @@ def potomac_yard_zone(longitude, latitude, feet_east_of_route_1) -> str:
     return "I"
 
 
-def planned_district_rules(label, in_historic_district=False, zone=None):
+def duke_street_floor_area(near_king_street_metro: bool) -> dict:
+    """District 1's fallback floor area ratio, by distance to the King Street Metro."""
+    return {"max_floor_area_ratio": 1.25 if near_king_street_metro else 1.0}
+
+
+# How deep the RC strip along Commonwealth Avenue runs in district 7, measured
+# here from the street's centerline, so half a typical street is added.
+COMMONWEALTH_STRIP_DEPTH = 100.0 + 30.0
+
+
+def route_1_properties_fallback(on_reed_avenue: bool,
+                                feet_from_commonwealth: float | None) -> tuple:
+    """District 7's fallback zone and changes to it, from where the lot sits.
+
+    RB zone rules apply along Reed Avenue, RC rules capped at 45 ft along
+    Commonwealth Avenue to a depth of 100 feet, and OC rules on the rest.
+    """
+    if on_reed_avenue:
+        return "RB", {}
+    if (feet_from_commonwealth is not None
+            and feet_from_commonwealth <= COMMONWEALTH_STRIP_DEPTH):
+        return "RC", {"max_height": {kind: 45 for kind in ALL_TYPES}}
+    return "OC", {}
+
+
+# Half the width of a one-acre square, the CRMU-H part of district 15.
+FIRST_AND_FAYETTE_RADIUS = 250.0
+
+
+def braddock_gateway_fallback(feet_from_first_and_fayette: float | None) -> tuple:
+    """District 15's fallback zone and changes, from distance to First and Fayette.
+
+    CRMU-H rules apply to the one-acre part of the site at First and Fayette
+    Streets, with a floor area ratio of 1.25 and a height of 77 ft. OCM(50)
+    applies to the rest.
+    """
+    if (feet_from_first_and_fayette is not None
+            and feet_from_first_and_fayette <= FIRST_AND_FAYETTE_RADIUS):
+        return "CRMU/H", {"max_floor_area_ratio": 1.25,
+                          "max_height": {kind: 77 for kind in ALL_TYPES}}
+    return None, {}
+
+
+def planned_district_rules(label, in_historic_district=False, zone=None, changes=None):
     """Look up both rule sets for a lot in a planned district.
 
     Returns (district, plan rules, fallback rules), or None for a district
     not in the table. Plan rules are what the district's special approval
     allows. Fallback rules are the ordinary zone that applies without it;
-    zone overrides the table's fallback where that depends on location.
+    zone overrides the table's fallback where that depends on location, and
+    changes (field name to value) override the table's changes to it.
     """
     key = label.strip().upper() if isinstance(label, str) else None
     district = PLANNED_DISTRICTS.get(key)
@@ -629,14 +689,20 @@ def planned_district_rules(label, in_historic_district=False, zone=None):
         max_height={kind: district.plan_height for kind in ALL_TYPES}
         if district.plan_height else {},
     )
+    from_table = {}
+    if zone is None or zone == district.fallback_zone:
+        if district.fallback_floor_area_ratio:
+            from_table["max_floor_area_ratio"] = district.fallback_floor_area_ratio
+        if district.fallback_height:
+            from_table["max_height"] = {
+                kind: district.fallback_height for kind in ALL_TYPES}
     zone = zone or district.fallback_zone
+    if district.fallback_allowed is not None:
+        from_table["allowed"] = district.fallback_allowed
+        from_table["described_as"] = f"{zone} zone rules for {district.name}"
+
     fallback = rules_for(zone, in_historic_district)
-    changes = {}
-    if district.fallback_floor_area_ratio:
-        changes["max_floor_area_ratio"] = district.fallback_floor_area_ratio
-    if district.fallback_height:
-        changes["max_height"] = {
-            kind: district.fallback_height for kind in ALL_TYPES}
+    changes = from_table | (changes or {})
     return district, plan, replace(fallback, **changes) if changes else fallback
 
 
