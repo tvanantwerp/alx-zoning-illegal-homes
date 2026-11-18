@@ -41,8 +41,7 @@ def test_townhouse_in_house_zone_fails_home_type():
 
 def test_zone_without_lot_size_rule_says_no_rule():
     lot = box(0, 0, 80, 120)
-    zone = next(z for z, rules in ZONES.items() if "single" in rules.allowed and not rules.lot_area.get("single"))
-    _, findings = check(lot, box(20, 35, 60, 75), zone)
+    _, findings = check(lot, box(20, 35, 60, 75), "CRMU/L", home_type="multi")
     row = rows(findings)["lot_area"]
     assert row.status == NO_RULE and "minimum lot size" in row.explanation
 

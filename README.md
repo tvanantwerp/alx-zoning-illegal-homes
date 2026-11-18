@@ -90,11 +90,14 @@ no homes); those boundaries are approximated.
 
 ### Mixed-use zones
 
-The mixed-use zones (CRMU-L, -M, -H, -X) and the King Street retail zone (KR)
-are judged by their limits without a special permit. The ordinance sets few
-of those: mainly floor space and open space. Many buildings there were
-approved with individual special permits that this project does not know
-about, so findings in these zones are the least reliable.
+The mixed-use zones (CRMU-L, -M, -H, -X), the waterfront zone (W-1) and the
+King Street retail zone (KR) are judged by their limits without a special
+permit. For apartment buildings those are mainly floor space and open space.
+Houses, twins and townhouses get more: lot size, street frontage, and side
+and rear yards, much as in the commercial zones. KR allows homes only as
+apartments over or behind shops. Many buildings in these zones were approved
+with individual special permits that this project does not know about, so
+findings here are the least reliable.
 
 ## How lots are measured
 

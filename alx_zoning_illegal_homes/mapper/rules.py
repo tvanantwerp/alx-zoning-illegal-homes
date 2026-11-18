@@ -371,20 +371,22 @@ ZONES |= {
         min_open_space=0.35,
         open_space_applies_to=frozenset({"multi"}),
     ),
-    # Waterfront mixed-use zone. Its height limit was not captured.
+    # Waterfront mixed-use zone (sections 5-505, 5-506 and 5-512). Its height
+    # comes from the height district map, which isn't checked yet.
     "W-1": ZoneRules(
         name="W-1",
         allowed=ALL_TYPES,
         # Section 5-506(A) asks no front yard of any building, but 5-512
         # gives houses and townhouses one set by the neighboring homes.
         no_front_yard_for=frozenset({"multi"}),
-        lot_area={"townhouse": 1452},
-        lot_width={"townhouse": 18, "multi": 50},
+        lot_area={"single": 5000, "semi": 2500, "townhouse": 1452},
+        lot_width={"single": 50, "semi": 25, "townhouse": 18, "multi": 50},
         end_lot_width={"townhouse": 26},
-        frontage={"townhouse": 18, "multi": 50},
-        side_yard={"townhouse": Yard(8), "multi": Yard(16, 1 / 2)},
-        rear_yard={"single": Yard(8), "semi": Yard(8), "townhouse": Yard(8),
-                   "multi": Yard(16, 1 / 2)},
+        frontage={"single": 50, "semi": 25, "townhouse": 18, "multi": 50},
+        side_yard={"single": Yard(8, 1 / 3), "semi": Yard(8, 1 / 3),
+                   "townhouse": Yard(8), "multi": Yard(16, 1 / 2)},
+        rear_yard={"single": Yard(8, 1.0), "semi": Yard(8, 1.0),
+                   "townhouse": Yard(8, 1.0), "multi": Yard(16, 1 / 2)},
         no_side_yard_below_width=25,
         max_floor_area_ratio=1.0,
         historic_floor_area_ratio={kind: 1.50 for kind in HOUSE_LIKE},
@@ -392,8 +394,23 @@ ZONES |= {
     ),
 }
 
+# Houses and two-unit houses in the mixed-use zones (sections 5-111, 5-211,
+# 5-311 and 5-404(B)): lot size, frontage, and side and rear yards like a
+# commercial zone's, with a rear yard that grows with height.
+_MIXED_USE_HOUSES = {
+    "lot_area": {"single": 5000, "semi": 2500},
+    "lot_width": {"single": 50, "semi": 25},
+    "frontage": {"single": 50, "semi": 25},
+    "width_measured_at": 20,
+    "side_yard": {"single": Yard(8, 1 / 3), "semi": Yard(8, 1 / 3)},
+    "rear_yard": {"single": Yard(8, 1.0), "semi": Yard(8, 1.0)},
+    "no_side_yard_below_width": 25,
+}
+
 # The mixed-use zones. Bigger projects there need a special permit; these
-# are the limits that apply without one.
+# are the limits that apply without one. Townhouses get the house yard
+# rules but no lot size or frontage rule. Apartments get only floor space
+# and open space.
 for _name in ("CRMU/L", "CRMU/M", "CRMU/H"):
     ZONES[_name] = ZoneRules(
         name=_name.replace("/", "-"),
@@ -401,6 +418,10 @@ for _name in ("CRMU/L", "CRMU/M", "CRMU/H"):
         max_floor_area_ratio=1.0,
         historic_floor_area_ratio={kind: 1.50 for kind in HOUSE_LIKE},
         min_open_space=0.35,
+        **(_MIXED_USE_HOUSES | {
+            "side_yard": {kind: Yard(8, 1 / 3) for kind in HOUSE_LIKE},
+            "rear_yard": {kind: Yard(8, 1.0) for kind in HOUSE_LIKE},
+        }),
     )
 
 ZONES |= {
@@ -408,13 +429,16 @@ ZONES |= {
     "CRMU/X": ZoneRules(
         name="CRMU-X",
         allowed=frozenset(HOUSE_LIKE),
-        lot_area={"townhouse": 1452},
-        lot_width={"townhouse": 18},
-        frontage={"townhouse": 18},
-        side_yard={"townhouse": Yard(8, 1 / 3)},
-        rear_yard={"townhouse": Yard(16, 1 / 2)},
-        no_side_yard_below_width=25,
         max_floor_area_ratio=1.50,
+        **(_MIXED_USE_HOUSES | {
+            "lot_area": _MIXED_USE_HOUSES["lot_area"] | {"townhouse": 1452},
+            "lot_width": _MIXED_USE_HOUSES["lot_width"] | {"townhouse": 18},
+            "frontage": _MIXED_USE_HOUSES["frontage"] | {"townhouse": 18},
+            "side_yard": _MIXED_USE_HOUSES["side_yard"]
+            | {"townhouse": Yard(8, 1 / 3)},
+            "rear_yard": _MIXED_USE_HOUSES["rear_yard"]
+            | {"townhouse": Yard(16, 1 / 2)},
+        }),
     ),
     # King Street retail zone (section 6-700). Homes are allowed only as
     # apartments above or behind the shops, with no lot or yard rules. These

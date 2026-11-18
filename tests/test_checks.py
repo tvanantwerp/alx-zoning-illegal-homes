@@ -213,3 +213,29 @@ def test_ra_townhouse_frontage_still_follows_width():
                             neighbors=between_neighbors(lot))
     rows = {row.rule: row for row in findings.results}
     assert rows["frontage"].required == 18 and rows["frontage"].status == "fails"
+
+
+@pytest.mark.parametrize("zone", ["CRMU/L", "CRMU/M", "CRMU/H", "CRMU/X", "W-1"])
+def test_mixed_use_house_on_a_small_lot_is_flagged(zone):
+    lot = box(0, 0, 40, 100)  # 4,000 sq ft, 40 ft wide: under 5,000 and 50
+    kinds, _ = check(lot, box(10, 35, 30, 65), zone, neighbors=between_neighbors(lot))
+    assert {"lot_size", "lot_width"} <= kinds
+
+
+@pytest.mark.parametrize("zone", ["CRMU/L", "CRMU/X", "W-1"])
+def test_mixed_use_house_rear_yard_grows_with_height(zone):
+    lot = box(0, 0, 80, 120)
+    home = box(20, 35, 60, 100)   # 20 ft from the rear line
+    assert "yards" not in check(lot, home, zone, neighbors=between_neighbors(lot),
+                                height=20)[0]
+    kinds, findings = check(lot, home, zone, neighbors=between_neighbors(lot), height=34)
+    assert "yards" in kinds and "Rear" in findings.reasons[0].text
+
+
+def test_crmu_townhouse_has_yards_but_no_lot_size():
+    lot = box(0, 0, 20, 100)
+    kinds, findings = check(lot, box(0, 20, 20, 95), "CRMU/L", home_type="townhouse",
+                            neighbors=between_neighbors(lot))
+    rows = {row.rule: row for row in findings.results}
+    assert rows["lot_area"].status == "no_rule"
+    assert rows["yard:rear"].status == "fails"
