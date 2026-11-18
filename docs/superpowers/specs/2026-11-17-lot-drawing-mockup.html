@@ -1,0 +1,1139 @@
+<title>Lot Drawing Mockups</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+  /* Layout: a sticky lot picker, then one row per idea: a short pitch beside a mock of the pop-up window. */
+  :root {
+    --paper: #f7f3ec;
+    --card: #fffdf9;
+    --ink: #1f1b16;
+    --muted: #6b6257;
+    --rule: #ddd4c6;
+    --accent: #bf3a1e;
+    --accent-soft: #f5dcd2;
+    --ok: #3f6f63;
+    --ok-soft: #dde9e3;
+    --lot: #fbf8f2;
+    --building: #d6ccbc;
+    --shed: #e9e2d6;
+    --street: #e8e1d5;
+    --serif: "Iowan Old Style", Palatino, "Palatino Linotype", Georgia, serif;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #171512; --card: #201d19; --ink: #efe8dd; --muted: #a59b8e; --rule: #3a342c;
+      --accent: #ee6a4c; --accent-soft: #4a241b; --ok: #86bfae; --ok-soft: #1f3530;
+      --lot: #1d1a17; --building: #51483d; --shed: #37312a; --street: #2a2621; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #171512; --card: #201d19; --ink: #efe8dd; --muted: #a59b8e; --rule: #3a342c;
+    --accent: #ee6a4c; --accent-soft: #4a241b; --ok: #86bfae; --ok-soft: #1f3530;
+    --lot: #1d1a17; --building: #51483d; --shed: #37312a; --street: #2a2621; color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--paper); color: var(--ink);
+    font: 15px/1.5 var(--sans);
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 0 64px;
+  }
+  body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--paper); }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+  header.intro { padding-block: 36px 8px; display: grid; gap: 10px; max-width: 760px; }
+  h1 { font: 700 34px/1.1 var(--serif); margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
+  .lede { color: var(--muted); margin: 0; max-width: 65ch; }
+  .picker {
+    position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+    background: var(--paper); border-bottom: 1px solid var(--rule);
+    padding-block: 12px; margin-bottom: 8px;
+    display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+  }
+  .picker .label { font-size: 11px; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); margin-right: 4px; }
+  .chip {
+    font: inherit; font-size: 13px; color: var(--ink); background: var(--card);
+    border: 1px solid var(--rule); border-radius: 999px; padding: 5px 12px; cursor: pointer;
+    display: inline-flex; gap: 7px; align-items: center;
+  }
+  .chip .n { font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 700; }
+  .chip[aria-pressed="true"] { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+  .chip:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  section.idea {
+    display: grid; grid-template-columns: minmax(0, 300px) minmax(0, 1fr); gap: 32px;
+    padding-block: 40px; border-bottom: 1px solid var(--rule);
+  }
+  .about { display: grid; gap: 12px; align-content: start; }
+  .about .letter { font: 700 13px/1 var(--mono); color: var(--accent); letter-spacing: .08em; }
+  .about h2 { font: 700 26px/1.15 var(--serif); margin: 0; text-wrap: balance; }
+  .about p { margin: 0; }
+  .about dl { margin: 0; display: grid; gap: 8px; font-size: 14px; }
+  .about dt { font-size: 11px; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); }
+  .about dd { margin: 0; }
+
+  .window {
+    background: var(--card); border: 1px solid var(--rule); border-radius: 12px;
+    box-shadow: 0 18px 50px -24px rgba(31, 27, 22, .45); min-width: 0; overflow: hidden;
+  }
+  .win-head { display: flex; justify-content: space-between; gap: 12px; padding: 16px 18px 12px; border-bottom: 1px solid var(--rule); }
+  .win-title { font: 700 21px/1.15 var(--serif); }
+  .win-meta { color: var(--muted); font-size: 13px; margin-top: 2px; }
+  .win-close { font: 400 22px/1 var(--sans); color: var(--muted); background: none; border: 0; cursor: pointer; padding: 0 2px; align-self: start; }
+  .win-body { padding: 14px 18px 18px; display: grid; gap: 14px; }
+  .win-foot { color: var(--muted); font-size: 12px; padding: 0 18px 14px; }
+  .verdict { color: var(--accent); font-weight: 650; }
+
+  svg.plan { width: 100%; height: auto; display: block; max-height: 560px; }
+  svg text { font-family: var(--sans); }
+  .plat svg text { font-family: var(--mono); }
+  .t-strong { font-weight: 700; }
+  .halo { paint-order: stroke; stroke: var(--card); stroke-linejoin: round; }
+  .mk { transition: opacity .15s; }
+  .dimmed .mk:not(.hl) { opacity: .18; }
+  .dimmed .mk.hl { opacity: 1; }
+
+  .split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 280px); gap: 18px; align-items: start; }
+  ol.issues { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; counter-reset: n; }
+  ol.issues li {
+    display: grid; grid-template-columns: 24px 1fr; gap: 8px; padding: 7px 8px; border-radius: 8px; cursor: default; font-size: 13.5px;
+  }
+  ol.issues li:hover, ol.issues li.hl { background: var(--accent-soft); }
+  .badge {
+    width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: var(--card);
+    font: 700 12px/22px var(--mono); text-align: center;
+  }
+  .inset { border: 1px solid var(--rule); border-radius: 8px; padding: 8px 10px; }
+  .inset-title { font-size: 11px; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); }
+
+  .three { position: relative; height: 460px; border-radius: 8px; overflow: hidden; background: var(--paper); cursor: grab; touch-action: none; }
+  .three:active { cursor: grabbing; }
+  .three canvas { display: block; }
+  .tag {
+    position: absolute; left: 0; top: 0; pointer-events: none; white-space: nowrap;
+    font: 600 12px/1.25 var(--sans); background: var(--card); color: var(--ink);
+    border: 1px solid var(--rule); border-radius: 6px; padding: 3px 7px; transform: translate(-50%, -50%);
+  }
+  .tag.fail { border-color: var(--accent); color: var(--accent); }
+  .tag.street { background: none; border: 0; color: var(--muted); font: 700 11px/1 var(--mono); letter-spacing: .12em; }
+  .tag small { display: block; font-weight: 400; color: var(--muted); }
+  .hint { position: absolute; right: 10px; bottom: 10px; font-size: 12px; color: var(--muted); background: var(--card); border: 1px solid var(--rule); border-radius: 6px; padding: 3px 8px; }
+  .toggles { display: flex; gap: 6px; flex-wrap: wrap; }
+  .toggles .chip { font-size: 12.5px; }
+  .toggles .chip[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+
+  .squares { display: flex; gap: 22px; flex-wrap: wrap; align-items: flex-end; }
+  .sq { display: grid; gap: 6px; justify-items: start; font-size: 12.5px; }
+  .sq .box { border: 1.5px solid var(--ink); background: var(--building); }
+  .sq .box.ghost { border: 1.5px dashed var(--ok); background: var(--ok-soft); }
+  .sq .box.over { border-color: var(--accent); background: var(--accent-soft); }
+  .sq b { font-variant-numeric: tabular-nums; }
+
+  .step-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .step-count { font: 600 12px/1 var(--mono); color: var(--muted); letter-spacing: .06em; }
+  .dots { display: flex; gap: 6px; }
+  .dots span { width: 8px; height: 8px; border-radius: 50%; background: var(--rule); }
+  .dots span.on { background: var(--accent); }
+  .stat { display: grid; grid-template-columns: auto auto; gap: 4px 28px; justify-content: start; align-items: end; }
+  .stat .num { font: 700 48px/1 var(--serif); font-variant-numeric: tabular-nums; }
+  .stat .num.bad { color: var(--accent); }
+  .stat .num.need { color: var(--muted); }
+  .stat .cap { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+  .step-text { font: 500 17px/1.4 var(--serif); margin: 0; max-width: 52ch; }
+  .nav { display: flex; gap: 8px; }
+  .nav button {
+    font: inherit; font-size: 14px; color: var(--ink); background: var(--card); border: 1px solid var(--rule);
+    border-radius: 8px; padding: 7px 14px; cursor: pointer;
+  }
+  .nav button.primary { background: var(--ink); color: var(--card); border-color: var(--ink); }
+  .nav button:disabled { opacity: .4; cursor: default; }
+
+  table.report { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  table.report th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; padding: 4px 6px; border-bottom: 1px solid var(--rule); }
+  table.report td { padding: 7px 6px; border-bottom: 1px solid var(--rule); vertical-align: middle; }
+  table.report tr[data-id] { cursor: default; }
+  table.report tr[data-id]:hover { background: var(--paper); }
+  .pill { font: 700 10.5px/1 var(--mono); letter-spacing: .06em; padding: 4px 6px; border-radius: 4px; white-space: nowrap; }
+  .pill.fail { background: var(--accent-soft); color: var(--accent); }
+  .pill.pass { background: var(--ok-soft); color: var(--ok); }
+  .pill.skip { background: var(--paper); color: var(--muted); }
+  .pill.explain { text-decoration: none; box-shadow: inset 0 -1px 0 var(--muted); }
+  .num { font-variant-numeric: tabular-nums; }
+  .bar { position: relative; height: 8px; background: var(--paper); border-radius: 4px; min-width: 80px; }
+  .bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; background: var(--ok); }
+  .bar i.fail { background: var(--accent); }
+  .bar b { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--ink); }
+  .report-wrap { overflow-x: auto; }
+  .explain { text-decoration: underline dotted var(--muted); text-underline-offset: 3px; cursor: help; }
+  .explain:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+  .tipbox {
+    position: fixed; z-index: 20; max-width: min(340px, calc(100vw - 32px)); pointer-events: none;
+    background: var(--ink); color: var(--card); font-size: 13px; line-height: 1.45;
+    padding: 10px 12px; border-radius: 8px; box-shadow: 0 10px 30px -12px rgba(0, 0, 0, .5);
+  }
+  .combo { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 230px); gap: 18px; align-items: start; }
+  .lot-squares { transition: background .15s; }
+  .lot-squares.hl { background: var(--accent-soft); }
+  .sq-note { margin: 10px 0 0; font-size: 12.5px; color: var(--muted); }
+  section.featured { border-bottom: 2px solid var(--ink); }
+  section.featured .letter { color: var(--ink); }
+
+  @media (max-width: 860px) {
+    section.idea { grid-template-columns: minmax(0, 1fr); gap: 18px; }
+    .split, .combo { grid-template-columns: minmax(0, 1fr); }
+    .three { height: 380px; }
+  }
+  @media (prefers-reduced-motion: reduce) { .mk { transition: none; } }
+</style>
+
+<div class="wrap">
+  <header class="intro">
+    <h1>Six ways to draw a lot's broken rules</h1>
+    <p class="lede">Each mockup is the pop-up you'd see after clicking a lot on the map. Idea F, first, combines the parts picked from the others. All six draw real Alexandria lots from the city's data, using the same measurements the map already makes. Pick a lot to see how each idea copes with different problems.</p>
+  </header>
+  <nav class="picker" id="picker" aria-label="Example lots"><span class="label">Example lot</span></nav>
+
+  <section class="idea featured">
+    <div class="about">
+      <div class="letter">IDEA F · COMBINED</div>
+      <h2>3D model with the full report</h2>
+      <p>The spinning 3D model from idea B leads. The height-limit ceiling only appears when the home is too tall. Below it, every rule the map checks is listed with its result (from idea E), next to the lot drawn to scale against the smallest lot the zone allows (from idea C).</p>
+      <p>Hover a row to pick out that rule's label on the model.</p>
+      <dl>
+        <dt>Good for</dt><dd>A strong first picture, with every number one glance below it.</dd>
+        <dt>Costs</dt><dd>The tallest of the pop-ups, so it needs to scroll on smaller screens. Still adds the 3D library.</dd>
+      </dl>
+    </div>
+    <div class="window" id="win-f"></div>
+  </section>
+
+  <section class="idea plat">
+    <div class="about">
+      <div class="letter">IDEA A</div>
+      <h2>Site plan with numbered callouts</h2>
+      <p>Drawn like a surveyor's plat, with the street along the bottom. Each broken rule gets a numbered red callout on the drawing and a matching line in the list. Hover a line to light up its part of the drawing.</p>
+      <dl>
+        <dt>Good for</dt><dd>Seeing every problem at once, with exact numbers.</dd>
+        <dt>Costs</dt><dd>Busy on lots with five or more problems. Height only appears in a small side view.</dd>
+      </dl>
+    </div>
+    <div class="window" id="win-a"></div>
+  </section>
+
+  <section class="idea">
+    <div class="about">
+      <div class="letter">IDEA B</div>
+      <h2>3D model you can spin</h2>
+      <p>The lot lies flat with the street marked along its front, and each building rises to its real height. A see-through ceiling marks the height limit, and anything poking above it turns red. Yards that are too shallow glow red on the ground. Drag to spin, scroll or pinch to zoom.</p>
+      <dl>
+        <dt>Good for</dt><dd>Height, and a striking first impression.</dd>
+        <dt>Costs</dt><dd>Adds a 3D library (about 600 KB). Exact numbers are harder to read, and dragging can fight with scrolling on phones.</dd>
+      </dl>
+    </div>
+    <div class="window" id="win-b"></div>
+  </section>
+
+  <section class="idea">
+    <div class="about">
+      <div class="letter">IDEA C</div>
+      <h2>What the rules would allow here</h2>
+      <p>Instead of measuring what's wrong, this draws what you could build today: the green area where a home may stand once the required yards are taken out, and, dashed, the smallest lot the zone allows, laid over the real one. Any part of the home outside the green turns red.</p>
+      <dl>
+        <dt>Good for</dt><dd>Making the point fast: the house doesn't fit the rules.</dd>
+        <dt>Costs</dt><dd>Floor space doesn't draw on a plan, so it gets side-by-side squares. The buildable area is a new calculation.</dd>
+      </dl>
+    </div>
+    <div class="window" id="win-c"></div>
+  </section>
+
+  <section class="idea">
+    <div class="about">
+      <div class="letter">IDEA D</div>
+      <h2>One rule at a time</h2>
+      <p>A short walk-through. Each step shows one broken rule: one drawing with only that rule marked, the measured number beside the required one, and a plain sentence. Height steps switch to a side view.</p>
+      <dl>
+        <dt>Good for</dt><dd>Phones, and for sharing. Each step could also be saved as an image.</dd>
+        <dt>Costs</dt><dd>No single overview. Someone has to click through to see everything.</dd>
+      </dl>
+    </div>
+    <div class="window" id="win-d"></div>
+  </section>
+
+  <section class="idea">
+    <div class="about">
+      <div class="letter">IDEA E</div>
+      <h2>Full inspection report</h2>
+      <p>Every rule the map checks, passed or failed, with the measured value against the limit. Passing measurements are drawn too, in green. Hover a row to find it on the drawing.</p>
+      <dl>
+        <dt>Good for</dt><dd>Homeowners checking whether a finding is right.</dd>
+        <dt>Costs</dt><dd>Less dramatic. Passing rules dilute the story.</dd>
+      </dl>
+    </div>
+    <div class="window" id="win-e"></div>
+  </section>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+const LOTS = [{"id":5199,"address":"1704 OAKCREST DR","zone":"R-8","zone_label":"R-8 zone","home_type":"detached house","year":1940,"position":"interior","rotation":222.8,"street":"OAKCREST","reasons":[{"kind":"lot_size","text":"Lot is too small: 4,700 sq ft, but the R-8 zone requires 8,000 sq ft."},{"kind":"lot_width","text":"Lot is too narrow: about 50 ft wide, but the R-8 zone requires 65 ft."},{"kind":"yards","text":"Side yard is too small: about 5.3 ft, but at least 8.0 ft is required."}],"notes":[],"lot":[[[[-24.91,-46.96],[-24.83,47.02],[-23.21,47.01],[-1.51,46.96],[7.71,46.94],[20.92,46.91],[24.93,46.91],[24.87,-5.78],[24.83,-46.96],[16.79,-46.98]]]],"edges":[{"line":[[-24.91,-46.96],[-14.96,-46.96]],"kind":"street","role":"front","street":"OAKCREST","shared_wall":false},{"line":[[-14.96,-46.96],[-5.02,-46.96]],"kind":"street","role":"front","street":"OAKCREST","shared_wall":false},{"line":[[-5.02,-46.96],[4.93,-46.96]],"kind":"street","role":"front","street":"OAKCREST","shared_wall":false},{"line":[[4.93,-46.96],[14.88,-46.96]],"kind":"street","role":"front","street":"OAKCREST","shared_wall":false},{"line":[[14.88,-46.96],[24.83,-46.96]],"kind":"street","role":"front","street":"OAKCREST","shared_wall":false},{"line":[[24.83,-46.96],[24.84,-35.22]],"kind":"shared","role":"right","street":null,"shared_wall":false},{"line":[[24.84,-35.22],[24.85,-23.49]],"kind":"shared","role":"right","street":null,"shared_wall":false},{"line":[[24.85,-23.49],[24.87,-11.76]],"kind":"shared","role":"right","street":null,"shared_wall":false},{"line":[[24.87,-11.76],[24.88,-0.02]],"kind":"shared","role":"right","street":null,"shared_wall":false},{"line":[[24.88,-0.02],[24.89,11.71]],"kind":"shared","role":"right","street":null,"shared_wall":false},{"line":[[24.89,11.71],[24.9,23.44]],"kind":"shared","role":"right","street":null,"shared_wall":false},{"line":[[24.9,23.44],[24.92,35.17]],"kind":"shared","role":"right","street":null,"shared_wall":false},{"line":[[24.92,35.17],[24.93,46.91]],"kind":"shared","role":"right","street":null,"shared_wall":false},{"line":[[24.93,46.91],[14.98,46.93]],"kind":"shared","role":"rear","street":null,"shared_wall":false},{"line":[[14.98,46.93],[5.03,46.95]],"kind":"shared","role":"rear","street":null,"shared_wall":false},{"line":[[5.03,46.95],[-4.92,46.97]],"kind":"shared","role":"rear","street":null,"shared_wall":false},{"line":[[-4.92,46.97],[-14.88,46.99]],"kind":"shared","role":"rear","street":null,"shared_wall":false},{"line":[[-14.88,46.99],[-24.83,47.02]],"kind":"shared","role":"rear","street":null,"shared_wall":false},{"line":[[-24.83,47.02],[-24.84,35.27]],"kind":"shared","role":"left","street":null,"shared_wall":false},{"line":[[-24.84,35.27],[-24.85,23.52]],"kind":"shared","role":"left","street":null,"shared_wall":false},{"line":[[-24.85,23.52],[-24.86,11.78]],"kind":"shared","role":"left","street":null,"shared_wall":false},{"line":[[-24.86,11.78],[-24.87,0.03]],"kind":"shared","role":"left","street":null,"shared_wall":false},{"line":[[-24.87,0.03],[-24.88,-11.72]],"kind":"shared","role":"left","street":null,"shared_wall":false},{"line":[[-24.88,-11.72],[-24.89,-23.46]],"kind":"shared","role":"left","street":null,"shared_wall":false},{"line":[[-24.89,-23.46],[-24.9,-35.21]],"kind":"shared","role":"left","street":null,"shared_wall":false},{"line":[[-24.9,-35.21],[-24.91,-46.96]],"kind":"shared","role":"left","street":null,"shared_wall":false}],"front_line":[[[-24.91,-46.96],[-14.96,-46.96]],[[-14.96,-46.96],[-5.02,-46.96]],[[-5.02,-46.96],[4.93,-46.96]],[[4.93,-46.96],[14.88,-46.96]],[[14.88,-46.96],[24.83,-46.96]]],"width_line":[[-24.88,-16.96],[24.83,-16.96]],"yards":{"front":{"gap":34.2,"from":[[-15.11,-12.78],[-14.96,-46.96]]},"right":{"gap":10.9,"from":[[13.99,-10.25],[24.87,-10.26]],"required":9.3,"minimum":8,"ok":true,"needs":9.3,"why":null},"rear":{"gap":28.5,"from":[[13.87,18.48],[13.93,46.93]],"required":18.7,"minimum":8,"ok":true,"needs":18.7,"why":null},"left":{"gap":5.3,"from":[[-19.56,18.34],[-24.85,18.34]],"required":9.3,"minimum":8,"ok":false,"needs":8,"why":"minimum"}},"yard_strips":{"right":[[[[15.48,-46.95],[15.49,-35.21],[24.84,-35.22],[15.49,-35.21],[15.5,-23.48],[15.52,-11.75],[24.87,-11.76],[15.52,-11.75],[15.53,-0.01],[15.54,11.72],[15.55,23.45],[24.9,23.44],[15.55,23.45],[15.57,35.18],[15.57,35.18],[15.58,46.92],[24.93,46.91],[24.92,35.17],[24.89,11.71],[24.87,-5.78],[24.85,-23.49],[24.83,-46.96]]]],"rear":[[[[24.89,28.21],[14.94,28.23],[14.98,46.93],[20.92,46.91],[24.93,46.91]]],[[[14.94,28.23],[4.99,28.25],[-4.97,28.27],[-4.92,46.97],[-1.51,46.96],[7.71,46.94],[14.98,46.93]]],[[[-4.97,28.27],[-14.92,28.29],[-24.84,28.32],[-24.83,47.02],[-23.21,47.01],[-4.92,46.97]]]],"left":[[[[-15.49,35.26],[-15.49,35.26],[-15.5,23.51],[-24.85,23.52],[-15.5,23.51],[-15.51,11.77],[-15.52,0.02],[-15.53,-11.73],[-24.88,-11.72],[-24.83,47.02],[-23.21,47.01],[-15.48,47.0]]],[[[-15.53,-11.73],[-15.54,-23.47],[-15.54,-23.47],[-15.55,-35.22],[-24.9,-35.21],[-15.55,-35.22],[-15.56,-46.96],[-24.91,-46.96],[-24.88,-11.72]]]]},"envelope":[[[[24.9,23.04],[24.92,35.17],[24.93,46.91]]],[[[16.79,-46.98],[-15.56,-46.96],[-15.55,-35.22],[-24.9,-35.21],[-15.55,-35.22],[-15.54,-23.47],[-15.54,-23.47],[-15.53,-11.73],[-24.88,-11.72],[-15.53,-11.73],[-15.52,0.02],[-15.51,11.77],[-15.5,23.51],[-24.85,23.52],[-15.5,23.51],[-15.49,28.3],[-14.92,28.29],[-4.97,28.27],[-4.92,46.97],[-4.97,28.27],[4.99,28.25],[14.94,28.23],[14.98,46.93],[14.94,28.23],[15.56,28.23],[15.55,23.45],[24.9,23.44],[15.55,23.45],[15.54,11.72],[15.53,-0.01],[15.52,-11.75],[24.87,-11.76],[15.52,-11.75],[15.5,-23.48],[15.49,-35.21],[24.84,-35.22],[15.49,-35.21],[15.48,-46.95],[24.83,-46.96]]]],"buildings":[{"polygons":[[[[13.99,-10.25],[1.67,-10.3],[1.68,-12.71],[0.51,-12.71],[-3.91,-12.73],[-19.43,-12.8],[-19.56,18.34],[-7.86,18.39],[12.01,18.47],[13.87,18.48]]]],"is_home":true,"is_main":true,"height":22.0,"floor_area":1443,"footprint":1011}],"measures":{"lot_area":{"actual":4700,"required":8000,"unit":"sq ft","rule":"min"},"width":{"actual":49.74492146367154,"required":65,"unit":"ft","rule":"min","measured_at":30},"frontage":{"actual":49.73939066682938,"required":40,"unit":"ft","rule":"min"},"floor_area":{"actual":1443,"required":1645,"unit":"sq ft","rule":"max","ratio":0.35},"height":{"actual":22.0,"required":30,"unit":"ft","rule":"max"},"coverage":{"actual":0.216,"required":null,"unit":"share","rule":"max"}},"side_min":8,"side_yards_by_lot_width":false,"front_yard_rule":null,"historic":false},{"id":5352,"address":"2804 DAVIS AVE","zone":"R-8","zone_label":"R-8 zone","home_type":"detached house","year":1940,"position":"interior","rotation":251.5,"street":"DAVIS","reasons":[{"kind":"lot_size","text":"Lot is too small: 5,750 sq ft, but the R-8 zone requires 8,000 sq ft."},{"kind":"lot_width","text":"Lot is too narrow: about 49 ft wide, but the R-8 zone requires 65 ft."},{"kind":"yards","text":"Side yard is too small: about 4.7 ft, but at least 8.0 ft is required."},{"kind":"floor_area","text":"Too much building for the lot: about 2,460 sq ft of floor space on a 5,750 sq ft lot. The R-8 zone allows floor space up to 35% of the lot (2,012 sq ft)."}],"notes":[],"lot":[[[[-24.42,-58.41],[-24.59,58.2],[24.99,57.72],[24.8,34.31],[24.69,11.34],[24.68,11.03],[24.02,-58.41],[23.38,-58.41],[14.71,-58.41]]]],"edges":[{"line":[[-24.42,-58.41],[-14.73,-58.41]],"kind":"street","role":"front","street":"DAVIS","shared_wall":false},{"line":[[-14.73,-58.41],[-5.04,-58.41]],"kind":"street","role":"front","street":"DAVIS","shared_wall":false},{"line":[[-5.04,-58.41],[4.65,-58.41]],"kind":"street","role":"front","street":"DAVIS","shared_wall":false},{"line":[[4.65,-58.41],[14.33,-58.41]],"kind":"street","role":"front","street":"DAVIS","shared_wall":false},{"line":[[14.33,-58.41],[24.02,-58.41]],"kind":"street","role":"front","street":"DAVIS","shared_wall":false},{"line":[[24.02,-58.41],[24.12,-46.8]],"kind":"shared","role":"right","street":null,"shared_wall":false},{"line":[[24.12,-46.8],[24.22,-35.18]],"kind":"shared","role":"right","street":null,"shared_wall":false},{"line":[[24.22,-35.18],[24.31,-23.57]],"kind":"shared","role":"right","street":null,"shared_wall":false},{"line":[[24.31,-23.57],[24.41,-11.96]],"kind":"shared","role":"right","street":null,"shared_wall":false},{"line":[[24.41,-11.96],[24.51,-0.35]],"kind":"shared","role":"right","street":null,"shared_wall":false},{"line":[[24.51,-0.35],[24.6,11.27]],"kind":"shared","role":"right","street":null,"shared_wall":false},{"line":[[24.6,11.27],[24.7,22.88]],"kind":"shared","role":"right","street":null,"shared_wall":false},{"line":[[24.7,22.88],[24.8,34.49]],"kind":"shared","role":"right","street":null,"shared_wall":false},{"line":[[24.8,34.49],[24.89,46.11]],"kind":"shared","role":"right","street":null,"shared_wall":false},{"line":[[24.89,46.11],[24.99,57.72]],"kind":"shared","role":"right","street":null,"shared_wall":false},{"line":[[24.99,57.72],[15.07,57.82]],"kind":"shared","role":"rear","street":null,"shared_wall":false},{"line":[[15.07,57.82],[5.16,57.91]],"kind":"shared","role":"rear","street":null,"shared_wall":false},{"line":[[5.16,57.91],[-4.76,58.01]],"kind":"shared","role":"rear","street":null,"shared_wall":false},{"line":[[-4.76,58.01],[-14.68,58.11]],"kind":"shared","role":"rear","street":null,"shared_wall":false},{"line":[[-14.68,58.11],[-24.59,58.2]],"kind":"shared","role":"rear","street":null,"shared_wall":false},{"line":[[-24.59,58.2],[-24.58,46.54]],"kind":"shared","role":"left","street":null,"shared_wall":false},{"line":[[-24.58,46.54],[-24.56,34.88]],"kind":"shared","role":"left","street":null,"shared_wall":false},{"line":[[-24.56,34.88],[-24.54,23.22]],"kind":"shared","role":"left","street":null,"shared_wall":false},{"line":[[-24.54,23.22],[-24.52,11.56]],"kind":"shared","role":"left","street":null,"shared_wall":false},{"line":[[-24.52,11.56],[-24.51,-0.1]],"kind":"shared","role":"left","street":null,"shared_wall":false},{"line":[[-24.51,-0.1],[-24.49,-11.76]],"kind":"shared","role":"left","street":null,"shared_wall":false},{"line":[[-24.49,-11.76],[-24.47,-23.42]],"kind":"shared","role":"left","street":null,"shared_wall":false},{"line":[[-24.47,-23.42],[-24.46,-35.09]],"kind":"shared","role":"left","street":null,"shared_wall":false},{"line":[[-24.46,-35.09],[-24.44,-46.75]],"kind":"shared","role":"left","street":null,"shared_wall":false},{"line":[[-24.44,-46.75],[-24.42,-58.41]],"kind":"shared","role":"left","street":null,"shared_wall":false}],"front_line":[[[-24.42,-58.41],[-14.73,-58.41]],[[-14.73,-58.41],[-5.04,-58.41]],[[-5.04,-58.41],[4.65,-58.41]],[[4.65,-58.41],[14.33,-58.41]],[[14.33,-58.41],[24.02,-58.41]]],"width_line":[[-24.47,-28.41],[24.02,-28.41]],"yards":{"front":{"gap":27.1,"from":[[11.75,-31.33],[11.75,-58.41]]},"right":{"gap":12.5,"from":[[11.75,-31.33],[24.25,-31.44]],"required":13.2,"minimum":8,"ok":true,"needs":13.2,"why":null},"rear":{"gap":42.8,"from":[[5.06,15.12],[5.16,57.91]],"required":26.3,"minimum":8,"ok":true,"needs":26.3,"why":null},"left":{"gap":4.7,"from":[[-19.77,-0.11],[-24.51,-0.1]],"required":13.2,"minimum":8,"ok":false,"needs":8,"why":"minimum"}},"yard_strips":{"right":[[[[10.85,-58.3],[10.94,-46.69],[11.04,-35.07],[24.22,-35.18],[11.04,-35.07],[11.14,-23.46],[11.24,-11.85],[24.41,-11.96],[11.24,-11.85],[11.33,-0.24],[11.43,11.38],[11.53,22.99],[24.7,22.88],[11.53,22.99],[11.62,34.6],[11.72,46.22],[24.89,46.11],[11.72,46.22],[11.82,57.83],[24.99,57.72],[24.8,34.49],[24.8,34.31],[24.69,11.34],[24.68,11.03],[24.57,-0.35],[24.35,-23.57],[24.13,-46.8],[24.02,-58.41]]]],"rear":[[[[24.73,31.37],[14.82,31.47],[4.9,31.56],[5.16,57.91],[4.9,31.56],[-5.02,31.66],[-14.94,31.76],[-24.55,31.85],[-24.59,58.2],[24.99,57.72]]]],"left":[[[[-11.38,34.9],[-11.37,23.24],[-11.35,11.58],[-11.35,11.58],[-11.33,-0.08],[-24.51,-0.1],[-11.33,-0.08],[-11.32,-11.74],[-11.32,-11.74],[-11.3,-23.41],[-11.28,-35.07],[-11.26,-46.73],[-11.25,-58.39],[-24.42,-58.41],[-24.49,-11.76],[-24.59,58.2],[-11.42,58.08],[-11.4,46.56]]]]},"envelope":[[[[23.38,-58.41],[14.71,-58.41],[-24.42,-58.41],[-11.25,-58.39],[-11.26,-46.73],[-11.28,-35.07],[-11.3,-23.41],[-11.32,-11.74],[-11.33,-0.08],[-11.35,11.58],[-11.37,23.24],[-11.38,31.72],[-5.02,31.66],[4.9,31.56],[11.6,31.5],[11.53,22.99],[11.43,11.38],[11.33,-0.24],[11.24,-11.85],[11.14,-23.46],[11.04,-35.07],[10.94,-46.69],[10.85,-58.3],[24.02,-58.41]]]],"buildings":[{"polygons":[[[[-19.78,-6.21],[-19.73,15.18],[-14.64,15.17],[-0.39,15.14],[1.41,15.13],[6.47,15.12],[6.45,4.22],[10.07,4.21],[10.05,-4.89],[11.35,-4.9],[11.81,-4.9],[11.81,-6.42],[11.75,-31.33],[-1.54,-31.3],[-4.91,-31.3],[-14.12,-31.28],[-18.94,-31.26],[-18.89,-6.21]]]],"is_home":true,"is_main":true,"height":31.0,"floor_area":2460,"footprint":1370},{"polygons":[[[[9.85,11.68],[10.06,34.65],[21.9,34.54],[23.04,34.53],[22.83,11.57],[21.79,11.58],[16.48,11.62]]]],"is_home":false,"is_main":false,"height":12.0,"floor_area":null,"footprint":298}],"measures":{"lot_area":{"actual":5750,"required":8000,"unit":"sq ft","rule":"min"},"width":{"actual":48.77303769538027,"required":65,"unit":"ft","rule":"min","measured_at":30},"frontage":{"actual":48.443284502623456,"required":40,"unit":"ft","rule":"min"},"floor_area":{"actual":2460,"required":2012,"unit":"sq ft","rule":"max","ratio":0.35},"height":{"actual":31.0,"required":30,"unit":"ft","rule":"max"},"coverage":{"actual":0.292,"required":null,"unit":"share","rule":"max"}},"side_min":8,"side_yards_by_lot_width":false,"front_yard_rule":null,"historic":false},{"id":8709,"address":"1607 WALLESTON CT","zone":"R-8","zone_label":"R-8 zone","home_type":"detached house","year":1980,"position":"interior","rotation":63.7,"street":"WALLESTON","reasons":[{"kind":"yards","text":"Side yard is too small for the building's height: about 7.5 ft, but a building this tall (roughly 31 ft) needs about 15.3 ft."},{"kind":"height","text":"Too tall: about 36 ft, but the R-8 zone allows 30 ft."}],"notes":[],"lot":[[[[57.65,87.12],[42.98,10.57],[24.91,-83.72],[21.54,-83.18],[18.49,-82.74],[15.43,-82.35],[12.36,-82.02],[9.29,-81.74],[6.21,-81.52],[3.13,-81.35],[0.04,-81.23],[-3.04,-81.17],[-6.13,-81.16],[-9.21,-81.2],[-12.43,-81.31],[-15.38,-81.45],[-23.98,-82.28],[-24.81,-82.36],[-29.93,-82.98],[-35.19,-83.72],[-54.26,46.94],[-50.4,48.32],[-40.54,51.86]]]],"edges":[{"line":[[57.65,87.12],[46.46,83.1]],"kind":"street","role":"front","street":"FRANCIS HAMMOND","shared_wall":false},{"line":[[46.46,83.1],[35.27,79.08]],"kind":"street","role":"front","street":"FRANCIS HAMMOND","shared_wall":false},{"line":[[35.27,79.08],[24.08,75.06]],"kind":"street","role":"front","street":"FRANCIS HAMMOND","shared_wall":false},{"line":[[24.08,75.06],[12.89,71.05]],"kind":"street","role":"front","street":"FRANCIS HAMMOND","shared_wall":false},{"line":[[12.89,71.05],[1.69,67.03]],"kind":"street","role":"front","street":"FRANCIS HAMMOND","shared_wall":false},{"line":[[1.69,67.03],[-9.5,63.01]],"kind":"street","role":"front","street":"FRANCIS HAMMOND","shared_wall":false},{"line":[[-9.5,63.01],[-20.69,58.99]],"kind":"street","role":"front","street":"FRANCIS HAMMOND","shared_wall":false},{"line":[[-20.69,58.99],[-31.88,54.97]],"kind":"street","role":"front","street":"FRANCIS HAMMOND","shared_wall":false},{"line":[[-31.88,54.97],[-43.07,50.96]],"kind":"street","role":"front","street":"FRANCIS HAMMOND","shared_wall":false},{"line":[[-43.07,50.96],[-54.26,46.94]],"kind":"street","role":"front","street":"FRANCIS HAMMOND","shared_wall":false},{"line":[[-54.26,46.94],[-52.67,36.05]],"kind":"shared","role":"left","street":null,"shared_wall":false},{"line":[[-52.67,36.05],[-51.08,25.16]],"kind":"shared","role":"left","street":null,"shared_wall":false},{"line":[[-51.08,25.16],[-49.49,14.27]],"kind":"shared","role":"left","street":null,"shared_wall":false},{"line":[[-49.49,14.27],[-47.9,3.39]],"kind":"shared","role":"left","street":null,"shared_wall":false},{"line":[[-47.9,3.39],[-46.31,-7.5]],"kind":"shared","role":"left","street":null,"shared_wall":false},{"line":[[-46.31,-7.5],[-44.72,-18.39]],"kind":"shared","role":"left","street":null,"shared_wall":false},{"line":[[-44.72,-18.39],[-43.13,-29.28]],"kind":"shared","role":"left","street":null,"shared_wall":false},{"line":[[-43.13,-29.28],[-41.54,-40.17]],"kind":"shared","role":"left","street":null,"shared_wall":false},{"line":[[-41.54,-40.17],[-39.95,-51.05]],"kind":"shared","role":"left","street":null,"shared_wall":false},{"line":[[-39.95,-51.05],[-38.36,-61.94]],"kind":"shared","role":"left","street":null,"shared_wall":false},{"line":[[-38.36,-61.94],[-36.78,-72.83]],"kind":"shared","role":"left","street":null,"shared_wall":false},{"line":[[-36.78,-72.83],[-35.19,-83.72]],"kind":"shared","role":"left","street":null,"shared_wall":false},{"line":[[-35.19,-83.72],[-25.28,-82.58]],"kind":"street","role":"front","street":"WALLESTON","shared_wall":false},{"line":[[-25.28,-82.58],[-15.38,-81.45]],"kind":"street","role":"front","street":"WALLESTON","shared_wall":false},{"line":[[-15.38,-81.45],[-6.13,-81.16]],"kind":"street","role":"front","street":"WALLESTON","shared_wall":false},{"line":[[-6.13,-81.16],[1.58,-81.45]],"kind":"street","role":"front","street":"WALLESTON","shared_wall":false},{"line":[[1.58,-81.45],[9.29,-81.74]],"kind":"street","role":"front","street":"WALLESTON","shared_wall":false},{"line":[[9.29,-81.74],[17.1,-82.73]],"kind":"street","role":"front","street":"WALLESTON","shared_wall":false},{"line":[[17.1,-82.73],[24.91,-83.72]],"kind":"street","role":"front","street":"WALLESTON","shared_wall":false},{"line":[[24.91,-83.72],[27.09,-72.33]],"kind":"shared","role":"right","street":null,"shared_wall":false},{"line":[[27.09,-72.33],[29.28,-60.94]],"kind":"shared","role":"right","street":null,"shared_wall":false},{"line":[[29.28,-60.94],[31.46,-49.55]],"kind":"shared","role":"right","street":null,"shared_wall":false},{"line":[[31.46,-49.55],[33.64,-38.16]],"kind":"shared","role":"right","street":null,"shared_wall":false},{"line":[[33.64,-38.16],[35.82,-26.77]],"kind":"shared","role":"right","street":null,"shared_wall":false},{"line":[[35.82,-26.77],[38.01,-15.38]],"kind":"shared","role":"right","street":null,"shared_wall":false},{"line":[[38.01,-15.38],[40.19,-3.99]],"kind":"shared","role":"right","street":null,"shared_wall":false},{"line":[[40.19,-3.99],[42.37,7.4]],"kind":"shared","role":"right","street":null,"shared_wall":false},{"line":[[42.37,7.4],[44.55,18.78]],"kind":"shared","role":"right","street":null,"shared_wall":false},{"line":[[44.55,18.78],[46.73,30.17]],"kind":"shared","role":"right","street":null,"shared_wall":false},{"line":[[46.73,30.17],[48.92,41.56]],"kind":"shared","role":"right","street":null,"shared_wall":false},{"line":[[48.92,41.56],[51.1,52.95]],"kind":"shared","role":"right","street":null,"shared_wall":false},{"line":[[51.1,52.95],[53.28,64.34]],"kind":"shared","role":"right","street":null,"shared_wall":false},{"line":[[53.28,64.34],[55.46,75.73]],"kind":"shared","role":"right","street":null,"shared_wall":false},{"line":[[55.46,75.73],[57.65,87.12]],"kind":"shared","role":"right","street":null,"shared_wall":false}],"front_line":[[[-35.19,-83.72],[-25.28,-82.58]],[[-25.28,-82.58],[-15.38,-81.45]],[[-15.38,-81.45],[-6.13,-81.16]],[[-6.13,-81.16],[1.58,-81.45]],[[1.58,-81.45],[9.29,-81.74]],[[9.29,-81.74],[17.1,-82.73]],[[17.1,-82.73],[24.91,-83.72]]],"width_line":[[-39.51,-54.06],[30.55,-54.29]],"yards":{"front":{"gap":26.3,"from":[[0.05,-55.05],[-0.95,-81.35]]},"left":{"gap":11.4,"from":[[-28.25,-52.29],[-39.53,-53.93]],"required":15.3,"minimum":8,"ok":false,"needs":15.3,"why":"height"},"right":{"gap":7.5,"from":[[23.63,-50.43],[31.02,-51.85]],"required":15.3,"minimum":8,"ok":false,"needs":15.3,"why":"height"}},"yard_strips":{"left":[[[[-39.12,49.15],[-37.53,38.26],[-35.94,27.37],[-34.35,16.48],[-32.76,5.6],[-47.9,3.39],[-32.76,5.6],[-31.17,-5.29],[-29.58,-16.18],[-27.99,-27.07],[-26.4,-37.96],[-24.81,-48.84],[-39.95,-51.05],[-24.81,-48.84],[-23.23,-59.73],[-21.64,-70.62],[-20.05,-81.51],[-35.19,-83.72],[-54.26,46.94]]]],"right":[[[[14.25,-58.06],[16.43,-46.67],[31.46,-49.55],[16.43,-46.67],[18.61,-35.28],[18.61,-35.28],[20.8,-23.89],[22.98,-12.5],[25.16,-1.11],[27.34,10.27],[29.53,21.66],[31.71,33.05],[33.89,44.44],[48.92,41.56],[33.89,44.44],[36.07,55.83],[36.07,55.83],[38.25,67.22],[40.44,78.61],[40.92,81.11],[57.65,87.12],[51.1,52.95],[42.98,10.57],[33.64,-38.16],[24.91,-83.72],[9.88,-80.84],[12.07,-69.45]]]]},"envelope":[[[[42.98,10.57],[51.1,52.95],[57.65,87.12]]],[[[24.91,-83.72],[33.64,-38.16],[42.98,10.57]]],[[[21.54,-83.18],[18.49,-82.74],[15.43,-82.35],[12.36,-82.02],[9.29,-81.74],[6.21,-81.52],[3.13,-81.35],[0.04,-81.23],[-3.04,-81.17],[-6.13,-81.16],[-9.21,-81.2],[-12.43,-81.31],[-15.38,-81.45],[-23.98,-82.28],[-24.81,-82.36],[-29.93,-82.98],[-35.19,-83.72],[-20.05,-81.51],[-21.64,-70.62],[-23.23,-59.73],[-24.81,-48.84],[-39.95,-51.05],[-24.81,-48.84],[-26.4,-37.96],[-27.99,-27.07],[-29.58,-16.18],[-31.17,-5.29],[-32.76,5.6],[-47.9,3.39],[-32.76,5.6],[-34.35,16.48],[-35.94,27.37],[-37.53,38.26],[-39.12,49.15],[-54.26,46.94],[-50.4,48.32],[-40.54,51.86],[40.92,81.11],[40.44,78.61],[38.25,67.22],[36.07,55.83],[36.07,55.83],[33.89,44.44],[48.92,41.56],[33.89,44.44],[31.71,33.05],[29.53,21.66],[27.34,10.27],[25.16,-1.11],[22.98,-12.5],[20.8,-23.89],[18.61,-35.28],[18.61,-35.28],[16.43,-46.67],[31.46,-49.55],[16.43,-46.67],[14.25,-58.06],[12.07,-69.45],[9.88,-80.84],[24.91,-83.72]]]],"buildings":[{"polygons":[[[[-30.71,-28.94],[-17.17,-27.51],[-18.04,-19.2],[19.92,-15.2],[23.63,-50.43],[11.45,-51.72],[8.26,-52.05],[8.48,-54.16],[0.05,-55.05],[-0.22,-52.49],[-13.86,-53.93],[-15.15,-54.07],[-15.28,-53.1],[-15.41,-51.86],[-16.37,-51.96],[-19.19,-52.26],[-28.04,-53.19],[-28.25,-52.29]]]],"is_home":true,"is_main":true,"height":36.0,"floor_area":2292,"footprint":1698}],"measures":{"lot_area":{"actual":12664,"required":8000,"unit":"sq ft","rule":"min"},"width":{"actual":70.06561180373542,"required":65,"unit":"ft","rule":"min","measured_at":30},"frontage":{"actual":60.366778364757344,"required":40,"unit":"ft","rule":"min"},"floor_area":{"actual":2292,"required":4432,"unit":"sq ft","rule":"max","ratio":0.35},"height":{"actual":36.0,"required":30,"unit":"ft","rule":"max"},"coverage":{"actual":0.133,"required":null,"unit":"share","rule":"max"}},"side_min":8,"side_yards_by_lot_width":false,"front_yard_rule":null,"historic":false},{"id":23716,"address":"1313 WILKES ST","zone":"RB","zone_label":"RB zone","home_type":"townhouse","year":2016,"position":"interior","rotation":8.5,"street":"WILKES","reasons":[{"kind":"lot_size","text":"Lot is too small: 976 sq ft, but the RB zone requires 1,980 sq ft."},{"kind":"yards","text":"Rear yard is too small for the building's height: about 6.2 ft, but a building this tall (roughly 34 ft) needs about 34 ft."},{"kind":"floor_area","text":"Too much building for the lot: about 2,639 sq ft of floor space on a 976 sq ft lot. The RB zone allows floor space up to 75% of the lot (732 sq ft)."},{"kind":"open_space","text":"Not enough open space: buildings alone cover about 80% of the lot, but 35% must be left open."}],"notes":[],"lot":[[[[-10.06,-24.1],[-9.83,24.12],[10.0,24.17],[9.88,-24.1]]]],"edges":[{"line":[[-10.06,-24.1],[-0.09,-24.1]],"kind":"street","role":"front","street":"WILKES","shared_wall":true},{"line":[[-0.09,-24.1],[9.88,-24.1]],"kind":"street","role":"front","street":"WILKES","shared_wall":true},{"line":[[9.88,-24.1],[9.91,-14.45]],"kind":"shared","role":"right","street":null,"shared_wall":true},{"line":[[9.91,-14.45],[9.93,-4.79]],"kind":"shared","role":"right","street":null,"shared_wall":true},{"line":[[9.93,-4.79],[9.95,4.86]],"kind":"shared","role":"right","street":null,"shared_wall":true},{"line":[[9.95,4.86],[9.97,14.52]],"kind":"shared","role":"right","street":null,"shared_wall":true},{"line":[[9.97,14.52],[10.0,24.17]],"kind":"shared","role":"right","street":null,"shared_wall":true},{"line":[[10.0,24.17],[0.08,24.15]],"kind":"shared","role":"rear","street":null,"shared_wall":false},{"line":[[0.08,24.15],[-9.83,24.12]],"kind":"shared","role":"rear","street":null,"shared_wall":false},{"line":[[-9.83,24.12],[-9.88,14.48]],"kind":"shared","role":"left","street":null,"shared_wall":true},{"line":[[-9.88,14.48],[-9.92,4.83]],"kind":"shared","role":"left","street":null,"shared_wall":true},{"line":[[-9.92,4.83],[-9.97,-4.81]],"kind":"shared","role":"left","street":null,"shared_wall":true},{"line":[[-9.97,-4.81],[-10.01,-14.46]],"kind":"shared","role":"left","street":null,"shared_wall":true},{"line":[[-10.01,-14.46],[-10.06,-24.1]],"kind":"shared","role":"left","street":null,"shared_wall":true}],"front_line":[[[-10.06,-24.1],[-0.09,-24.1]],[[-0.09,-24.1],[9.88,-24.1]]],"width_line":[[-9.96,-4.1],[9.93,-4.11]],"yards":{"rear":{"gap":6.2,"from":[[10.12,18.01],[10.0,24.17]],"required":34.0,"minimum":8,"ok":false,"needs":34.0,"why":"height"}},"yard_strips":{"rear":[[[[0.16,-9.85],[-9.75,-9.88],[-9.83,24.12],[10.0,24.17],[9.92,-9.83],[0.16,-9.85],[0.08,24.15]]]]},"envelope":[[[[-9.83,24.12],[-9.75,-9.88],[0.16,-9.85],[0.08,24.15],[0.16,-9.85],[9.92,-9.83],[9.88,-24.1],[-10.06,-24.1]]]],"buildings":[{"polygons":[[[[11.14,16.41],[10.91,-21.77],[4.64,-21.75],[4.65,-23.1],[-7.06,-23.32],[-7.18,-21.89],[-9.2,-21.91],[-8.99,17.04],[-9.08,17.61],[10.99,18.02]]]],"is_home":true,"is_main":true,"height":40.0,"floor_area":2639,"footprint":814}],"measures":{"lot_area":{"actual":976,"required":1980,"unit":"sq ft","rule":"min"},"width":{"actual":19.893465556704495,"required":18,"unit":"ft","rule":"min","measured_at":20},"frontage":{"actual":19.94040027871614,"required":18,"unit":"ft","rule":"min"},"floor_area":{"actual":2639,"required":732,"unit":"sq ft","rule":"max","ratio":0.75},"height":{"actual":40.0,"required":45,"unit":"ft","rule":"max"},"coverage":{"actual":0.803,"required":0.65,"unit":"share","rule":"max"}},"side_min":8,"side_yards_by_lot_width":false,"front_yard_rule":null,"historic":false},{"id":13953,"address":"425 QUEEN ST","zone":"RM","zone_label":"RM zone","home_type":"twin house (one half)","year":1810,"position":"interior","rotation":8.8,"street":"QUEEN","reasons":[{"kind":"lot_size","text":"Lot is too small: 1,280 sq ft, but the RM zone requires 1,452 sq ft."},{"kind":"lot_width","text":"Lot is too narrow: about 20.0 ft wide, but the RM zone requires 25 ft."},{"kind":"lot_width","text":"Too little street frontage: about 20.0 ft, but the RM zone requires 25 ft."},{"kind":"yards","text":"Rear yard is too small: about 10.3 ft, but at least 16.0 ft is required."},{"kind":"floor_area","text":"Too much building for the lot: about 3,036 sq ft of floor space on a 1,280 sq ft lot. The RM zone allows floor space up to 150% of the lot (1,920 sq ft)."}],"notes":[],"lot":[[[[10.23,-30.41],[10.24,-31.72],[-9.73,-31.72],[-9.73,-31.22],[-10.09,1.11],[-10.35,23.86],[-10.43,31.47],[9.91,31.57],[9.98,19.08],[10.06,3.77]]]],"edges":[{"line":[[9.91,31.57],[-0.26,31.52]],"kind":"shared","role":"rear","street":null,"shared_wall":false},{"line":[[-0.26,31.52],[-10.43,31.47]],"kind":"shared","role":"rear","street":null,"shared_wall":false},{"line":[[-10.43,31.47],[-10.32,20.94]],"kind":"shared","role":"left","street":null,"shared_wall":true},{"line":[[-10.32,20.94],[-10.2,10.4]],"kind":"shared","role":"left","street":null,"shared_wall":true},{"line":[[-10.2,10.4],[-10.08,-0.13]],"kind":"shared","role":"left","street":null,"shared_wall":true},{"line":[[-10.08,-0.13],[-9.96,-10.66]],"kind":"shared","role":"left","street":null,"shared_wall":true},{"line":[[-9.96,-10.66],[-9.84,-21.19]],"kind":"shared","role":"left","street":null,"shared_wall":true},{"line":[[-9.84,-21.19],[-9.73,-31.72]],"kind":"shared","role":"left","street":null,"shared_wall":true},{"line":[[-9.73,-31.72],[0.26,-31.72]],"kind":"street","role":"front","street":"QUEEN","shared_wall":true},{"line":[[0.26,-31.72],[10.24,-31.72]],"kind":"street","role":"front","street":"QUEEN","shared_wall":false},{"line":[[10.24,-31.72],[10.18,-21.17]],"kind":"shared","role":"right","street":null,"shared_wall":false},{"line":[[10.18,-21.17],[10.13,-10.62]],"kind":"shared","role":"right","street":null,"shared_wall":false},{"line":[[10.13,-10.62],[10.08,-0.07]],"kind":"shared","role":"right","street":null,"shared_wall":false},{"line":[[10.08,-0.07],[10.02,10.48]],"kind":"shared","role":"right","street":null,"shared_wall":false},{"line":[[10.02,10.48],[9.97,21.02]],"kind":"shared","role":"right","street":null,"shared_wall":false},{"line":[[9.97,21.02],[9.91,31.57]],"kind":"shared","role":"right","street":null,"shared_wall":false}],"front_line":[[[-9.73,-31.72],[0.26,-31.72]],[[0.26,-31.72],[10.24,-31.72]]],"width_line":null,"yards":{"rear":{"gap":10.3,"from":[[-9.23,21.18],[-9.28,31.47]],"required":16,"minimum":16,"ok":false,"needs":16,"why":"minimum"},"front":{"gap":0.0,"from":[[0.26,-31.72],[0.26,-31.72]]},"right":{"gap":5.9,"from":[[4.16,-1.68],[10.08,-1.65]]}},"yard_strips":{"rear":[[[[-0.18,15.52],[-10.25,15.47],[-10.35,23.86],[-10.43,31.47],[9.91,31.57],[9.98,19.08],[10.0,15.57],[-0.18,15.52],[-0.26,31.52]]]]},"envelope":[[[[10.24,-31.72],[-9.73,-31.72],[-9.73,-31.22],[-10.09,1.11],[-10.35,23.86],[-10.25,15.47],[-0.18,15.52],[-0.26,31.52],[-0.18,15.52],[10.0,15.57],[9.98,19.08],[10.06,3.77],[10.23,-30.41]]]],"buildings":[{"polygons":[[[[-8.61,-33.9],[-9.23,21.18],[-1.49,21.09],[-1.77,-1.6],[4.16,-1.68],[3.78,-33.14],[3.77,-34.05],[-5.12,-33.94]]]],"is_home":true,"is_main":true,"height":20.0,"floor_area":3036,"footprint":583}],"measures":{"lot_area":{"actual":1280,"required":1452,"unit":"sq ft","rule":"min"},"width":{"actual":19.964408153916885,"required":25,"unit":"ft","rule":"min","measured_at":0.0},"frontage":{"actual":19.964408153916885,"required":25,"unit":"ft","rule":"min"},"floor_area":{"actual":3036,"required":1920,"unit":"sq ft","rule":"max","ratio":1.5},"height":{"actual":20.0,"required":45,"unit":"ft","rule":"max"},"coverage":{"actual":0.435,"required":null,"unit":"share","rule":"max"}},"side_min":null,"side_yards_by_lot_width":true,"front_yard_rule":null,"historic":true}];
+
+const fmt = (n, d = 0) => n == null ? "–" : Number(n).toLocaleString("en-US", { maximumFractionDigits: d, minimumFractionDigits: d });
+const ft = n => n == null ? "–" : (n >= 20 ? fmt(n) : fmt(n, 1)) + " ft";
+const sqft = n => fmt(n) + " sq ft";
+const pct = n => Math.round(n * 100) + "%";
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const ROLE_NAMES = { left: "Left side yard", right: "Right side yard", rear: "Rear yard", front: "Front yard" };
+let svgCount = 0;
+
+/** Street name as people know it, taken from the address when possible. */
+function streetName(lot) {
+  const address = lot.address || "";
+  const words = address.split(" ");
+  return /^\d/.test(words[0]) ? words.slice(1).join(" ") : (lot.street || "Street");
+}
+
+function points(polys) { return polys.flatMap(p => p.flat()); }
+function bounds(pts) {
+  const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+  return { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) };
+}
+const S = ([x, y]) => `${x.toFixed(2)},${(-y).toFixed(2)}`;
+const pathD = polys => polys.map(poly => poly.map(r => "M" + r.map(S).join("L") + "Z").join("")).join("");
+function centerOf(polys) { const b = bounds(points(polys)); return [(b.minX + b.maxX) / 2, (b.minY + b.maxY) / 2]; }
+const mainBuilding = lot => lot.buildings.find(b => b.is_main) || lot.buildings[0];
+
+/**
+ * The front lot line moved `offset` feet toward the street, piece by piece,
+ * so a dimension line can follow a curved front instead of cutting across it.
+ * Returns the moved pieces, the two ends (with the direction across the line
+ * there) and the point halfway along.
+ */
+function frontTrace(lot, offset) {
+  const segs = (lot.front_line || []).flatMap(line => line.slice(1).map((b, i) => [line[i], b]));
+  const key = p => p[0].toFixed(1) + "," + p[1].toFixed(1);
+  const starts = new Map(), stops = new Map();
+  const pieces = segs.map(([a, b]) => {
+    const dx = b[0] - a[0], dy = b[1] - a[1], len = Math.hypot(dx, dy) || 1;
+    // The lot outline runs counter-clockwise, so the street is on the right.
+    const n = [dy / len, -dx / len];
+    const piece = { a: [a[0] + n[0] * offset, a[1] + n[1] * offset], b: [b[0] + n[0] * offset, b[1] + n[1] * offset], n, len, from: a, to: b };
+    starts.set(key(a), piece); stops.set(key(b), piece);
+    return piece;
+  });
+  const ends = [];
+  for (const piece of pieces) {
+    if (!stops.has(key(piece.from))) ends.push({ p: piece.a, base: piece.from, n: piece.n, dir: Math.atan2(piece.b[1] - piece.a[1], piece.b[0] - piece.a[0]) });
+    if (!starts.has(key(piece.to))) ends.push({ p: piece.b, base: piece.to, n: piece.n, dir: Math.atan2(piece.b[1] - piece.a[1], piece.b[0] - piece.a[0]) });
+  }
+  const total = pieces.reduce((sum, piece) => sum + piece.len, 0);
+  let walked = 0, mid = null;
+  for (const piece of pieces) {
+    if (walked + piece.len >= total / 2) {
+      const t = (total / 2 - walked) / piece.len;
+      mid = { p: [piece.a[0] + (piece.b[0] - piece.a[0]) * t, piece.a[1] + (piece.b[1] - piece.a[1]) * t], n: piece.n };
+      break;
+    }
+    walked += piece.len;
+  }
+  return { pieces, ends, mid };
+}
+
+/** Plain explanation of the street frontage rule for this lot. */
+function frontageTip(lot) {
+  const m = lot.measures;
+  let text = `How much of the lot touches the street: the length of the front lot line along ${streetName(lot)}, following any curve. The ${lot.zone} zone requires at least ${ft(m.frontage.required)}.`;
+  text += m.width.measured_at
+    ? ` This is a separate rule from lot width, which is measured in a straight line across the lot ${ft(m.width.measured_at)} back from the street, where the front yard ends. A lot can pass one and fail the other, as on a cul-de-sac, where lots are narrow at the street and widen further back.`
+    : ` In this zone, lot width is also measured right at the street, so here the two rules measure the same line.`;
+  return text;
+}
+
+/** Turn the written reasons into drawable problems, in the order they are listed. */
+function issuesFor(lot) {
+  const m = lot.measures, out = [];
+  for (const reason of lot.reasons) {
+    let target;
+    if (reason.kind === "lot_size") target = "lot_area";
+    else if (reason.kind === "lot_width") target = /frontage/i.test(reason.text) ? "frontage" : "width";
+    else if (reason.kind === "yards") target = "yards";
+    else if (reason.kind === "floor_area") target = "floor_area";
+    else if (reason.kind === "height") target = "height";
+    else if (reason.kind === "open_space") target = "coverage";
+    else target = "home_type";
+    out.push({ target, kind: reason.kind, text: reason.text });
+  }
+  // Where width is measured right at the street, width and frontage are one line.
+  if (!m.width.measured_at) {
+    const w = out.find(i => i.target === "width"), f = out.find(i => i.target === "frontage");
+    if (w && f) { f.text = w.text + " " + f.text; out.splice(out.indexOf(w), 1); }
+    else if (w) w.target = "frontage";
+  }
+  for (const issue of out) {
+    issue.ids = issue.target === "yards"
+      ? Object.entries(lot.yards).filter(([, y]) => y.ok === false).map(([role]) => "yard:" + role)
+      : [issue.target];
+  }
+  return out;
+}
+
+/** Every measurement that can be drawn, with whether it passes. */
+function marksFor(lot, includePassing) {
+  const m = lot.measures, issues = issuesFor(lot);
+  const failing = new Set(issues.flatMap(i => i.ids));
+  const number = id => { const i = issues.findIndex(x => x.ids.includes(id)); return i < 0 ? null : i + 1; };
+  const marks = [];
+  const add = (id, now, need, verb) => {
+    const fail = failing.has(id);
+    if (!fail && !includePassing) return;
+    marks.push({ id, fail, now, need: need == null ? null : `${verb} ${need}`, num: number(id) });
+  };
+  if (m.lot_area.required) add("lot_area", `Lot ${sqft(m.lot_area.actual)}`, sqft(m.lot_area.required), "needs");
+  if (m.frontage.actual != null && m.frontage.required) add("frontage", `${ft(m.frontage.actual)} of street frontage`, ft(m.frontage.required), "needs");
+  if (lot.width_line && m.width.required) add("width", `${ft(m.width.actual)} wide, ${ft(m.width.measured_at)} back`, ft(m.width.required), "needs");
+  for (const [role, y] of Object.entries(lot.yards)) {
+    if (y.needs == null || y.gap == null) continue;
+    add("yard:" + role, `${ROLE_NAMES[role]} ${ft(y.gap)}`, ft(y.needs), y.why === "height" ? "tall home needs" : "needs");
+  }
+  if (m.floor_area.required) add("floor_area", `${sqft(m.floor_area.actual)} floor space`, sqft(m.floor_area.required), "limit");
+  if (m.height.required) add("height", `${ft(m.height.actual)} tall`, ft(m.height.required), "limit");
+  if (m.coverage.required) add("coverage", `Buildings cover ${pct(m.coverage.actual)}`, pct(m.coverage.required), "limit");
+  if (failing.has("home_type")) marks.push({ id: "home_type", fail: true, now: lot.home_type, need: "not allowed here", num: number("home_type") });
+  return marks;
+}
+
+/**
+ * Draw a lot as a plan. Street at the bottom, feet as drawing units.
+ * opts: marks (from marksFor), numbered, envelope, ghost, emphasize (an id).
+ */
+function drawPlan(lot, opts = {}) {
+  const id = "p" + (++svgCount);
+  const marks = opts.marks || [];
+  const has = mid => marks.some(m => m.id === mid);
+  const lotB = bounds(points(lot.lot));
+  const frontPts = (lot.front_line || []).flat();
+  const frontY = frontPts.length ? Math.min(...frontPts.map(p => p[1])) : lotB.minY;
+  const m = lot.measures;
+
+  let ghost = null;
+  if (opts.ghost && (has("lot_area") || has("width") || has("frontage"))) {
+    const w = m.width.required || m.frontage.required || Math.sqrt(m.lot_area.required);
+    const d = (m.lot_area.required || w * w) / w;
+    const cx = frontPts.length ? (Math.min(...frontPts.map(p => p[0])) + Math.max(...frontPts.map(p => p[0]))) / 2 : 0;
+    ghost = [[cx - w / 2, frontY], [cx + w / 2, frontY], [cx + w / 2, frontY + d], [cx - w / 2, frontY + d]];
+  }
+  const core = bounds(points(lot.lot).concat(ghost || []));
+  const span = Math.max(core.maxX - core.minX, core.maxY - core.minY);
+  const u = span / 100;
+  const font = 2.9 * u;
+  const streetH = 18 * u;
+  const side = opts.numbered ? 58 : 44;
+  const footH = opts.numbered ? 13 * u : 0;
+  const view = {
+    minX: core.minX - side * u, maxX: core.maxX + side * u,
+    minY: Math.min(core.minY, frontY - streetH) - 4 * u - footH, maxY: core.maxY + 8 * u,
+  };
+  const parts = [];
+  parts.push(`<defs>
+    <pattern id="${id}h" width="${2.2 * u}" height="${2.2 * u}" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="${2.2 * u}" stroke="var(--accent)" stroke-width="${0.5 * u}" opacity=".55"/></pattern>
+    <pattern id="${id}b" width="${1.6 * u}" height="${1.6 * u}" patternUnits="userSpaceOnUse" patternTransform="rotate(-45)">
+      <line x1="0" y1="0" x2="0" y2="${1.6 * u}" stroke="var(--ink)" stroke-width="${0.18 * u}" opacity=".35"/></pattern>
+    ${lot.envelope.length ? `<mask id="${id}m"><rect x="${view.minX}" y="${-view.maxY}" width="${view.maxX - view.minX}" height="${view.maxY - view.minY}" fill="white"/><path d="${pathD(lot.envelope)}" fill="black"/></mask>` : ""}
+  </defs>`);
+
+  // Street band along the front.
+  if (frontPts.length) {
+    parts.push(`<rect x="${view.minX}" y="${-(frontY - 1.2 * u)}" width="${view.maxX - view.minX}" height="${streetH}" fill="var(--street)"/>`);
+    parts.push(`<text x="${(core.minX + core.maxX) / 2}" y="${-(frontY - streetH + 2.4 * u)}" text-anchor="middle" font-size="${font * 0.9}" letter-spacing="${0.5 * u}" fill="var(--muted)" font-weight="700">${esc(streetName(lot))}</text>`);
+  }
+  parts.push(`<path d="${pathD(lot.lot)}" fill="var(--lot)" stroke="none"/>`);
+
+  if (opts.envelope && lot.envelope.length) {
+    parts.push(`<path d="${pathD(lot.envelope)}" fill="var(--ok-soft)" stroke="var(--ok)" stroke-width="${0.4 * u}" stroke-dasharray="${1.5 * u} ${1 * u}"/>`);
+  }
+  // Required yards that the home reaches into.
+  for (const mark of marks) {
+    if (!mark.id.startsWith("yard:") || !mark.fail) continue;
+    const role = mark.id.slice(5);
+    if (lot.yard_strips[role] && !opts.envelope) {
+      parts.push(`<g class="mk" data-id="${mark.id}"><path d="${pathD(lot.yard_strips[role])}" fill="url(#${id}h)" stroke="none"/></g>`);
+    }
+  }
+  for (const edge of lot.edges) {
+    const d = "M" + edge.line.map(S).join("L");
+    if (edge.kind === "street") parts.push(`<path d="${d}" stroke="var(--ink)" stroke-width="${0.9 * u}" fill="none" stroke-linecap="round"/>`);
+    else if (edge.kind === "open") parts.push(`<path d="${d}" stroke="var(--ink)" stroke-width="${0.35 * u}" stroke-dasharray="${1.4 * u} ${0.9 * u}" fill="none"/>`);
+    else parts.push(`<path d="${d}" stroke="var(--ink)" stroke-width="${0.35 * u}" fill="none"/>`);
+  }
+
+  const failingBuilding = marks.some(mk => mk.fail && ["floor_area", "coverage", "height", "home_type"].includes(mk.id));
+  for (const b of lot.buildings) {
+    const d = pathD(b.polygons);
+    const fill = b.is_main && failingBuilding && !opts.envelope ? "var(--accent-soft)" : b.is_home ? "var(--building)" : "var(--shed)";
+    const stroke = b.is_main && failingBuilding && !opts.envelope ? "var(--accent)" : "var(--ink)";
+    parts.push(`<path d="${d}" fill="${fill}" stroke="${stroke}" stroke-width="${0.45 * u}"/>`);
+    if (opts.numbered) parts.push(`<path d="${d}" fill="url(#${id}b)" stroke="none"/>`);
+    if (opts.envelope && lot.envelope.length && b.is_home) {
+      parts.push(`<path d="${d}" fill="var(--accent)" fill-opacity=".85" stroke="var(--accent)" stroke-width="${0.45 * u}" mask="url(#${id}m)"/>`);
+    }
+  }
+  if (ghost) {
+    parts.push(`<g class="mk" data-id="lot_area"><path d="M${ghost.map(S).join("L")}Z" fill="none" stroke="var(--ok)" stroke-width="${0.5 * u}" stroke-dasharray="${2 * u} ${1.2 * u}"/>
+      <text class="halo" stroke-width="${0.8 * u}" x="${ghost[3][0] + 1.2 * u}" y="${-(ghost[3][1] - 3.6 * u)}" font-size="${font * 0.85}" fill="var(--ok)" font-weight="700">Smallest lot allowed: ${fmt(ghost[1][0] - ghost[0][0])} × ${fmt(ghost[2][1] - ghost[1][1])} ft</text></g>`);
+  }
+
+  // Dimension lines and callouts.
+  const color = mk => mk.fail ? "var(--accent)" : "var(--ok)";
+  const tick = (p, ang) => {
+    const L = 1.4 * u, a = ang + Math.PI / 4;
+    return `M${S([p[0] - Math.cos(a) * L, p[1] - Math.sin(a) * L])}L${S([p[0] + Math.cos(a) * L, p[1] + Math.sin(a) * L])}`;
+  };
+  const callouts = { left: [], right: [] };
+  const mainB = mainBuilding(lot);
+  const mainC = centerOf(mainB.polygons);
+  const leftmost = lot.lot[0][0].reduce((best, p) => (p[0] - 0.25 * p[1] < best[0] - 0.25 * best[1] ? p : best));
+
+  for (const mk of marks) {
+    const c = color(mk);
+    const grp = [];
+    if (mk.id === "frontage" && frontPts.length) {
+      const trace = frontTrace(lot, 4.5 * u);
+      grp.push(`<path d="${trace.ends.map(e => `M${S(e.base)}L${S([e.p[0] + e.n[0] * u, e.p[1] + e.n[1] * u])}`).join("")}" stroke="${c}" stroke-width="${0.25 * u}"/>`);
+      grp.push(`<path d="${trace.pieces.map(q => `M${S(q.a)}L${S(q.b)}`).join("")}${trace.ends.map(e => tick(e.p, e.dir)).join("")}" stroke="${c}" stroke-width="${0.5 * u}" fill="none" stroke-linecap="round"/>`);
+      const at = [trace.mid.p[0] + trace.mid.n[0] * 4 * u, trace.mid.p[1] + trace.mid.n[1] * 4 * u - font * 0.3];
+      grp.push(`<text class="halo" stroke-width="${0.9 * u}" style="stroke:var(--street)" x="${at[0]}" y="${-at[1]}" text-anchor="middle" font-size="${font}" fill="${c}"><tspan font-weight="700">${opts.numbered && mk.num ? mk.num + ". " : ""}${esc(mk.now)}</tspan>${mk.need ? ` · ${esc(mk.need)}` : ""}</text>`);
+    } else if (mk.id === "width" && lot.width_line) {
+      const [a, b] = lot.width_line;
+      const ang = Math.atan2(b[1] - a[1], b[0] - a[0]);
+      grp.push(`<path d="M${S(a)}L${S(b)}${tick(a, ang)}${tick(b, ang)}" stroke="${c}" stroke-width="${0.5 * u}" stroke-dasharray="${1.6 * u} ${0.8 * u}" fill="none"/>`);
+      callouts.left.push({ mk, at: a });
+    } else if (mk.id.startsWith("yard:")) {
+      const y = lot.yards[mk.id.slice(5)];
+      const [a, b] = y.from;
+      const ang = Math.atan2(b[1] - a[1], b[0] - a[0]);
+      grp.push(`<path d="M${S(a)}L${S(b)}${tick(a, ang)}${tick(b, ang)}" stroke="${c}" stroke-width="${0.6 * u}" fill="none"/>`);
+      const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+      callouts[mid[0] < mainC[0] ? "left" : "right"].push({ mk, at: mid });
+    } else if (mk.id === "lot_area") {
+      if (!ghost) callouts.left.push({ mk, at: leftmost });
+      else callouts.left.push({ mk, at: leftmost });
+    } else {
+      callouts.right.push({ mk, at: mainC });
+    }
+    if (grp.length) parts.push(`<g class="mk" data-id="${mk.id}">${grp.join("")}</g>`);
+  }
+
+  // Stack callouts in two columns beside the lot, then draw leaders to them.
+  const lineH = font * 1.25;
+  for (const side of ["left", "right"]) {
+    const list = callouts[side].sort((p, q) => q.at[1] - p.at[1]);
+    let floor = Infinity;
+    for (const c of list) {
+      const h = (c.mk.need ? 2 : 1) * lineH;
+      c.y = Math.min(c.at[1] + lineH * 0.6, floor);
+      floor = c.y - h - 2 * u;
+    }
+    for (const c of list) {
+      const right = side === "right";
+      const x = right ? core.maxX + 6 * u : core.minX - 6 * u;
+      const anchor = right ? "start" : "end";
+      const col = color(c.mk);
+      const textX = opts.numbered && c.mk.num ? x + (right ? 4.6 * u : -4.6 * u) : x;
+      const g = [];
+      g.push(`<path d="M${S(c.at)}L${S([x + (right ? -1.5 : 1.5) * u, c.y - lineH * 0.35])}L${S([x, c.y - lineH * 0.35])}" stroke="${col}" stroke-width="${0.25 * u}" fill="none"/>`);
+      g.push(`<circle cx="${c.at[0]}" cy="${-c.at[1]}" r="${0.7 * u}" fill="${col}"/>`);
+      if (opts.numbered && c.mk.num) {
+        const bx = x + (right ? 2 * u : -2 * u);
+        g.push(`<circle cx="${bx}" cy="${-(c.y - lineH * 0.35)}" r="${2 * u}" fill="${col}"/>`);
+        g.push(`<text x="${bx}" y="${-(c.y - lineH * 0.35) + font * 0.33}" text-anchor="middle" font-size="${font * 0.85}" font-weight="700" fill="var(--card)">${c.mk.num}</text>`);
+      }
+      g.push(`<text x="${textX}" y="${-c.y}" text-anchor="${anchor}" font-size="${font}" fill="${col}"><tspan font-weight="700">${esc(c.mk.now)}</tspan>${c.mk.need ? `<tspan x="${textX}" dy="${lineH}" fill="var(--muted)">${esc(c.mk.need)}</tspan>` : ""}</text>`);
+      parts.push(`<g class="mk" data-id="${c.mk.id}">${g.join("")}</g>`);
+    }
+  }
+
+  // Scale bar and north arrow, in the manner of a plat.
+  if (opts.numbered) {
+    const y0 = view.minY + 6 * u;
+    const bar = span > 120 ? 50 : span > 60 ? 20 : 10;
+    const x0 = view.minX + 6 * u;
+    parts.push(`<g fill="var(--ink)"><rect x="${x0}" y="${-y0}" width="${bar / 2}" height="${u}"/><rect x="${x0 + bar / 2}" y="${-y0}" width="${bar / 2}" height="${u}" fill="none" stroke="var(--ink)" stroke-width="${0.2 * u}"/>
+      <text x="${x0}" y="${-y0 + 4 * u}" font-size="${font * 0.8}" fill="var(--muted)">0</text><text x="${x0 + bar}" y="${-y0 + 4 * u}" font-size="${font * 0.8}" text-anchor="middle" fill="var(--muted)">${bar} ft</text></g>`);
+    const r = lot.rotation * Math.PI / 180;
+    const nx = view.maxX - 8 * u, ny = view.minY + 6 * u, L = 4 * u;
+    const tip = [nx - Math.sin(r) * L, ny + Math.cos(r) * L], tail = [nx + Math.sin(r) * L, ny - Math.cos(r) * L];
+    parts.push(`<path d="M${S(tail)}L${S(tip)}" stroke="var(--ink)" stroke-width="${0.35 * u}"/><circle cx="${tip[0]}" cy="${-tip[1]}" r="${0.8 * u}" fill="var(--ink)"/>
+      <text x="${tip[0] - Math.sin(r) * 2.6 * u}" y="${-(tip[1] + Math.cos(r) * 2.6 * u) + font * 0.33}" text-anchor="middle" font-size="${font * 0.85}" font-weight="700" fill="var(--ink)">N</text>`);
+  }
+
+  return `<svg class="plan" viewBox="${view.minX} ${-view.maxY} ${view.maxX - view.minX} ${view.maxY - view.minY}" role="img" aria-label="Drawing of ${esc(lot.address)}">${parts.join("")}</svg>`;
+}
+
+/** Side view of the main home against the height limit. */
+function drawElevation(lot, compact) {
+  const b = mainBuilding(lot), bb = bounds(points(b.polygons));
+  const w = bb.maxX - bb.minX, h = b.height, limit = lot.measures.height.required;
+  const top = Math.max(h, limit || 0) * 1.15;
+  const u = Math.max(w, top) / 60;
+  const W = w + 44 * u, eave = h * 0.68;
+  const x0 = 10 * u, x1 = x0 + w;
+  const Y = y => top - y;
+  const roof = `M${x0},${Y(0)}L${x0},${Y(eave)}L${(x0 + x1) / 2},${Y(h)}L${x1},${Y(eave)}L${x1},${Y(0)}Z`;
+  const over = limit && h > limit;
+  const id = "e" + (++svgCount);
+  return `<svg class="plan" viewBox="0 ${-4 * u} ${W} ${top + 10 * u}" style="max-height:${compact ? 200 : 300}px" role="img" aria-label="Side view">
+    <defs><clipPath id="${id}"><rect x="0" y="${-10 * u}" width="${W}" height="${Y(limit || 0) + 10 * u}"/></clipPath></defs>
+    <line x1="0" x2="${W}" y1="${Y(0)}" y2="${Y(0)}" stroke="var(--ink)" stroke-width="${0.5 * u}"/>
+    <path d="${roof}" fill="var(--building)" stroke="var(--ink)" stroke-width="${0.4 * u}"/>
+    ${over ? `<path d="${roof}" fill="var(--accent)" clip-path="url(#${id})"/>` : ""}
+    ${limit ? `<line x1="0" x2="${W}" y1="${Y(limit)}" y2="${Y(limit)}" stroke="var(--ink)" stroke-width="${0.35 * u}" stroke-dasharray="${1.6 * u} ${1 * u}"/>
+    <text x="${W - u}" y="${Y(limit) - 1.4 * u}" text-anchor="end" font-size="${2.8 * u}" fill="var(--muted)">Height limit ${ft(limit)}</text>` : ""}
+    <path d="M${x1 + 6 * u},${Y(0)}L${x1 + 6 * u},${Y(h)}M${x1 + 4.8 * u},${Y(h)}L${x1 + 7.2 * u},${Y(h)}M${x1 + 4.8 * u},${Y(0)}L${x1 + 7.2 * u},${Y(0)}" stroke="${over ? "var(--accent)" : "var(--ink)"}" stroke-width="${0.4 * u}"/>
+    <text x="${x1 + 8.5 * u}" y="${Y(h / 2)}" font-size="${3.2 * u}" font-weight="700" fill="${over ? "var(--accent)" : "var(--ink)"}">${ft(h)}</text>
+    <text x="${x0}" y="${Y(0) + 4.5 * u}" font-size="${2.6 * u}" fill="var(--muted)">Seen from ${esc(streetName(lot))}</text>
+  </svg>`;
+}
+
+function windowHead(lot) {
+  const meta = [lot.zone + " zone", lot.home_type, lot.year ? "built " + lot.year : null].filter(Boolean).join(" · ");
+  return `<div class="win-head"><div><div class="win-title">${esc(lot.address)}</div><div class="win-meta">${esc(meta)}</div></div><button class="win-close" aria-label="Close">×</button></div>`;
+}
+const windowFoot = `<div class="win-foot">Measured from the city's map data, not a survey.</div>`;
+
+function hookHighlights(win, svgSelector, triggerSelector) {
+  const svg = win.querySelector(svgSelector);
+  win.querySelectorAll(triggerSelector).forEach(row => {
+    const ids = row.dataset.id.split(" ");
+    row.addEventListener("mouseenter", () => {
+      svg.classList.add("dimmed");
+      svg.querySelectorAll(".mk").forEach(g => g.classList.toggle("hl", ids.includes(g.dataset.id)));
+      row.classList.add("hl");
+    });
+    row.addEventListener("mouseleave", () => {
+      svg.classList.remove("dimmed");
+      svg.querySelectorAll(".mk.hl").forEach(g => g.classList.remove("hl"));
+      row.classList.remove("hl");
+    });
+  });
+}
+
+/* Idea A */
+function renderA(lot) {
+  const win = document.getElementById("win-a");
+  const issues = issuesFor(lot);
+  const marks = marksFor(lot, false);
+  const height = issues.some(i => i.target === "height");
+  win.innerHTML = windowHead(lot) + `<div class="win-body">
+    <div class="verdict">Could not be built today. ${issues.length} rule${issues.length === 1 ? "" : "s"} broken.</div>
+    <div class="split">
+      <div>${drawPlan(lot, { marks, numbered: true })}</div>
+      <div style="display:grid;gap:12px">
+        <ol class="issues">${issues.map((i, n) => `<li data-id="${i.ids.join(" ")}"><span class="badge">${n + 1}</span><span>${esc(i.text)}</span></li>`).join("")}</ol>
+        ${height ? `<div class="inset"><div class="inset-title">Side view</div>${drawElevation(lot, true)}</div>` : ""}
+      </div>
+    </div></div>` + windowFoot;
+  hookHighlights(win, "svg.plan", "ol.issues li");
+}
+
+/* Idea C */
+function renderC(lot) {
+  const win = document.getElementById("win-c");
+  const marks = marksFor(lot, false).filter(m => m.id.startsWith("yard:") || ["lot_area", "width", "frontage"].includes(m.id));
+  const m = lot.measures, issues = issuesFor(lot);
+  const floor = issues.find(i => i.target === "floor_area");
+  const lotSmall = issues.find(i => i.target === "lot_area");
+  const sq = (area, max, cls, label, value) => {
+    const side = Math.max(18, Math.sqrt(area / max) * 150);
+    return `<div class="sq"><div class="box ${cls}" style="width:${side}px;height:${side}px"></div><span>${label}<br><b>${value}</b></span></div>`;
+  };
+  let squares = "";
+  if (floor || lotSmall) {
+    const max = Math.max(m.floor_area.actual || 0, m.floor_area.required || 0, m.lot_area.actual, m.lot_area.required || 0);
+    squares = `<div class="inset"><div class="inset-title" style="margin-bottom:10px">Floor space and land, drawn to the same scale</div><div class="squares">
+      ${lotSmall ? sq(m.lot_area.actual, max, "", "This lot", sqft(m.lot_area.actual)) + sq(m.lot_area.required, max, "ghost", "Smallest lot allowed", sqft(m.lot_area.required)) : ""}
+      ${floor ? sq(m.floor_area.actual, max, "over", "Floor space in the home", sqft(m.floor_area.actual)) + sq(m.floor_area.required, max, "ghost", "Floor space allowed", sqft(m.floor_area.required)) : ""}
+    </div></div>`;
+  }
+  const outside = Object.values(lot.yards).some(y => y.ok === false);
+  win.innerHTML = windowHead(lot) + `<div class="win-body">
+    <div class="verdict">${outside ? "The red part of the home sits where today's rules require open yard." : "The home fits where a home may stand, but the lot itself breaks the rules."}</div>
+    ${drawPlan(lot, { marks, envelope: true, ghost: true })}
+    <div class="squares" style="gap:16px;font-size:12.5px;color:var(--muted)">
+      <span><svg width="14" height="14" style="vertical-align:-2px"><rect width="14" height="14" fill="var(--ok-soft)" stroke="var(--ok)" stroke-dasharray="3 2"/></svg> Where a home may stand</span>
+      <span><svg width="14" height="14" style="vertical-align:-2px"><rect width="14" height="14" fill="var(--accent)"/></svg> Home where yard is required</span>
+      <span><svg width="14" height="14" style="vertical-align:-2px"><rect width="14" height="14" fill="none" stroke="var(--ok)" stroke-width="2" stroke-dasharray="4 2"/></svg> Smallest lot allowed</span>
+    </div>
+    ${squares}
+  </div>` + windowFoot;
+}
+
+/* Idea D */
+let stepIndex = 0;
+function renderD(lot, reset) {
+  if (reset) stepIndex = 0;
+  const win = document.getElementById("win-d");
+  const issues = issuesFor(lot);
+  const issue = issues[stepIndex];
+  const all = marksFor(lot, false);
+  const marks = all.filter(m => issue.ids.includes(m.id));
+  const first = marks[0];
+  const nums = first ? [first.now, first.need] : [lot.home_type, "not allowed"];
+  const big = issue.target === "yards"
+    ? [ft(lot.yards[issue.ids[0].slice(5)].gap), ft(lot.yards[issue.ids[0].slice(5)].needs)]
+    : issue.target === "lot_area" ? [fmt(lot.measures.lot_area.actual), fmt(lot.measures.lot_area.required)]
+    : issue.target === "floor_area" ? [fmt(lot.measures.floor_area.actual), fmt(lot.measures.floor_area.required)]
+    : issue.target === "coverage" ? [pct(lot.measures.coverage.actual), pct(lot.measures.coverage.required)]
+    : issue.target === "height" ? [ft(lot.measures.height.actual), ft(lot.measures.height.required)]
+    : issue.target === "frontage" ? [ft(lot.measures.frontage.actual), ft(lot.measures.frontage.required)]
+    : issue.target === "width" ? [ft(lot.measures.width.actual), ft(lot.measures.width.required)]
+    : nums;
+  const unitCap = { lot_area: "sq ft of land", floor_area: "sq ft of floor space", coverage: "of the lot covered", height: "tall", frontage: "along the street", width: "wide", yards: "of yard" }[issue.target] || "";
+  const maxWord = ["floor_area", "coverage", "height"].includes(issue.target) ? "Allowed" : "Required";
+  const drawing = issue.target === "height" ? drawElevation(lot, false)
+    : drawPlan(lot, { marks, ghost: issue.target === "lot_area", envelope: false });
+  win.innerHTML = windowHead(lot) + `<div class="win-body">
+    <div class="step-head"><span class="step-count">PROBLEM ${stepIndex + 1} OF ${issues.length}</span><div class="dots">${issues.map((_, i) => `<span class="${i === stepIndex ? "on" : ""}"></span>`).join("")}</div></div>
+    <div class="stat">
+      <span class="num bad">${esc(big[0])}</span><span class="num need">${esc(big[1])}</span>
+      <span class="cap">This lot</span><span class="cap">${maxWord}</span>
+    </div>
+    <p class="step-text">${esc(issue.text)}</p>
+    ${drawing}
+    <div class="nav"><button id="d-prev" ${stepIndex === 0 ? "disabled" : ""}>Back</button><button class="primary" id="d-next" ${stepIndex === issues.length - 1 ? "disabled" : ""}>Next problem</button></div>
+  </div>` + windowFoot;
+  win.querySelector("#d-prev").onclick = () => { stepIndex--; renderD(lot); };
+  win.querySelector("#d-next").onclick = () => { stepIndex++; renderD(lot); };
+}
+
+/* Idea E */
+/** Why the front yard isn't checked, in this lot's zone. */
+function frontYardTip(lot) {
+  const zone = lot.zone;
+  if (zone === "RM" || (zone === "RB" && lot.historic)) {
+    return `In the ${zone} zone, a home's front wall is meant to sit right at the front lot line, unless most homes on the block are set back further. Then it must line up with their average. The map doesn't measure the neighbors' homes yet, so this rule isn't checked.`;
+  }
+  if (/^R/.test(zone)) {
+    return `In the ${zone} zone, the front yard must fall within the range of front yards of the neighboring homes that share this street frontage. The map doesn't measure the neighbors' homes yet, so this rule isn't checked.`;
+  }
+  return `The map doesn't check front yards in the ${zone} zone.`;
+}
+
+/** Table of every rule the map checks, with the result and a bar against the limit. */
+function reportTable(lot) {
+  const m = lot.measures;
+  const issues = issuesFor(lot);
+  const failing = new Set(issues.flatMap(i => i.ids));
+  // Where width is measured at the street, issuesFor folds a width failure into frontage.
+  if (!m.width.measured_at && issues.some(i => i.target === "frontage" && /too narrow/i.test(i.text))) failing.add("width");
+  const rows = [];
+  const PILLS = { fail: "FAILS", pass: "PASSES", skip: "NOT CHECKED", none: "NO RULE", notreq: "NOT REQUIRED" };
+  const pill = (status, tip) => tip
+    ? `<span class="pill ${status === "fail" || status === "pass" ? status : "skip"} explain" tabindex="0" data-tip="${esc(tip)}">${PILLS[status]}</span>`
+    : `<span class="pill ${status}">${PILLS[status]}</span>`;
+  /** One row. status and tip are worked out from the numbers unless given. */
+  const row = (id, name, actual, required, max, show, status, tip) => {
+    status = status || (required == null ? "none" : failing.has(id) ? "fail" : "pass");
+    const scale = Math.max(actual || 0, required || 0) * 1.15 || 1;
+    const bar = required == null || actual == null ? ""
+      : `<div class="bar"><i class="${status === "fail" ? "fail" : ""}" style="width:${(actual / scale) * 100}%"></i><b style="left:${(required / scale) * 100}%"></b></div>`;
+    rows.push(`<tr data-id="${id}"><td>${name}</td><td>${pill(status, tip)}</td>
+      <td class="num">${actual == null ? "–" : show(actual)}</td><td class="num">${required == null ? "–" : (max ? "≤ " : "≥ ") + show(required)}</td><td>${bar}</td></tr>`);
+  };
+  const noRule = what => `The map's rules for the ${lot.zone} zone include no ${what} for a ${lot.home_type}.`;
+
+  row("lot_area", "Lot size", m.lot_area.actual, m.lot_area.required, false, sqft, null,
+    m.lot_area.required == null ? noRule("minimum lot size") : null);
+  row("frontage", `<span class="explain" tabindex="0" data-tip="${esc(frontageTip(lot))}">Street frontage</span>`,
+    m.frontage.actual, m.frontage.required, false, ft,
+    m.frontage.actual == null ? "skip" : null,
+    m.frontage.actual == null ? "The map couldn't find a public street next to this lot, so it can't tell which edge is the front."
+      : m.frontage.required == null ? noRule("minimum street frontage") : null);
+  row("width", `Lot width${m.width.measured_at ? ", " + ft(m.width.measured_at) + " back" : ""}`, m.width.actual, m.width.required, false, ft, null,
+    m.width.required == null ? noRule("minimum lot width") : null);
+
+  const sharedWall = role => lot.edges.some(e => e.role === role && e.shared_wall);
+  const sideCountFails = lot.reasons.some(r => r.kind === "yards" && /^A lot this wide/.test(r.text));
+  for (const role of ["front", "left", "right", "rear"]) {
+    const y = lot.yards[role];
+    const id = "yard:" + role, name = ROLE_NAMES[role];
+    if (role === "front") {
+      if (!y) continue;
+      if (y.needs == null) row(id, name, y.gap, null, false, ft, "skip", frontYardTip(lot));
+      else row(id, name, y.gap, y.needs, false, ft);
+    } else if (role === "rear") {
+      if (y && y.needs != null) row(id, name, y.gap, y.needs, false, ft);
+      else row(id, name, null, null, false, ft, "skip",
+        lot.position === "corner"
+          ? "On a corner lot the map treats every edge that isn't on a street as a side, so there is no rear yard to check. The side yard rules apply instead."
+          : "The map couldn't pick out a back lot line behind this home, as happens on lots with streets at both ends or odd shapes like this one. Every edge that isn't on the street was judged against the side yard rule instead.");
+    } else if (!y && sharedWall(role)) {
+      row(id, name, null, null, false, ft, "notreq", "This side of the home shares a wall with the house next door, so no yard is expected here.");
+    } else if (y && y.needs == null && lot.side_yards_by_lot_width) {
+      const w = m.width.actual ?? m.frontage.actual;
+      const needed = w >= 35 ? 2 : w >= 25 ? 1 : 0;
+      const rule = `In the ${lot.zone} zone, side yards depend on lot width: none on lots under 25 ft wide, one 5 ft side yard from 25 to 35 ft, and two at 35 ft or more.`;
+      if (needed === 0) {
+        row(id, name, y.gap, null, false, ft, "notreq", `${rule} This lot is about ${ft(w)} wide, so it needs none.`);
+      } else {
+        row(id, name, y.gap, 5, false, ft, sideCountFails ? "fail" : "pass",
+          `${rule} This lot is about ${ft(w)} wide, so it needs ${needed === 2 ? "a 5 ft yard on both sides" : "a 5 ft yard on at least one side"}.`);
+      }
+    } else if (y && y.needs == null) {
+      row(id, name, y.gap, null, false, ft, "none", noRule("side yard rule"));
+    } else if (y) {
+      row(id, name, y.gap, y.needs, false, ft);
+    }
+  }
+
+  row("floor_area", "Floor space", m.floor_area.actual, m.floor_area.required, true, sqft, null,
+    m.floor_area.required == null ? noRule("floor space limit") : null);
+  row("height", "Height", m.height.actual, m.height.required, true, ft, null,
+    m.height.required == null ? noRule("height limit") : null);
+  if (m.coverage.required == null && lot.zone === "RM") {
+    row("coverage", "Open space", 1 - m.coverage.actual, null, false, pct, "skip",
+      "The RM zone requires each home lot to keep open, usable space: 35% of the lot, or the amount it had on June 24, 1992 if that is less, and never under 300 sq ft. Driveways don't count. The map doesn't check this rule yet.");
+  } else {
+    row("coverage", "Land covered by buildings", m.coverage.actual, m.coverage.required, true, pct, null,
+      m.coverage.required == null ? noRule("limit on how much of the lot buildings may cover") : null);
+  }
+  const homeTypeFails = failing.has("home_type");
+  rows.push(`<tr data-id="home_type"><td>Home type</td><td>${pill(homeTypeFails ? "fail" : "pass")}</td><td colspan="3">${esc(lot.home_type)} ${homeTypeFails ? "not allowed" : "allowed"} in ${esc(lot.zone)}</td></tr>`);
+  return `<div class="report-wrap"><table class="report"><thead><tr><th>Rule</th><th>Result</th><th>Measured</th><th>Rule says</th><th></th></tr></thead><tbody>${rows.join("")}</tbody></table></div>`;
+}
+
+function renderE(lot) {
+  const win = document.getElementById("win-e");
+  const marks = marksFor(lot, true);
+  const issues = issuesFor(lot);
+  win.innerHTML = windowHead(lot) + `<div class="win-body">
+    <div class="verdict">Fails ${issues.length} of the checks below.</div>
+    ${drawPlan(lot, { marks })}
+    ${reportTable(lot)}
+  </div>` + windowFoot;
+  hookHighlights(win, "svg.plan", "tr[data-id]");
+}
+
+/* Idea B: 3D */
+const threes = {};
+function cssColor(name) { return new THREE.Color(getComputedStyle(document.documentElement).getPropertyValue(name).trim()); }
+
+function renderB(lot) {
+  const win = document.getElementById("win-b");
+  const issues = issuesFor(lot);
+  win.innerHTML = windowHead(lot) + `<div class="win-body">
+    <div class="verdict">Could not be built today. ${issues.length} rule${issues.length === 1 ? "" : "s"} broken.</div>
+    <div class="three" id="three-b"><span class="hint">Drag to spin · scroll to zoom</span></div>
+    <div class="toggles" id="b-toggles"></div>
+  </div>` + windowFoot;
+  const view = build3D("b", document.getElementById("three-b"), lot, issues);
+  if (!view) return;
+  // Rule chips: highlight one label at a time by fading the rest.
+  const toggles = document.getElementById("b-toggles");
+  toggles.innerHTML = issues.map((i, n) => `<button class="chip" data-n="${n}" aria-pressed="false">${n + 1}. ${esc(i.text.split(":")[0])}</button>`).join("");
+  toggles.querySelectorAll(".chip").forEach(chip => chip.addEventListener("click", () => {
+    const on = chip.getAttribute("aria-pressed") !== "true";
+    toggles.querySelectorAll(".chip").forEach(c => c.setAttribute("aria-pressed", "false"));
+    chip.setAttribute("aria-pressed", String(on));
+    view.highlight(on ? issues[chip.dataset.n].ids : null);
+  }));
+}
+
+/**
+ * Draw the lot in 3D inside el. key names the slot, so a redraw replaces
+ * the old scene. Returns { highlight(ids) }, or null if 3D is unavailable.
+ */
+function build3D(key, el, lot, issues) {
+  const old = threes[key];
+  if (old) { cancelAnimationFrame(old.frame); old.renderer.dispose(); old.observer.disconnect(); }
+  if (!window.THREE || !THREE.OrbitControls) {
+    el.innerHTML = `<p style="padding:20px;color:var(--muted)">The 3D library didn't load, so this mockup can't draw.</p>`;
+    return null;
+  }
+  const three = threes[key] = {};
+  const W = el.clientWidth, H = el.clientHeight;
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(W, H);
+  el.prepend(renderer.domElement);
+  three.renderer = renderer;
+
+  const C = n => cssColor(n);
+  const scene = new THREE.Scene();
+  const lotB = bounds(points(lot.lot));
+  const span = Math.max(lotB.maxX - lotB.minX, lotB.maxY - lotB.minY, 40);
+  const maxH = Math.max(...lot.buildings.map(b => b.height), lot.measures.height.required || 0);
+  const camera = new THREE.PerspectiveCamera(32, W / H, 1, span * 40);
+  camera.position.set(span * 0.75, span * 0.85 + maxH, span * 1.25);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8070, 0.95));
+  const sun = new THREE.DirectionalLight(0xffffff, 0.7);
+  sun.position.set(-span, span * 2, span * 1.2);
+  scene.add(sun);
+
+  const v2 = ([x, y]) => new THREE.Vector2(x, y);
+  const v3 = ([x, y], h = 0) => new THREE.Vector3(x, h, -y);
+  const shapeOf = poly => {
+    const shape = new THREE.Shape(poly[0].map(v2));
+    for (const hole of poly.slice(1)) shape.holes.push(new THREE.Path(hole.map(v2)));
+    return shape;
+  };
+  const flat = (polys, color, y, opacity = 1) => {
+    for (const poly of polys) {
+      const geo = new THREE.ShapeGeometry(shapeOf(poly));
+      geo.rotateX(-Math.PI / 2);
+      const mat = new THREE.MeshBasicMaterial({ color, transparent: opacity < 1, opacity, side: THREE.DoubleSide, depthWrite: opacity === 1 });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.y = y;
+      scene.add(mesh);
+    }
+  };
+  const ribbon = (a, b, width, color, y = 0.15) => {
+    const dx = b[0] - a[0], dy = b[1] - a[1], len = Math.hypot(dx, dy) || 1;
+    const nx = -dy / len * width / 2, ny = dx / len * width / 2;
+    const pts = [[a[0] + nx, a[1] + ny], [b[0] + nx, b[1] + ny], [b[0] - nx, b[1] - ny], [a[0] - nx, a[1] - ny]];
+    const geo = new THREE.BufferGeometry().setFromPoints([0, 1, 2, 0, 2, 3].map(i => v3(pts[i], y)));
+    scene.add(new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide })));
+  };
+  const tags = [];
+  const tag = (pos, html, cls = "", id = "") => {
+    const div = document.createElement("div");
+    div.className = "tag " + cls;
+    div.innerHTML = html;
+    el.appendChild(div);
+    div.dataset.id = id;
+    tags.push({ pos, div });
+  };
+
+  // Ground, street and lot.
+  const frontPts = (lot.front_line || []).flat();
+  const frontY = frontPts.length ? Math.min(...frontPts.map(p => p[1])) : lotB.minY;
+  const ground = new THREE.Mesh(new THREE.CircleGeometry(span * 3, 64), new THREE.MeshBasicMaterial({ color: C("--paper") }));
+  ground.rotateX(-Math.PI / 2);
+  ground.position.y = -0.2;
+  scene.add(ground);
+  flat([[[[lotB.minX - span, frontY - 1], [lotB.maxX + span, frontY - 1], [lotB.maxX + span, frontY - 26], [lotB.minX - span, frontY - 26]]]], C("--street"), -0.1);
+  tag(v3([(lotB.minX + lotB.maxX) / 2, frontY - 16]), esc(streetName(lot)) + " · FRONT", "street");
+  flat(lot.lot, C("--lot"), 0);
+  for (const edge of lot.edges) {
+    for (let i = 0; i < edge.line.length - 1; i++) {
+      ribbon(edge.line[i], edge.line[i + 1], edge.kind === "street" ? 1.4 : 0.35, C("--ink"), 0.12);
+    }
+  }
+
+  const accent = C("--accent"), ok = C("--ok");
+  // Required yards the home reaches into.
+  for (const [role, y] of Object.entries(lot.yards)) {
+    if (y.ok !== false || !lot.yard_strips[role]) continue;
+    flat(lot.yard_strips[role], accent, 0.06, 0.28);
+    const [a, b] = y.from;
+    ribbon(a, b, 0.6, accent, 0.2);
+    tag(v3([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], 0.5), `${ROLE_NAMES[role]} ${ft(y.gap)}<small>needs ${ft(y.needs)}</small>`, "fail", "yard:" + role);
+  }
+
+  // Frontage and width.
+  const m = lot.measures;
+  const failingTargets = new Set(issues.map(i => i.target));
+  if (frontPts.length && m.frontage.required) {
+    const trace = frontTrace(lot, 5);
+    const col = failingTargets.has("frontage") ? accent : ok;
+    for (const q of trace.pieces) ribbon(q.a, q.b, 0.5, col, 0.05);
+    for (const e of trace.ends) ribbon(e.base, [e.p[0] + e.n[0] * 1.5, e.p[1] + e.n[1] * 1.5], 0.35, col, 0.05);
+    tag(v3([trace.mid.p[0] + trace.mid.n[0] * 5, trace.mid.p[1] + trace.mid.n[1] * 5]), `${ft(m.frontage.actual)} frontage<small>needs ${ft(m.frontage.required)}</small>`, failingTargets.has("frontage") ? "fail" : "", "frontage");
+  }
+  if (lot.width_line && failingTargets.has("width")) {
+    const [a, b] = lot.width_line;
+    ribbon(a, b, 0.5, accent, 0.25);
+    tag(v3([a[0] - 6, a[1]], 0.5), `${ft(m.width.actual)} wide<small>needs ${ft(m.width.required)}</small>`, "fail", "width");
+  }
+
+  // Buildings, split at the height limit.
+  const limit = m.height.required;
+  const tooBig = failingTargets.has("floor_area") || failingTargets.has("coverage");
+  const buildingMat = color => new THREE.MeshLambertMaterial({ color });
+  const extrude = (poly, from, to, color) => {
+    const geo = new THREE.ExtrudeGeometry(shapeOf(poly), { depth: to - from, bevelEnabled: false });
+    geo.rotateX(-Math.PI / 2);
+    const mesh = new THREE.Mesh(geo, buildingMat(color));
+    mesh.position.y = from;
+    scene.add(mesh);
+    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: C("--ink"), transparent: true, opacity: 0.55 }));
+    edges.position.y = from;
+    scene.add(edges);
+  };
+  for (const b of lot.buildings) {
+    const base = b.is_home ? (b.is_main && tooBig ? C("--accent-soft") : C("--building")) : C("--shed");
+    for (const poly of b.polygons) {
+      if (failingTargets.has("height") && b.height > limit) {
+        extrude(poly, 0, limit, base);
+        extrude(poly, limit, b.height, accent);
+      } else {
+        extrude(poly, 0, b.height, base);
+      }
+    }
+  }
+  const main = mainBuilding(lot), mc = centerOf(main.polygons);
+  if (failingTargets.has("height")) {
+    tag(v3(mc, main.height + 4), `${ft(main.height)} tall<small>limit ${ft(limit)}</small>`, "fail", "height");
+  }
+  if (failingTargets.has("floor_area")) {
+    tag(v3(mc, main.height * 0.45), `${sqft(m.floor_area.actual)} floor space<small>limit ${sqft(m.floor_area.required)}</small>`, "fail", "floor_area");
+  }
+  if (failingTargets.has("coverage")) {
+    tag(v3([mc[0], mc[1] - 6], 1), `Covers ${pct(m.coverage.actual)} of lot<small>limit ${pct(m.coverage.required)}</small>`, "fail", "coverage");
+  }
+  if (failingTargets.has("lot_area")) {
+    tag(v3([lotB.minX, lotB.maxY + 4], 0.5), `Lot ${sqft(m.lot_area.actual)}<small>needs ${sqft(m.lot_area.required)}</small>`, "fail", "lot_area");
+  }
+
+  // The height limit as a see-through ceiling over the lot.
+  if (limit && failingTargets.has("height")) {
+    const over = true;
+    flat(lot.lot, over ? accent : C("--ink"), limit, over ? 0.12 : 0.06);
+    const ring = lot.lot[0][0];
+    const pts = ring.concat([ring[0]]).map(p => v3(p, limit));
+    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineDashedMaterial({ color: over ? accent : C("--muted"), dashSize: 2, gapSize: 1.2 }));
+    line.computeLineDistances();
+    scene.add(line);
+    tag(v3([lotB.maxX, lotB.maxY], limit), `${ft(limit)} height limit`, over ? "fail" : "", "height");
+  }
+
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.target.set(0, Math.min(maxH, span) * 0.25, 0);
+  controls.enableDamping = true;
+  controls.maxPolarAngle = Math.PI / 2 - 0.08;
+  controls.minDistance = span * 0.5;
+  controls.maxDistance = span * 6;
+  controls.autoRotate = !matchMedia("(prefers-reduced-motion: reduce)").matches;
+  controls.autoRotateSpeed = 0.6;
+  controls.addEventListener("start", () => { controls.autoRotate = false; });
+  three.controls = controls;
+
+  const project = new THREE.Vector3();
+  const loop = () => {
+    controls.update();
+    renderer.render(scene, camera);
+    const w = el.clientWidth, h = el.clientHeight;
+    for (const t of tags) {
+      project.copy(t.pos).project(camera);
+      const visible = project.z < 1;
+      t.div.style.display = visible ? "" : "none";
+      t.div.style.transform = `translate(${(project.x + 1) / 2 * w}px, ${(1 - project.y) / 2 * h}px) translate(-50%, -50%)`;
+    }
+    three.frame = requestAnimationFrame(loop);
+  };
+  loop();
+
+  three.observer = new ResizeObserver(() => {
+    const w = el.clientWidth, h = el.clientHeight;
+    if (!w || !h) return;
+    renderer.setSize(w, h);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  });
+  three.observer.observe(el);
+
+  return {
+    /** Fade every label except those for the given rule ids; null shows all. */
+    highlight(ids) {
+      const any = ids && tags.some(t => ids.includes(t.div.dataset.id));
+      for (const t of tags) {
+        t.div.style.opacity = !any || ids.includes(t.div.dataset.id) || t.div.classList.contains("street") ? "1" : "0.15";
+      }
+    },
+  };
+}
+
+/* Idea F: the 3D model, lot size squares and the full report together. */
+function lotSquares(lot) {
+  const m = lot.measures.lot_area;
+  if (!m.required) return "";
+  const fails = issuesFor(lot).some(i => i.target === "lot_area");
+  const max = Math.max(m.actual, m.required);
+  const box = (area, cls, label) => {
+    const side = Math.max(18, Math.sqrt(area / max) * 170);
+    return `<div class="sq"><div class="box ${cls}" style="width:${side}px;height:${side}px"></div><span>${label}<br><b>${sqft(area)}</b></span></div>`;
+  };
+  return `<div class="inset lot-squares" data-id="lot_area">
+    <div class="inset-title" style="margin-bottom:10px">Lot size, drawn to scale</div>
+    <div class="squares">${box(m.actual, fails ? "over" : "", "This lot")}${box(m.required, "ghost", `Smallest lot allowed in ${esc(lot.zone)}`)}</div>
+    <p class="sq-note">${fails
+      ? `This lot has ${pct(m.actual / m.required)} of the land the zone requires.`
+      : `This lot is bigger than the zone requires.`}</p>
+  </div>`;
+}
+
+function renderF(lot) {
+  const win = document.getElementById("win-f");
+  const issues = issuesFor(lot);
+  win.innerHTML = windowHead(lot) + `<div class="win-body">
+    <div class="verdict">Could not be built today. ${issues.length} rule${issues.length === 1 ? "" : "s"} broken.</div>
+    <div class="three" id="three-f"><span class="hint">Drag to spin · scroll to zoom</span></div>
+    <div class="combo">
+      <div style="min-width:0">${reportTable(lot)}</div>
+      ${lotSquares(lot)}
+    </div>
+  </div>` + windowFoot;
+  const view = build3D("f", document.getElementById("three-f"), lot, issues);
+  if (!view) return;
+  const squares = win.querySelector(".lot-squares");
+  win.querySelectorAll("tr[data-id]").forEach(row => {
+    row.addEventListener("mouseenter", () => {
+      view.highlight([row.dataset.id]);
+      if (squares) squares.classList.toggle("hl", row.dataset.id === "lot_area");
+    });
+    row.addEventListener("mouseleave", () => {
+      view.highlight(null);
+      if (squares) squares.classList.remove("hl");
+    });
+  });
+}
+
+/* Hover explainers. One floating box, placed under whatever is hovered or focused. */
+const tipbox = document.createElement("div");
+tipbox.className = "tipbox";
+tipbox.setAttribute("role", "tooltip");
+tipbox.hidden = true;
+document.body.appendChild(tipbox);
+function showTip(el) {
+  tipbox.textContent = el.dataset.tip;
+  tipbox.hidden = false;
+  const r = el.getBoundingClientRect(), box = tipbox.getBoundingClientRect();
+  const left = Math.min(Math.max(16, r.left), window.innerWidth - box.width - 16);
+  const below = r.bottom + 8 + box.height < window.innerHeight;
+  tipbox.style.left = left + "px";
+  tipbox.style.top = (below ? r.bottom + 8 : r.top - box.height - 8) + "px";
+}
+const hideTip = () => { tipbox.hidden = true; };
+for (const type of ["mouseover", "focusin"]) {
+  document.addEventListener(type, e => { const el = e.target.closest?.(".explain"); if (el) showTip(el); });
+}
+for (const type of ["mouseout", "focusout"]) {
+  document.addEventListener(type, e => { if (e.target.closest?.(".explain")) hideTip(); });
+}
+document.addEventListener("keydown", e => { if (e.key === "Escape") hideTip(); });
+window.addEventListener("scroll", hideTip, { passive: true });
+
+/* Lot picker */
+let current = 0;
+function renderAll(reset = true) {
+  const lot = LOTS[current];
+  renderF(lot); renderA(lot); renderB(lot); renderC(lot); renderD(lot, reset); renderE(lot);
+  document.querySelectorAll("#picker .chip").forEach((b, i) => b.setAttribute("aria-pressed", String(i === current)));
+}
+const picker = document.getElementById("picker");
+LOTS.forEach((lot, i) => {
+  const b = document.createElement("button");
+  b.className = "chip";
+  b.id = "lot-" + i;
+  b.innerHTML = `${esc(lot.address)} <span class="n">${issuesFor(lot).length}</span>`;
+  b.title = issuesFor(lot).length + " broken rules";
+  b.onclick = () => { current = i; renderAll(); };
+  picker.appendChild(b);
+});
+renderAll();
+// Rebuild the 3D scene when the theme flips, since its colors are read once.
+const redraw3D = () => { renderB(LOTS[current]); renderF(LOTS[current]); };
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", redraw3D);
+new MutationObserver(redraw3D).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+</script>

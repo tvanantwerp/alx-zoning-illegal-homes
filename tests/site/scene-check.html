@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Lot drawing check</title>
+<link rel="icon" href="data:,">
+<!--
+  Not shipped. Draws one lot file in 3D so the drawing can be checked by eye.
+  Serve the repo root, then open tests/site/scene-check.html?id=5352
+  Add &ordinary to draw a planned-district lot under its ordinary zone,
+  and &hl=yard:left to highlight one rule.
+-->
+<script type="importmap">
+{"imports": {"three": "https://unpkg.com/three/build/three.module.js", "three/addons/": "https://unpkg.com/three/examples/jsm/"}}
+</script>
+<style>
+  :root {
+    --paper: #f7f3ec; --card: #fffdf9; --ink: #1f1b16; --muted: #6b6257; --rule: #ddd4c6;
+    --accent: #bf3a1e; --lot: #fbf8f2; --building: #d6ccbc; --shed: #e9e2d6; --street: #e8e1d5;
+  }
+  body { margin: 16px; background: var(--card); color: var(--ink); font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  #drawing { width: 900px; height: 600px; position: relative; overflow: hidden; border-radius: 8px; background: var(--paper); }
+  #drawing canvas { display: block; }
+  .tag {
+    font: 600 12px/1.25 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--card); color: var(--ink); border: 1px solid var(--rule); border-radius: 6px; padding: 3px 7px;
+    transition: opacity .15s;
+  }
+  .tag.fail { border-color: var(--accent); color: var(--accent); }
+  .tag.hl { z-index: 1; }
+  .tag.street { background: none; border: 0; color: var(--muted); font: 700 11px/1 ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: .12em; }
+</style>
+</head>
+<body>
+<h1 id="title">Loading…</h1>
+<p id="failing"></p>
+<div id="drawing"></div>
+<script type="module">
+  import { drawLot } from "../../site/lot-drawing/scene.js";
+  import { chooseResults } from "../../site/lot-drawing/table.js";
+
+  const params = new URLSearchParams(location.search);
+  const lot = await (await fetch(`../../site/lots/${params.get("id")}.json`)).json();
+  const { main } = chooseResults(lot, params.has("ordinary"));
+  document.getElementById("title").textContent = `${lot.address} · ${main.label}`;
+  document.getElementById("failing").textContent = "Fails: "
+    + (main.rules.filter((r) => r.status === "fails").map((r) => r.rule).join(", ") || "nothing");
+  window.view = drawLot(document.getElementById("drawing"), lot, main);
+  if (params.get("hl")) window.view.highlight(params.get("hl").split(","));
+  window.sceneReady = true;
+</script>
+</body>
+</html>

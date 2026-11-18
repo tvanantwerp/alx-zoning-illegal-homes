@@ -10,6 +10,7 @@ from shapely.ops import unary_union
 from . import loader
 from .checks import Home, LotFacts, check_lot
 from .lot_lines import MAX_STREET_DISTANCE, classify
+from .rule_results import under_special_approval
 from .rules import (HOME_TYPE_NAMES, PLANNED_DISTRICTS, normalize_zone,
                     planned_district_rules, potomac_yard_zone, rules_for)
 
@@ -187,7 +188,7 @@ def _place_buildings(lots, buildings, pairs):
         geometry="geometry", crs=lots.crs)
     details = buildings.set_index("building_id")[
         ["is_home", "BTYPE", "BSIZE", "BUNITS", "STORIES", "YEARBLT", "height",
-         "footprint"]]
+         "footprint", "sections"]]
     return placed.join(details, on="building_id")
 
 
@@ -440,12 +441,14 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
                     shape=part.geometry,
                     height=part["height"] if pd.notna(part["height"]) else None,
                     floor_area=_floor_area(part),
+                    sections=part["sections"],
                 )
                 for _, part in homes.iterrows()
             ],
             lines=lines,
             units=units,
             all_buildings=list(on_lot.geometry.values),
+            building_sections=list(on_lot["sections"]),
             attached_neighbors=unary_union(attached) if attached else None,
             in_historic_district=is_historic,
         )
@@ -456,6 +459,7 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
             # Second opinion: the same home under the ordinary zone that
             # would apply if the district's special approval did not exist.
             ordinary = check_lot(replace(facts, rules=fallback_rules))
+            findings.results = under_special_approval(findings.results, district)
             project = _project_for(lot_points.loc[lot_id], projects, project_tree)
             record.update({
                 "district": district.name,
@@ -463,6 +467,8 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
                 "fallback_zone": fallback_rules.name,
                 "ordinary_reasons": [r.text for r in ordinary.reasons],
                 "ordinary_kinds": sorted({r.kind for r in ordinary.reasons}),
+                "ordinary_rule_results": ordinary.results,
+                "ordinary_notes": ordinary.notes,
                 "case": project,
             })
             findings.notes.insert(0, (
@@ -478,6 +484,7 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
             "reasons": [reason.text for reason in findings.reasons],
             "kinds": sorted({reason.kind for reason in findings.reasons}),
             "notes": findings.notes,
+            "rule_results": findings.results,
             "lot_area": round(facts.area),
             "homes": units,
             "historic": is_historic,

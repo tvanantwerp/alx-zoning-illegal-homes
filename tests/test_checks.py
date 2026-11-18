@@ -1,37 +1,11 @@
 """Rule checks on made-up lots where the right answer is obvious."""
-from shapely.geometry import LineString, box
+import pytest
+from shapely.geometry import box
 from shapely.ops import unary_union
 
-from alx_zoning_illegal_homes.mapper.checks import Home, LotFacts, check_lot
-from alx_zoning_illegal_homes.mapper.lot_lines import classify
-from alx_zoning_illegal_homes.mapper.rules import ZONES, normalize_zone, rules_for
+from alx_zoning_illegal_homes.mapper.rules import normalize_zone, rules_for
 
-MAIN = ("MAIN", LineString([(-300, -25), (500, -25)]))
-
-
-def check(lot, home, zone, home_type="single", neighbors=None, attached=None,
-          height=20, floor_area=1000, units=1):
-    """Check one lot holding one home, fronting Main St to its south."""
-    facts = LotFacts(
-        shape=lot,
-        area=lot.area,
-        rules=ZONES[zone],
-        home_type=home_type,
-        homes=[Home(shape=home, height=height, floor_area=floor_area)],
-        lines=classify(lot, neighbors, [MAIN], "MAIN"),
-        units=units,
-        all_buildings=[home],
-        attached_neighbors=attached,
-    )
-    findings = check_lot(facts)
-    return {reason.kind for reason in findings.reasons}, findings
-
-
-def between_neighbors(lot):
-    """Lots on both sides and behind, so every edge but the front is shared."""
-    x0, y0, x1, y1 = lot.bounds
-    return unary_union([box(x0 - 80, y0, x0, y1), box(x1, y0, x1 + 80, y1),
-                        box(x0 - 80, y1, x1 + 80, y1 + 100)])
+from .helpers import between_neighbors, check
 
 
 def test_roomy_house_passes_everything():
@@ -73,6 +47,53 @@ def test_house_near_rear_line_is_flagged():
                             neighbors=between_neighbors(lot))
     assert kinds == {"yards"}
     assert "Rear yard" in findings.reasons[0].text
+
+
+def _rear_row(findings):
+    return next(row for row in findings.results if row.rule == "yard:rear")
+
+
+def test_low_rear_extension_is_judged_by_its_own_height():
+    # Rear lot line at y=120. The 30 ft main block is 40 ft from it; the
+    # 14 ft extension is 15 ft from it. Each part clears its own setback
+    # ratio, though 15 ft is too little for the full 30 ft height.
+    lot = box(0, 0, 80, 120)
+    sections = [(box(20, 35, 60, 80), 30.0), (box(20, 80, 60, 105), 14.0)]
+    home = box(20, 35, 60, 105)
+    kinds, _ = check(lot, home, "R-8", neighbors=between_neighbors(lot), height=30)
+    assert "yards" in kinds   # without sections the whole home is 30 ft tall
+    kinds, findings = check(lot, home, "R-8", neighbors=between_neighbors(lot),
+                            height=30, sections=sections)
+    assert kinds == set()
+    assert _rear_row(findings).status == "passes"
+
+
+def test_tall_part_is_measured_from_where_it_stands():
+    # The 30 ft main block is 20 ft from the rear line and needs about 25.5 ft.
+    # The 10 ft extension behind it is 10 ft away, which is enough for it.
+    lot = box(0, 0, 80, 120)
+    sections = [(box(20, 35, 60, 100), 30.0), (box(20, 100, 60, 110), 10.0)]
+    kinds, findings = check(lot, box(20, 35, 60, 110), "R-8",
+                            neighbors=between_neighbors(lot), height=30,
+                            sections=sections)
+    assert kinds == {"yards"}
+    row = _rear_row(findings)
+    assert row.status == "fails"
+    assert row.measured == pytest.approx(20)
+    assert row.required == pytest.approx(25.5)
+    assert "part" in findings.reasons[0].text
+
+
+def test_fixed_minimum_counts_the_closest_part():
+    # A low extension 5 ft from the rear line breaks the 8 ft minimum.
+    lot = box(0, 0, 80, 120)
+    sections = [(box(20, 35, 60, 80), 30.0), (box(20, 80, 60, 115), 8.0)]
+    kinds, findings = check(lot, box(20, 35, 60, 115), "R-8",
+                            neighbors=between_neighbors(lot), height=30,
+                            sections=sections)
+    assert kinds == {"yards"}
+    row = _rear_row(findings)
+    assert row.measured == pytest.approx(5) and row.required == 8
 
 
 def test_oversized_house_breaks_floor_area_limit():

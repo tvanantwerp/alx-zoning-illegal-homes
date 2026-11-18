@@ -99,7 +99,9 @@ def load_buildings() -> gpd.GeoDataFrame:
     Heights come from the city's 3D building layer, which splits a building
     into roof sections. We use the tallest section that covers a meaningful
     part of the footprint, so a chimney or stair tower does not set the
-    height of a whole house.
+    height of a whole house. Every section is also kept, in the "sections"
+    column as (shape, height) pairs, so drawings can show a building's
+    lower and higher parts.
     """
     buildings = load_layer("Building")
     buildings = buildings[buildings.geometry.geom_type.isin(
@@ -118,15 +120,20 @@ def load_buildings() -> gpd.GeoDataFrame:
     sections = load_layer("Buildings_3D")
     sections = sections[(sections["HEIGHT"] > 0) & (sections["HEIGHT"] < 400)].copy()
     sections["section_area"] = sections.geometry.area
+    sections["shape"] = sections.geometry
     sections["geometry"] = sections.geometry.representative_point()
     joined = gpd.sjoin(
-        sections[["HEIGHT", "section_area", "geometry"]],
+        sections[["HEIGHT", "section_area", "shape", "geometry"]],
         buildings[["building_id", "footprint", "geometry"]],
         predicate="within",
     )
     sizeable = joined[joined["section_area"] >= 0.15 * joined["footprint"]]
     height = sizeable.groupby("building_id")["HEIGHT"].max()
     buildings["height"] = buildings["building_id"].map(height)
+    pairs = joined.groupby("building_id").apply(
+        lambda group: list(zip(group["shape"], group["HEIGHT"].astype(float))),
+        include_groups=False)
+    buildings["sections"] = [pairs.get(i, []) for i in buildings["building_id"]]
     return buildings
 
 
