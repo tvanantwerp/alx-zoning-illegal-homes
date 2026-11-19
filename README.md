@@ -81,7 +81,13 @@ CG, CD, CDX, OC, OCM, OCH, W-1, CRMU, KR) and in planned districts:
   behind toward the second part). The map measures it to every lot line
   away from both streets that isn't along a shared wall.
 - **Floor space** compared with lot size. In the KR and OCH zones the limit
-  is looser within 1,000 ft of a Metro station.
+  is looser within 1,000 ft of a Metro station. In R-20 through R-2-5, and
+  for houses and two-unit houses in RA and RB outside the historic
+  districts, garages, sheds and other outbuildings count too, beyond an
+  allowance of 100 sq ft (lots under 2,500 sq ft), 350 sq ft, or 600 sq ft
+  (lots of 8,000 sq ft or more). Their floor space comes from their outlines,
+  as one story unless the city's 3D data shows a building tall enough for
+  more.
 - **Height**, measured as the ordinance does: to the top of a flat roof, but
   only halfway between the eaves and the peak of a gable or hip roof. The
   city's 3D data gives only the peak, so the map guesses the roof's shape and
@@ -310,6 +316,12 @@ Other details that matter:
   count, with the planning director's approval, which the map can't see, so
   an apartment building may have more open space than it shows.
 - Parking rules are not checked.
+- Floor space comes from the city's assessment records, which seem to count
+  only finished living space. The ordinance counts all space under a roof,
+  finished or not, attached garages included, so a home's real floor space
+  may be somewhat higher than the map shows. Every garage or shed counts
+  against the outbuilding allowance, though the ordinance's allowance covers
+  only detached garages behind the house, sheds and backyard cottages.
 - Height comes from the city's 3D building layer and floor space from the
   city's building records; neither matches the ordinance's definitions
   exactly. The 3D layer draws each part of a building as a flat-topped block

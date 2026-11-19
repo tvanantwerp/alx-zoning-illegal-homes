@@ -48,6 +48,14 @@ SIDE_COUNT_ON_CORNER = ("On corner lots the map doesn't count side yards in this
 NO_SIDE_LINE = "The map couldn't find a lot line on this side of the home."
 NO_FLOOR_AREA = ("City records don't give this home's floor space, and it couldn't be "
                  "estimated from the number of stories.")
+FLOOR_AREA_MEASURED = (
+    "The zoning rules count all floor space under a roof, measured from the outside of "
+    "the walls, finished or not, but leave out basements, stairs, attic space under 7 ft "
+    "high and open porches up to 8 ft deep. The map uses each home's floor space from "
+    "the city's assessment records, or, where they give none, an estimate from its "
+    "outline and number of stories. The city's figure seems to count only finished "
+    "living space, leaving out attached garages and unfinished space, so the real "
+    "figure may be somewhat higher than the map shows.")
 NO_HEIGHT = "The city's 3D building data has no height for this home."
 HEIGHT_MEASURED = (
     "The zoning rules measure height from the ground to the top of a flat roof, but "
@@ -747,3 +755,52 @@ def row_no_townhouses_explanation(zone_label: str) -> str:
     """Say why the townhouse row rule doesn't come into it where townhouses aren't allowed."""
     return (f"The {zone_label} doesn't allow townhouses (see the home type row), so the "
             "limit on townhouses in one building doesn't come into it.")
+
+
+def _plural(label: str) -> str:
+    """The plural of an outbuilding label: "garage or shed" becomes "garages or sheds"."""
+    return " or ".join(word + "s" for word in label.split(" or "))
+
+
+def _outbuilding_list(outbuildings: list[tuple[str, float]]) -> str:
+    """Name the outbuildings found, with their floor space.
+
+    Up to three are named one by one ("a garage or shed of about 140 sq ft");
+    more are summed up by kind.
+    """
+    def size(area):
+        return f"about {area:,.0f} sq ft"
+
+    if len(outbuildings) <= 3:
+        named = [f"{'an' if label[0] in 'aeiou' else 'a'} {label} of {size(area)}"
+                 for label, area in outbuildings]
+        return named[0] if len(named) == 1 else f"{', '.join(named[:-1])} and {named[-1]}"
+    by_label = {}
+    for label, area in outbuildings:
+        by_label.setdefault(label, []).append(area)
+    kinds = [f"{len(areas)} {_plural(label) if len(areas) > 1 else label}"
+             for label, areas in by_label.items()]
+    listed = kinds[0] if len(kinds) == 1 else f"{', '.join(kinds[:-1])} and {kinds[-1]}"
+    return f"{listed}, with {size(sum(area for _, area in outbuildings))} in all"
+
+
+def outbuildings_explanation(zone_label: str, outbuildings: list[tuple[str, float]],
+                             allowance: float, added: float) -> str:
+    """Say which garages, sheds and other outbuildings count toward floor space, and how much.
+
+    `outbuildings` holds a (label, floor space) pair for each, `allowance`
+    is the floor space in them the zoning rules leave out on this lot, and
+    `added` is what the map adds to the homes' floor space.
+    """
+    one = len(outbuildings) == 1
+    found = (f"In the {zone_label}, floor space takes in every building on the lot, garages "
+             f"and sheds included, apart from the first {allowance:,.0f} sq ft of them on a "
+             f"lot this size. Other than homes, the map found {_outbuilding_list(outbuildings)} "
+             "on this lot. ")
+    measured = (f"{'Its' if one else 'Their'} floor space is estimated from "
+                f"{'its outline' if one else 'their outlines'}, less a fifth for eaves, as "
+                "one story unless the city's 3D data shows a building tall enough for more. ")
+    if added > 0:
+        return f"{found}{measured}So the map adds about {added:,.0f} sq ft to the floor space."
+    return (f"{found}{measured}That is within the allowance, so none of it is added to the "
+            "floor space.")

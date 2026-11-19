@@ -12,7 +12,7 @@ from shapely.ops import unary_union
 from . import loader
 from .block_faces import BlockFaces
 from .places import near_a_station, near_eisenhower_avenue, station_points
-from .checks import Home, LotFacts, TownhouseRow, check_lot
+from .checks import Home, LotFacts, Outbuilding, TownhouseRow, check_lot
 from .lot_lines import MAX_DIVIDED_GAP, MAX_STREET_DISTANCE, Street, classify
 from .rule_results import under_special_approval
 from .rules import (HOME_TYPE_NAMES, MAX_TOWNHOUSES_IN_ROW, PLANNED_DISTRICTS,
@@ -53,6 +53,14 @@ MIN_SHARED_WALL = 4.0
 MAX_ROW_OUTLINES = 40
 # Building outlines in a row drawing are simplified to within this many feet.
 ROW_OUTLINE_TOLERANCE = 0.5
+# Building outlines are traced from roofs, so they take in eaves and
+# porches. Where floor space is estimated from an outline, each story is
+# taken to cover this share of it.
+OUTLINE_FLOOR_SHARE = 0.8
+# An outbuilding shorter than this in the city's 3D data holds one story.
+TWO_STORY_OUTBUILDING = 18.0
+# What to call buildings that aren't homes, by the city's building type.
+OUTBUILDING_LABELS = {"Garage or shed": "garage or shed"}
 # A lot the assessor calls half of a twin, holding one detached house with
 # no other home this close, is judged as a detached house.
 LONE_HOUSE_GAP = 6.0
@@ -645,9 +653,25 @@ def _floor_area(part):
     if part["BSIZE"] and part["BSIZE"] > 0:
         return float(part["BSIZE"] * part["share"])
     if part["STORIES"] and part["STORIES"] > 0:
-        # Outlines include eaves and porches, so trim the estimate.
-        return float(part["footprint"] * part["share"] * part["STORIES"] * 0.8)
+        return float(part["footprint"] * part["share"] * part["STORIES"] * OUTLINE_FLOOR_SHARE)
     return None
+
+
+def _outbuilding(index: int, part) -> Outbuilding:
+    """A garage, shed or other building that isn't a home, with its floor space.
+
+    Floor space is estimated from the outline, as one story unless the
+    city's 3D data shows a building tall enough for more. City records for
+    outbuildings aren't trusted: many garages about 11 ft tall are recorded
+    as two stories, and the few recorded floor space figures are mostly just
+    the outline's area, now and then several times it.
+    """
+    tall = len(part["sections"]) > 0 and part["height"] >= TWO_STORY_OUTBUILDING
+    stories = part["STORIES"] if tall and part["STORIES"] > 1 else 1
+    return Outbuilding(
+        index=index,
+        floor_area=float(part["footprint"] * part["share"] * stories * OUTLINE_FLOOR_SHARE),
+        label=OUTBUILDING_LABELS.get(part["BTYPE"], "outbuilding"))
 
 
 def _main_buildings(placed) -> dict:
@@ -865,6 +889,9 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
             lines=lines,
             units=units,
             all_buildings=list(on_lot.geometry.values),
+            outbuildings=[_outbuilding(index, part)
+                          for index, (_, part) in enumerate(on_lot.iterrows())
+                          if not part["is_home"]],
             building_sections=list(on_lot["sections"]),
             attached_neighbors=unary_union(attached) if attached else None,
             in_historic_district=is_historic,

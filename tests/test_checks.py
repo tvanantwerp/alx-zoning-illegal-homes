@@ -737,3 +737,58 @@ def test_older_lot_rule_covers_land_per_home_on_a_shared_townhouse_lot():
     row = _rows(findings)["lot_area"]
     assert row.name == "Land per home" and row.status == "older_lot"
     assert "of land for each home; the RB zone asks 1,980 sq ft" in row.explanation
+
+
+def test_outbuilding_allowance_grows_with_lot_size():
+    from alx_zoning_illegal_homes.mapper.rules import outbuilding_allowance
+    assert outbuilding_allowance(2499) == 100
+    assert outbuilding_allowance(2500) == 350
+    assert outbuilding_allowance(7999) == 350
+    assert outbuilding_allowance(8000) == 600
+
+
+def _house_with_garage(garage_floor_area, zone="R-8", home_type="single", historic=False):
+    """A 9,600 sq ft lot holding a house of 3,000 sq ft and one garage."""
+    from alx_zoning_illegal_homes.mapper.checks import Outbuilding
+    lot = box(0, 0, 80, 120)
+    home, garage = box(20, 35, 60, 75), box(50, 90, 70, 110)
+    return check(lot, home, zone, home_type=home_type, neighbors=between_neighbors(lot),
+                 floor_area=3000, all_buildings=[home, garage], historic=historic,
+                 outbuildings=[Outbuilding(1, garage_floor_area, "garage or shed")])
+
+
+def test_garage_beyond_the_allowance_counts_toward_floor_space():
+    # R-8 allows 35% of 9,600 sq ft, 3,360 sq ft, and fails only past 3,696.
+    # The first 600 sq ft of the 1,300 sq ft garage is left out.
+    kinds, findings = _house_with_garage(1300)
+    assert "floor_area" in kinds
+    row = _rows(findings)["floor_area"]
+    assert row.measured == 3700
+    assert row.buildings == [0, 1]
+    assert "a garage or shed of about 1,300 sq ft" in row.explanation
+    assert "adds about 700 sq ft" in row.explanation
+    reason = next(r.text for r in findings.reasons if r.kind == "floor_area")
+    assert "counting about 700 sq ft in garages, sheds" in reason
+
+
+def test_garage_within_the_allowance_adds_nothing():
+    kinds, findings = _house_with_garage(500)
+    assert "floor_area" not in kinds
+    row = _rows(findings)["floor_area"]
+    assert row.measured == 3000
+    assert "within the allowance" in row.explanation
+
+
+def test_garages_are_left_out_where_the_zone_does_not_count_them():
+    # The historic districts and RA townhouses count floor space the other way.
+    for options in ({"historic": True}, {"zone": "RA", "home_type": "townhouse"}):
+        _, findings = _house_with_garage(1300, **options)
+        row = _rows(findings)["floor_area"]
+        assert row.measured == 3000 and row.buildings == [0]
+    _, findings = _house_with_garage(1300, zone="RA")
+    assert _rows(findings)["floor_area"].measured == 3700
+
+
+def test_house_floor_space_row_says_city_records_may_run_low():
+    _, findings = _house_with_garage(100)
+    assert "finished living space" in _rows(findings)["floor_area"].about

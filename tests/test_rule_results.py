@@ -757,3 +757,13 @@ def test_w1_houses_still_have_a_front_yard_rule():
     lot = box(0, 0, 80, 120)
     _, findings = check(lot, box(20, 35, 60, 75), "W-1", neighbors=between_neighbors(lot))
     assert rows(findings)["yard:front"].status == NOT_CHECKED
+
+
+def test_many_outbuildings_are_summed_up_by_kind():
+    from alx_zoning_illegal_homes.mapper.rule_results import outbuildings_explanation
+    found = [("garage or shed", 100), ("garage or shed", 200), ("outbuilding", 300),
+             ("garage or shed", 150)]
+    text = outbuildings_explanation("R-5 zone", found, 350, 400)
+    assert "3 garages or sheds and 1 outbuilding, with about 750 sq ft in all" in text
+    text = outbuildings_explanation("R-5 zone", found[2:3], 350, 0)
+    assert "an outbuilding of about 300 sq ft" in text and "Its floor space" in text

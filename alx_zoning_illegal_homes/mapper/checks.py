@@ -21,7 +21,8 @@ from .rule_results import (
     NO_OUTLINES, NO_REAR_FOUND, NO_RULE, NO_SIDE_LINE, NO_STREET, NOT_CHECKED, NOT_REQUIRED,
     OLDER_LOT, PASSES, RULE_IDS,
     SHARED_LOT, SHARED_WALL, SIDE_COUNT_ON_CORNER, TOO_SHALLOW, TWO_UNIT_LOT, YARD_BENEFIT_OF_DOUBT,
-    CRMU_M_OLDER_LOT_NOTE, HEIGHT_MEASURED, HEIGHT_NEAR_STREET_ABOUT, RuleResult,
+    CRMU_M_OLDER_LOT_NOTE, FLOOR_AREA_MEASURED, HEIGHT_MEASURED, HEIGHT_NEAR_STREET_ABOUT,
+    RuleResult,
     eisenhower_older_home_note, eisenhower_special_permit_explanation,
     explain_margin, format_feet as _feet, front_yard_explanation, frontage_about,
     height_explanation, height_map_explanation, height_near_street_explanation,
@@ -33,7 +34,8 @@ from .rule_results import (
     corner_wall_not_found_explanation,
     corner_side_as_rear_explanation,
     historic_front_yard_explanation, no_block_face_explanation,
-    no_rule_explanation, pitched_roof_height_explanation, zone_height_source_explanation,
+    no_rule_explanation, outbuildings_explanation, pitched_roof_height_explanation,
+    zone_height_source_explanation,
     older_lot_explanation, older_lot_limit_explanation,
     older_rules_explanation, open_space_about, side_count_explanation,
     ROW_LENGTH_ABOUT, long_row_explanation, long_row_reason, row_length_summary,
@@ -42,7 +44,7 @@ from .rule_results import (
     yard_height_explanation)
 from .rules import (HOME_TYPE_NAMES, HOUSE_LIKE, MAX_TOWNHOUSE_ROW_LENGTH,
                     MAX_TOWNHOUSES_IN_ROW, OLDER_LOTS, HeightMapLimit, OlderHomeAllowance,
-                    ZoneRules)
+                    ZoneRules, outbuilding_allowance)
 
 # Slack given to distance measurements, in feet. Covers measuring error and
 # the 30 inches that eaves and roof overhangs may reach into a yard, since
@@ -108,6 +110,20 @@ class Home:
 
 
 @dataclass
+class Outbuilding:
+    """A building on the lot that isn't a home: a garage, a shed or the like.
+
+    index:      where its outline sits in LotFacts.all_buildings.
+    floor_area: its floor space, from city records or estimated from its outline.
+    label:      what to call it, e.g. "garage or shed".
+    """
+
+    index: int
+    floor_area: float
+    label: str = "outbuilding"
+
+
+@dataclass
 class TownhouseRow:
     """The row of attached homes a lot's homes stand in, found by shared walls.
 
@@ -151,6 +167,8 @@ class LotFacts:
     # all_buildings, each a list of (shape, height) pairs. Used only for
     # drawing; empty or missing when there is no 3D data.
     building_sections: list = field(default_factory=list)
+    # Buildings on the lot other than homes, for the floor space rule.
+    outbuildings: list[Outbuilding] = field(default_factory=list)
     # Homes on other lots that touch this lot's homes.
     attached_neighbors: object = None
     in_historic_district: bool = False
@@ -1308,13 +1326,32 @@ def _home_indexes(facts) -> list[int]:
     return found
 
 
+def _counted_outbuildings(facts) -> list[Outbuilding]:
+    """The garages, sheds and other outbuildings that count toward this lot's floor space.
+
+    Only where the zone's way of counting floor space takes them in: every
+    home in R-20 through R-2-5, and houses and two-unit houses in RA and RB,
+    outside the historic districts. Elsewhere none count.
+    """
+    if (facts.in_historic_district
+            or facts.home_type not in facts.rules.outbuildings_counted_for):
+        return []
+    return list(facts.outbuildings)
+
+
 def _check_floor_area(facts, findings, older_lot=False):
-    """Check floor space against the zone's limit, or the older-lot limit when `older_lot`."""
+    """Check floor space against the zone's limit, or the older-lot limit when `older_lot`.
+
+    Where the zone counts them, garages, sheds and other outbuildings add
+    whatever floor space they hold beyond the lot's allowance.
+    """
     kind = facts.home_type
     usual = facts.rules.floor_area_ratio_for(kind, facts.in_historic_district)
     limit = OLDER_LOTS.floor_area_ratio if older_lot else usual
+    about = " ".join(filter(None, [
+        facts.rules.floor_area_note, FLOOR_AREA_MEASURED if kind in HOUSE_LIKE else None]))
     row = RuleResult("floor_area", "Floor space", NO_RULE, unit="sq ft", limit="max",
-                     about=facts.rules.floor_area_note or None)
+                     about=about or None)
     findings.results.append(row)
     if not limit:
         row.explanation = no_rule_explanation(
@@ -1328,24 +1365,32 @@ def _check_floor_area(facts, findings, older_lot=False):
         if note:
             _add_older_lot_note(row, note)
         return
-    floor_area = sum(home.floor_area for home in facts.homes)
+    outbuildings = _counted_outbuildings(facts)
+    allowance = outbuilding_allowance(facts.area)
+    added = max(0.0, sum(building.floor_area for building in outbuildings) - allowance)
+    floor_area = sum(home.floor_area for home in facts.homes) + added
     ratio = floor_area / facts.area
     findings.measurements["floor_area_ratio"] = ratio
     row.status, row.measured, row.required = PASSES, floor_area, limit * facts.area
-    row.buildings = _home_indexes(facts)
+    row.buildings = _home_indexes(facts) + [building.index for building in outbuildings]
     if ratio > limit * (1 + FLOOR_AREA_MARGIN):
         row.status = FAILS
         allows = (f"On an older lot that falls short of the {facts.rules.label}'s "
                   "minimums for new lots, floor space may be" if older_lot
                   else f"The {facts.rules.label} allows floor space")
+        counting = (f", counting about {_square_feet(added)} in garages, sheds and other "
+                    "outbuildings beyond what the zoning rules leave out" if added else "")
         findings.reasons.append(Reason(
             "floor_area",
             f"Too much building for the lot: about {_square_feet(floor_area)} "
-            f"of floor space on a {_square_feet(facts.area)} lot. {allows} up to "
+            f"of floor space on a {_square_feet(facts.area)} lot{counting}. {allows} up to "
             f"{limit:.0%} of the lot ({_square_feet(limit * facts.area)}).",
         ))
-    if note:
-        _add_older_lot_note(row, note)
+    found = outbuildings_explanation(
+        facts.rules.label, [(building.label, building.floor_area) for building in outbuildings],
+        allowance, added) if outbuildings else None
+    if note or found:
+        row.explanation = " ".join(filter(None, [note, found, margin_explanation(row)]))
 
 
 def _home_height(facts: LotFacts, home: Home) -> BuildingHeight | None:

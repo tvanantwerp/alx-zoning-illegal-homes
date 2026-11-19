@@ -5,7 +5,7 @@ import pytest
 from shapely.geometry import box
 
 from alx_zoning_illegal_homes.mapper.analyze import (
-    _home_type, _match_buildings_to_lots, _place_buildings, _row_sizes)
+    _home_type, _match_buildings_to_lots, _outbuilding, _place_buildings, _row_sizes)
 
 
 def place(lot_shapes, building_shapes):
@@ -113,3 +113,18 @@ def test_lone_detached_house_labeled_a_twin_is_a_detached_house():
     assert _home_type(_lot(TWIN), house, row_size=1, alone=False) == "semi"
     duplex = _homes(box(0, 0, 30, 40))
     assert _home_type(_lot(TWIN), duplex, row_size=1, alone=True) == "semi"
+
+
+def test_outbuilding_floor_space_takes_one_story_unless_tall_enough_for_more():
+    part = pd.Series({"BSIZE": 0, "STORIES": 0, "footprint": 200.0, "share": 1.0,
+                      "BTYPE": "Garage or shed", "height": 11.0, "sections": [(None, 11.0)]})
+    garage = _outbuilding(3, part)
+    assert garage.index == 3 and garage.label == "garage or shed"
+    assert garage.floor_area == pytest.approx(160)  # 200 sq ft less a fifth for eaves
+    # Recorded as two stories, but only 11 ft tall: one story.
+    assert _outbuilding(0, pd.Series({**part, "STORIES": 2})).floor_area == pytest.approx(160)
+    tall = pd.Series({**part, "STORIES": 2, "height": 22.0, "BTYPE": "Other"})
+    assert _outbuilding(0, tall).floor_area == pytest.approx(320)
+    assert _outbuilding(0, tall).label == "outbuilding"
+    # No 3D data: the height is only a guess from the stories, so one story.
+    assert _outbuilding(0, pd.Series({**tall, "sections": []})).floor_area == pytest.approx(160)
