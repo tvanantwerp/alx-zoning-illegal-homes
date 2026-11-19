@@ -11,7 +11,7 @@ from shapely.ops import unary_union
 from . import loader
 from .places import near_a_station, near_eisenhower_avenue, station_points
 from .checks import Home, LotFacts, check_lot
-from .lot_lines import MAX_STREET_DISTANCE, classify
+from .lot_lines import MAX_DIVIDED_GAP, MAX_STREET_DISTANCE, Street, classify
 from .rule_results import under_special_approval
 from .rules import (HOME_TYPE_NAMES, PLANNED_DISTRICTS, braddock_gateway_fallback,
                     duke_street_floor_area, height_map_limit, king_street_retail_rules,
@@ -514,7 +514,10 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
 
     lot_shapes = lots.geometry.values
     lot_tree = shapely.STRtree(lot_shapes)
-    street_shapes, street_names = streets.geometry.values, streets["name"].values
+    street_shapes = streets.geometry.values
+    street_list = [Street(name, line, bool(divided), label if isinstance(label, str) else None)
+                   for name, line, divided, label in zip(
+                       streets["name"], street_shapes, streets["divided"], streets["label"])]
     street_tree = shapely.STRtree(street_shapes)
     home_parts = placed[placed["is_home"]]
     home_shapes, home_lots = home_parts.geometry.values, home_parts["lot_id"].values
@@ -606,11 +609,12 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
             and lot_shapes[i].intersection(shape).area < 0.5 * shape.area
         ]
         neighbor_shape = unary_union(neighbors) if neighbors else None
+        # Reaching past the distance a front can be from its street also
+        # takes in the far side of a divided road, to find its middle.
         near_streets = street_tree.query(
-            shape.buffer(MAX_STREET_DISTANCE), predicate="intersects")
+            shape.buffer(MAX_STREET_DISTANCE + MAX_DIVIDED_GAP), predicate="intersects")
         lines = classify(
-            shape, neighbor_shape,
-            [(street_names[i], street_shapes[i]) for i in near_streets],
+            shape, neighbor_shape, [street_list[i] for i in near_streets],
             lot["address_street"],
         )
 

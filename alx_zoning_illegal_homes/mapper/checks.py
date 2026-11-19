@@ -14,21 +14,24 @@ from shapely.geometry import LineString
 from shapely.ops import nearest_points, substring, unary_union
 
 from .heights import MIN_PART_AREA, BuildingHeight, RoofHeight, building_height
-from .lot_lines import LotLines, largest_polygon, lot_width, lot_width_line
+from .lot_lines import (LotLines, StreetCenterline, largest_polygon, lot_width,
+                        lot_width_line)
 from .rule_results import (
     CORNER_NO_REAR, CROSSES_LOT_LINE, FAILS, MAPPING_ERROR, NO_FLOOR_AREA, NO_HEIGHT,
     NO_OUTLINES, NO_REAR_FOUND, NO_RULE, NO_SIDE_LINE, NO_STREET, NOT_CHECKED, NOT_REQUIRED,
     OLDER_LOT, PASSES, RULE_IDS,
     SHARED_LOT, SHARED_WALL, SIDE_COUNT_ON_CORNER, TOO_SHALLOW, TWO_UNIT_LOT, YARD_BENEFIT_OF_DOUBT,
-    CRMU_M_OLDER_LOT_NOTE, HEIGHT_MEASURED, RuleResult,
+    CRMU_M_OLDER_LOT_NOTE, HEIGHT_MEASURED, HEIGHT_NEAR_STREET_ABOUT, RuleResult,
     eisenhower_older_home_note, eisenhower_special_permit_explanation,
     explain_margin, format_feet as _feet, front_yard_explanation, frontage_about,
-    height_explanation, height_map_explanation, height_winner_explanation,
+    height_explanation, height_map_explanation, height_near_street_explanation,
+    height_near_street_waived_explanation, height_winner_explanation,
     margin_explanation, no_front_yard_explanation, no_height_limit_explanation,
     no_rule_explanation, zone_height_source_explanation,
     older_lot_explanation, older_lot_limit_explanation,
     older_rules_explanation, open_space_about, side_count_explanation,
-    split_twin_explanation, split_twin_reason, yard_height_explanation)
+    split_twin_explanation, split_twin_reason, unplaced_divided_explanation,
+    yard_height_explanation)
 from .rules import (HOME_TYPE_NAMES, HOUSE_LIKE, OLDER_LOTS, HeightMapLimit,
                     OlderHomeAllowance, ZoneRules)
 
@@ -46,6 +49,14 @@ MIN_OPEN_WIDTH = 8.0
 OVERLAY_GRID = 0.01
 OPEN_SPACE_LEFT_OUT = ("once buildings, roads, driveways, parking and strips "
                        "narrower than 8 ft are left out")
+# In every height district a building may be at most this many times as
+# tall as its distance from the center of the street it faces.
+STREET_HEIGHT_RATIO = 2.0
+# Slack given to the distance from a building to the center of the street,
+# in feet: the roof overhangs and measuring error DISTANCE_MARGIN covers,
+# plus a few feet for a street map centerline that follows the middle of
+# the pavement rather than the middle of the public street.
+CENTERLINE_MARGIN = 5.0
 # Half of a typical alley, which the ordinance credits toward a rear yard.
 ALLEY_CREDIT = 5.0
 # Lot lines closer than this to both a home and its neighbor's home are
@@ -184,6 +195,7 @@ def check_lot(facts: LotFacts) -> Findings:
                 row.explanation = ("The lot falls below a minimum by less than the measurement "
                                    "margin. The outcome depends on whether the older-lot limit applies.")
                 findings.reasons = [reason for reason in findings.reasons if reason.kind != row.rule]
+    _check_height_near_street(facts, findings)
     _check_open_space(facts, findings)
     explain_margin(findings.results)
     findings.results.sort(key=lambda row: RULE_IDS.index(row.rule))
@@ -1163,6 +1175,101 @@ def _check_height(facts, findings, older_lot=False):
         height_winner_explanation(deciding.source, limit, others),
         height_map_explanation(area, facts.lines.fronts) if on_map else None,
         height_explanation(estimate),
+        margin_explanation(row)]))
+
+
+@dataclass
+class StreetGap:
+    """How far one part of a home is from the center of one street the lot faces."""
+
+    home: Home
+    roof: RoofHeight
+    street: StreetCenterline
+    distance: float
+    # From the part's closest wall to the center of the street.
+    line: LineString
+
+    @property
+    def allowed(self) -> float:
+        """The tallest this part may be at this distance."""
+        return STREET_HEIGHT_RATIO * self.distance
+
+    @property
+    def over(self) -> float:
+        """How far the part's height goes past what it may be, or below zero when under."""
+        return self.roof.height - self.allowed
+
+
+def _street_gaps(facts: LotFacts, known: list) -> tuple[list[StreetGap], list[str]]:
+    """Measure every part of every home against the center of every street the lot faces.
+
+    `known` holds each home with its height, from `home_heights`. Returns
+    the measurements and the names of divided roads whose center couldn't
+    be placed for at least one part.
+    """
+    gaps, unplaced = [], []
+    for home, estimate in known:
+        for roof in estimate.parts:
+            for street in facts.lines.centerlines.values():
+                found = street.measure(roof.outline)
+                if found is None:
+                    if street.label not in unplaced:
+                        unplaced.append(street.label)
+                    continue
+                gaps.append(StreetGap(home, roof, street, *found))
+    return gaps, unplaced
+
+
+def _check_height_near_street(facts, findings):
+    """Check that no part of a home is more than twice as tall as its distance to the street's center.
+
+    Every height district holds a building to this (section 6-403(A),
+    "relationship of height to setback"). Each part of each home is judged
+    at its own height, measured the ordinance's way, so an upper floor that
+    steps back passes on its own. It is measured against every street the
+    lot faces, not just its main one. The row shows the part that comes
+    closest to, or goes furthest over, what it may be.
+    """
+    row = RuleResult("height_near_street", "Height near the street", NOT_CHECKED, unit="ft",
+                     limit="max", about=HEIGHT_NEAR_STREET_ABOUT)
+    findings.results.append(row)
+    if facts.rules.height_near_street_waived:
+        row.status = NOT_REQUIRED
+        row.explanation = height_near_street_waived_explanation(facts.rules.label)
+        return
+    if not facts.lines.centerlines:
+        row.explanation = NO_STREET
+        return
+    known = home_heights(facts)
+    if not known:
+        row.explanation = NO_HEIGHT
+        return
+    gaps, unplaced = _street_gaps(facts, known)
+    unplaced_note = unplaced_divided_explanation(unplaced) if unplaced else None
+    if not gaps:
+        row.explanation = unplaced_note
+        return
+    worst = max(gaps, key=lambda gap: (gap.over, gap.roof.height))
+    several = len({id(gap.roof) for gap in gaps}) > 1
+    label = worst.street.label
+    row.status, row.measured, row.required = PASSES, worst.roof.height, worst.allowed
+    row.detail = f"{_feet(worst.distance)} from the center of {label}"
+    row.shapes = {"gap": worst.line, "part": worst.roof.outline}
+    row.buildings = [i for i, outline in enumerate(facts.all_buildings)
+                     if outline.equals(worst.home.shape)][:1]
+    if worst.roof.height > STREET_HEIGHT_RATIO * (worst.distance + CENTERLINE_MARGIN):
+        row.status = FAILS
+        which = (f"the part of the home about {_feet(worst.roof.height)} tall is" if several
+                 else f"the home, about {_feet(worst.roof.height)} tall, is")
+        findings.reasons.append(Reason(
+            "height",
+            f"Too tall this close to the street: {which} about {_feet(worst.distance)} from "
+            f"the center of {label}; at most {_feet(worst.allowed)} is allowed there.",
+        ))
+    row.explanation = " ".join(filter(None, [
+        height_near_street_explanation(worst.roof, worst.distance, worst.allowed, label,
+                                       worst.street.far is not None, several),
+        unplaced_note,
         margin_explanation(row)]))
 
 

@@ -38,6 +38,15 @@ STREET_KINDS = {
     "PRIMARY ROAD",
     "SECONDARY ROAD",
 }
+# How the street layer abbreviates the words in street names.
+STREET_WORDS = {
+    "N": "North", "S": "South", "E": "East", "W": "West",
+    "ST": "Street", "AVE": "Avenue", "RD": "Road", "DR": "Drive", "PL": "Place",
+    "CT": "Court", "LN": "Lane", "TER": "Terrace", "BLVD": "Boulevard",
+    "PKWY": "Parkway", "CIR": "Circle", "SQ": "Square", "HWY": "Highway",
+    "WAY": "Way", "WY": "Way", "ALY": "Alley", "TRL": "Trail", "PLZ": "Plaza",
+    "PSGE": "Passage",
+}
 # Codes in the city's roads, driveways and parking layer.
 PARKING_LOT = 3
 OFF_STREET_PARKING = 2
@@ -143,15 +152,29 @@ def load_buildings() -> gpd.GeoDataFrame:
     return buildings
 
 
+def street_label(full_name) -> str | None:
+    """Spell out a street's full name as the street layer writes it ("S FAYETTE ST")."""
+    if not isinstance(full_name, str) or not full_name.strip():
+        return None
+    words = full_name.split()
+    return " ".join(STREET_WORDS.get(word, word.capitalize()) for word in words)
+
+
 def load_streets() -> gpd.GeoDataFrame:
-    """Load street centerlines, leaving out alleys, ramps and driveways."""
+    """Load street centerlines, leaving out alleys, ramps and driveways.
+
+    "divided" marks roads with a median, which the layer draws as one
+    centerline per side, and "label" is the street's full name spelled out.
+    """
     streets = load_layer("Transport_Streets")
     streets = streets[
         streets["MTFCC"].isin(list(STREET_KINDS))
         & (streets["SEG_TYPE"] == "OTHER CENTERLINE")
     ].copy()
     streets["name"] = streets["STREET_NAM"].fillna(streets["FULL_NAME"]).fillna("?")
-    return streets[["name", "geometry"]].reset_index(drop=True)
+    streets["divided"] = streets["DIVIDED"].fillna("").str.upper() == "YES"
+    streets["label"] = streets["FULL_NAME"].map(street_label)
+    return streets[["name", "divided", "label", "geometry"]].reset_index(drop=True)
 
 
 def load_paving() -> gpd.GeoDataFrame:

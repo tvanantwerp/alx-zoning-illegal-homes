@@ -77,6 +77,15 @@ CG, CD, CDX, OC, OCM, OCH, W-1, CRMU, KR) and in planned districts:
   only with a special permit from City Council, so 30 ft is used. Near the
   King Street Metro it allows 77 ft, or 82 ft for a building that city
   records mark as having shops on the ground floor.
+- **Height near the street.** Every height district holds a building to at
+  most twice the distance from its wall to the center of the street it
+  faces, so taller parts must step back. Each part of each home is checked
+  at its own height, measured as above, against the center of every street
+  the lot faces (on a corner or through lot, both streets). The center comes
+  from the city's street map. A divided road is drawn there as one
+  centerline per side, so its center is taken as halfway between the two.
+  The approval for the Eisenhower Avenue Metro planned district sets this
+  rule aside, so it isn't checked there.
 - **Open space** or building coverage. Open space is the land not under a
   building, road, alley, driveway or parking lot, leaving out every strip
   narrower than 8 ft, as the ordinance's definition of "open and usable
@@ -264,10 +273,16 @@ Other details that matter:
   block or development, so only the 77 ft cap is checked. Another allows
   50 ft along North Royal Street and 77 ft behind it; how deep that strip
   runs couldn't be found, so every lot with a street edge on North Royal
-  Street gets 50 ft. The height districts' rule tying a building's height to
-  its distance from the middle of the street isn't checked yet. Lots in CDX
-  and the CRMU zones outside the map's numbered areas have no height limit
-  the map knows of.
+  Street gets 50 ft. Lots in CDX and the CRMU zones outside the map's
+  numbered areas have no height limit the map knows of.
+- The rule tying height to distance from the center of the street is
+  measured from the city's street centerlines, which trace the middle of
+  the pavement. The rule means the middle of the public street, which can
+  sit a few feet off it, so the map allows 5 ft of distance (10 ft of
+  height) on top of the usual slack for roof overhangs. Where a divided
+  road's far side can't be found near a lot, that street isn't measured
+  from. Several planned districts the map doesn't check also set this rule
+  aside.
 - Every lot is taken to have been recorded before December 16, 2023, so the
   rule for older undersized lots applies to all of them. The parcel map shows
   lots as they are today and can't tell a lot split or redrawn since then.

@@ -375,6 +375,34 @@ export function drawLot(container, lot, results) {
     tag(v3(at, top + 4), `${showValue(heightRow.measured, heightRow.unit)} tall${peak}`, "fail", "height");
   }
 
+  // Too tall for its distance to the street: the line from the part's wall to the street's center,
+  // and a see-through ceiling over that part at the height allowed there.
+  const nearStreet = failingRule("height_near_street");
+  if (nearStreet && nearStreet.shapes) {
+    const shapes = nearStreet.shapes;
+    // Both sit inside or behind the building, so they are drawn on top of it.
+    const onTop = (obj) => {
+      obj.material.depthTest = false;
+      obj.renderOrder = 2;
+      return mark(obj, ["height_near_street"]);
+    };
+    for (const line of shapes.gap || []) for (const mesh of ribbons(line, 0.6, C.accent, 0.2)) onTop(mesh);
+    if (shapes.part && nearStreet.required) {
+      for (const mesh of flat(shapes.part, C.accent, nearStreet.required, 0.3)) onTop(mesh);
+      for (const poly of shapes.part) {
+        const ring = poly[0];
+        const edge = new THREE.Line(new THREE.BufferGeometry().setFromPoints(ring.concat([ring[0]]).map((p) => v3(p, nearStreet.required))),
+          new THREE.LineDashedMaterial({ color: C.accent, dashSize: 2, gapSize: 1.2 }));
+        edge.computeLineDistances();
+        onTop(edge);
+      }
+    }
+    if (shapes.gap && shapes.gap.length) {
+      const text = `${showValue(nearStreet.measured, nearStreet.unit)} tall · ${nearStreet.detail} · ${showValue(nearStreet.required, nearStreet.unit)} allowed`;
+      tag(v3(midpoint(shapes.gap[0]), 0.5), text, "fail", "height_near_street");
+    }
+  }
+
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.target.copy(target);
   controls.enableDamping = true;

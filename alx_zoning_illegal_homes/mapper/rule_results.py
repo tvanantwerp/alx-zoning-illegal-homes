@@ -18,8 +18,8 @@ FAILS, PASSES, NOT_CHECKED, NO_RULE, NOT_REQUIRED = (
 OLDER_LOT = "older_lot"
 
 RULE_IDS = ("lot_area", "frontage", "width", "yard:front", "yard:left", "yard:right",
-            "yard:rear", "yard:nearest", "floor_area", "height", "coverage",
-            "open_space", "home_type")
+            "yard:rear", "yard:nearest", "floor_area", "height", "height_near_street",
+            "coverage", "open_space", "home_type")
 
 NO_STREET = ("The map couldn't find a public street next to this lot, so it "
              "can't tell which edge is the front.")
@@ -56,6 +56,17 @@ HEIGHT_MEASURED = (
     "where its eaves are from the number of stories in city records. It can't see "
     "gambrel or mansard roofs, which the rules measure higher up, or wide dormers, "
     "which in most house zones move the measurement up to the dormers.")
+HEIGHT_NEAR_STREET_ABOUT = (
+    "In every height district, a building may be at most twice as tall at any point as "
+    "the distance from its wall there to the center of the street it faces. A wall 25 ft "
+    "from the center of the street may be 50 ft tall; taller parts must step back. The "
+    "map checks each part of each home at its own height, measured the same way as the "
+    "height rule, against the center of every street the lot faces.")
+CENTERLINE_MEASURED = (
+    "The center of the street comes from the city's street map, which traces the middle "
+    "of the pavement. The rule means the middle of the public street, which can sit a "
+    "few feet off it, and building outlines include roof overhangs, so the map allows "
+    "5 ft of distance (10 ft of height) before calling it a problem.")
 NO_OUTLINES = "The city's map has no building outlines on this lot."
 OPEN_SPACE_MEASURED = (
     "Open space is land at ground level at least 8 ft wide that isn't under a "
@@ -109,6 +120,7 @@ def reason_kind(rule: str) -> str:
         "width": "lot_width",
         "coverage": "open_space",
         "open_space": "open_space",
+        "height_near_street": "height",
     }.get(rule, rule)
 
 
@@ -358,6 +370,51 @@ def yard_height_explanation(per_foot_of_height: float, roof: RoofHeight, several
         numbers = (f"{whose} has a roof peak about {format_feet(roof.peak)}; measured the "
                    f"ordinance's way, it is about {format_feet(roof.height)} tall.")
     return f"{text}. {numbers} {roof.why}"
+
+
+def height_near_street_waived_explanation(rules_label: str) -> str:
+    """Say that these rules set aside the rule tying height to distance from the street."""
+    return (f"The {rules_label} sets aside the height districts' rule tying a building's "
+            "height to its distance from the center of the street (section 5-602), so "
+            "it isn't checked here.")
+
+
+def _divided_note(label: str) -> str:
+    return (f"{label} is a divided road, which the street map draws as one centerline "
+            "for each side, so its center is taken as halfway between the two.")
+
+
+def unplaced_divided_explanation(labels: list[str]) -> str:
+    """Say that the center of a divided road couldn't be placed, so it wasn't measured from."""
+    names = " and ".join(labels)
+    one = len(labels) == 1
+    return (f"{names} {'is a divided road' if one else 'are divided roads'}, which the "
+            "street map draws as one centerline for each side. The map couldn't find the "
+            f"far side near this lot to place the center, so {'it' if one else 'they'} "
+            f"{'was' if one else 'were'}n't measured from.")
+
+
+def height_near_street_explanation(roof: RoofHeight, distance: float, allowed: float,
+                                   label: str, divided: bool, several: bool) -> str:
+    """Explain the height near the street row: which part, how far, and how it was measured.
+
+    `roof` is the part of a home that comes closest to its limit, `distance`
+    its distance from the center of the street named `label`, and `allowed`
+    twice that. `divided` is True when that street is a divided road, and
+    `several` when the home was split into parts of different heights.
+    """
+    whose = "The part of the home closest to its limit" if several else "This home"
+    text = (f"{whose} is about {format_feet(distance)} from the center of {label}, so it "
+            f"may be up to about {format_feet(allowed)} tall there.")
+    if roof.shape == FLAT:
+        numbers = (f"It is about {format_feet(roof.height)} to the top of its roof, "
+                   "treated as a flat roof.")
+    else:
+        numbers = (f"Its roof peak is about {format_feet(roof.peak)}; measured the "
+                   f"ordinance's way, it is about {format_feet(roof.height)} tall.")
+    return " ".join(filter(None, [text, numbers, roof.why,
+                                  _divided_note(label) if divided else None,
+                                  CENTERLINE_MEASURED]))
 
 
 def frontage_about(street: str, zone_label: str, required: float | None,

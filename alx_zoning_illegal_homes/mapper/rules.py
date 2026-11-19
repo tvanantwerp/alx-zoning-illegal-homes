@@ -157,6 +157,10 @@ class ZoneRules:
     # Where the zone sends you for its height limit instead of setting one,
     # e.g. "the Old Town North Small Area Plan".
     height_set_by: str = ""
+    # True where these rules set aside the height districts' rule tying a
+    # building's height to its distance from the middle of the street
+    # (section 6-403(A)), as some planned districts' approvals do.
+    height_near_street_waived: bool = False
     # Share of the lot that must stay open (0.35 = 35%).
     min_open_space: float | None = None
     # Least open space in sq ft, however small the lot (RM only).
@@ -673,6 +677,9 @@ class PlannedDistrict:
     # Cap on homes across the whole district, if the ordinance sets one.
     home_cap: int | None = None
     homes_per_acre_cap: float | None = None
+    # True where the approval sets aside the rule tying a building's height
+    # to its distance from the middle of the street (section 6-403(A)).
+    plan_waives_height_near_street: bool = False
     # Plain-language summary of what the approval allows.
     plan_summary: str = ""
 
@@ -687,6 +694,7 @@ PLANNED_DISTRICTS = {
     "CDD#2": PlannedDistrict(
         "Eisenhower Avenue Metro", "OC", 1.25, 100,
         plan_allowed=frozenset({"multi"}),
+        plan_waives_height_near_street=True,
         plan_summary="The approval allows apartment buildings, with no lot "
         "size or yard rules; heights are set block by block in the "
         "neighborhood plan."),
@@ -850,6 +858,7 @@ def planned_district_rules(label, in_historic_district=False, zone=None, changes
         allowed=district.plan_allowed,
         max_height={kind: district.plan_height for kind in ALL_TYPES}
         if district.plan_height else {},
+        height_near_street_waived=district.plan_waives_height_near_street,
     )
     from_table = {}
     if zone is None or zone == district.fallback_zone:
