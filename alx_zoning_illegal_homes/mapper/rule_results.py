@@ -7,7 +7,8 @@ reason, so the table and the reasons never disagree.
 from dataclasses import dataclass, field, replace
 
 from .heights import FLAT, UNKNOWN, RoofHeight
-from .rules import OLDER_LOTS, OlderHomeAllowance, PlannedDistrict, ZoneRules
+from .rules import (OLDER_LOTS, HeightMapLimit, OlderHomeAllowance, PlannedDistrict,
+                    ZoneRules)
 
 
 FAILS, PASSES, NOT_CHECKED, NO_RULE, NOT_REQUIRED = (
@@ -253,6 +254,86 @@ def height_explanation(estimate) -> str:
     else:
         numbers = f"About {format_feet(height)} to the top of the roof."
     return f"{numbers} {why}"
+
+
+def _capitalized(text: str) -> str:
+    return text[:1].upper() + text[1:]
+
+
+def height_winner_explanation(source: str, feet: float,
+                              others: list[tuple[str, float]]) -> str | None:
+    """Say which height limit applies when more than one does: the lowest wins.
+
+    `source` names the limit that applies and `feet` is that limit; `others`
+    holds the other limits as (name, feet) pairs. Returns None when only one
+    limit applies.
+    """
+    if not others:
+        return None
+    other, other_feet = others[0]
+    if other_feet == feet:
+        return f"{_capitalized(source)} and {other} are both {format_feet(feet)}."
+    return (f"{_capitalized(source)} ({format_feet(feet)}) is lower than {other} "
+            f"({format_feet(other_feet)}), and the lowest height limit always wins.")
+
+
+def _height_from_map(rules: ZoneRules) -> bool:
+    """Whether the zone's own height limit is the one on the height district map."""
+    return "height district" in rules.height_set_by
+
+
+def zone_height_source_explanation(rules: ZoneRules) -> str:
+    """Say why the height district map sets this lot's height where the zone sets none."""
+    if not rules.height_set_by:
+        return (f"The {rules.label} sets no height limit of its own, so the height "
+                "district map's limit applies.")
+    if _height_from_map(rules):
+        return f"The {rules.label} takes its height limit from {rules.height_set_by}."
+    return (f"The {rules.label} takes its height limit from {rules.height_set_by}, which "
+            "the map doesn't have. The height district map's limit applies everywhere, "
+            "so that is what's checked.")
+
+
+def no_height_limit_explanation(rules: ZoneRules, home_type_name: str) -> str:
+    """Say why a home has no height limit to check."""
+    if not rules.height_set_by:
+        return no_rule_explanation(rules.label, home_type_name, "height limit")
+    if _height_from_map(rules):
+        return (f"The {rules.label} takes its height limit from {rules.height_set_by}, "
+                "which sets none here.")
+    return (f"The {rules.label} takes its height limit from {rules.height_set_by}, which "
+            "the map doesn't have, and the height district map sets no limit here.")
+
+
+def height_map_explanation(area: HeightMapLimit, fronts) -> str | None:
+    """Explain the parts of a height district map rule the map had to decide on.
+
+    `fronts` holds the names of the streets the lot faces. Returns None for
+    an area with a single plain limit.
+    """
+    if area.note:
+        return area.note
+    if area.along_street:
+        on_it = area.along_street in fronts
+        return (f"The Old Town North Small Area Plan gives {format_feet(area.along_height)} "
+                f"along {area.along_name} and {format_feet(area.height)} behind it here. "
+                f"The map couldn't find how deep the {format_feet(area.along_height)} strip "
+                f"runs, so it uses {format_feet(area.along_height)} for any lot with a street "
+                f"edge on {area.along_name}. This lot "
+                + ("has one." if on_it else
+                   f"has none, so it gets {format_feet(area.height)}."))
+    if area.retail_height:
+        return (f"The {area.district} allows {format_feet(area.height)}, or "
+                f"{format_feet(area.retail_height)} for a building with shops along at least "
+                "the first 30 ft of its depth facing the street. The map goes by city "
+                "building records, which mark buildings with shops on the ground floor, "
+                "and can't check how deep the shops run.")
+    if area.permit_height:
+        return (f"The {area.district} allows {format_feet(area.height)}, or up to "
+                f"{format_feet(area.permit_height)} with a special permit from City Council "
+                "and the historic district board's approval. The map has no record of "
+                f"special permits, so it holds every building to {format_feet(area.height)}.")
+    return None
 
 
 def yard_height_explanation(per_foot_of_height: float, roof: RoofHeight, several: bool) -> str:

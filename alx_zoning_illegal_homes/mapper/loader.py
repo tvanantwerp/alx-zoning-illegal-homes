@@ -117,6 +117,9 @@ def load_buildings() -> gpd.GeoDataFrame:
             & buildings["BUSE"].isin(["Residential", "Multiple or Mixed"])
         )
     ) & (buildings["footprint"] >= MIN_HOME_FOOTPRINT)
+    # The city writes "YES", "NO" or "No", or leaves it blank.
+    retail = buildings["GFRETAIL"].str.strip().str.upper()
+    buildings["ground_floor_retail"] = retail.map({"YES": True, "NO": False})
     buildings = buildings.reset_index(drop=True)
     buildings["building_id"] = buildings.index
 
@@ -166,6 +169,18 @@ def load_paving() -> gpd.GeoDataFrame:
     paving["is_parking"] = (paving["FEATURE"] == PARKING_LOT) | (
         paving["PARKING"] == OFF_STREET_PARKING)
     return paving[["is_parking", "geometry"]].reset_index(drop=True)
+
+
+def load_height_districts() -> gpd.GeoDataFrame:
+    """Load the height district map: one row per area, with its district code and limit text.
+
+    "district" is the code (HD1 to HD6) and "limit_text" the limit as the city
+    writes it ("50'", "30'/50'", "By Zone"). `rules.HEIGHT_MAP_LIMITS` turns
+    the text into a rule.
+    """
+    areas = load_layer("Height_Districts")
+    areas = areas.rename(columns={"HEIGHT_DIS": "district", "COMMENTS": "limit_text"})
+    return areas[["district", "limit_text", "geometry"]].reset_index(drop=True)
 
 
 def load_historic_districts():

@@ -69,7 +69,14 @@ CG, CD, CDX, OC, OCM, OCH, W-1, CRMU, KR) and in planned districts:
   buildings are taken to have flat roofs. A roof is never taken to rise
   more than 15 ft, since a story count that leaves a taller roof is
   probably short. With no story count, a pitched roof is measured at 85% of
-  its peak.
+  its peak. The limit is the lower of the zone's own and the city's height
+  district map's, and the pop-up says which one set it. W-1 takes its height
+  from the map; CDX and the CRMU zones take theirs from a small area plan
+  the map doesn't have, so only the height district map's limit is checked
+  there. In the Potomac River area the map allows 30 ft, and up to 50 ft
+  only with a special permit from City Council, so 30 ft is used. Near the
+  King Street Metro it allows 77 ft, or 82 ft for a building that city
+  records mark as having shops on the ground floor.
 - **Open space** or building coverage. Open space is the land not under a
   building, road, alley, driveway or parking lot, leaving out every strip
   narrower than 8 ft, as the ordinance's definition of "open and usable
@@ -252,6 +259,15 @@ Other details that matter:
 - A few hundred home lots are left unchecked because the city's data gives
   them no zone, two zones, or no matching building.
 - Variances and special approvals for individual properties are unknown.
+- On the height district map, two Old Town North areas need a guess. One
+  caps height at 77 ft and the average at 50 ft; the average covers a whole
+  block or development, so only the 77 ft cap is checked. Another allows
+  50 ft along North Royal Street and 77 ft behind it; how deep that strip
+  runs couldn't be found, so every lot with a street edge on North Royal
+  Street gets 50 ft. The height districts' rule tying a building's height to
+  its distance from the middle of the street isn't checked yet. Lots in CDX
+  and the CRMU zones outside the map's numbered areas have no height limit
+  the map knows of.
 - Every lot is taken to have been recorded before December 16, 2023, so the
   rule for older undersized lots applies to all of them. The parcel map shows
   lots as they are today and can't tell a lot split or redrawn since then.
@@ -271,8 +287,9 @@ From the [City of Alexandria open data site](https://cityofalexandria-alexgis.op
 - [Roads, driveways and parking lots](https://maps.alexandriava.gov/arcgis/rest/services/alxBasemapWm/MapServer/17)
   from the city's basemap (left out of open space). The open data site has
   older copies from 2017, so the map uses the city's own map server.
-- [Zoning Map](https://cityofalexandria-alexgis.opendata.arcgis.com/datasets/AlexGIS::zoning/explore) and
-  [Height Districts](https://cityofalexandria-alexgis.opendata.arcgis.com/datasets/AlexGIS::height-districts/explore)
+- [Height Districts](https://cityofalexandria-alexgis.opendata.arcgis.com/datasets/AlexGIS::height-districts/explore)
+  (height limits that apply on top of each zone's own)
+- [Zoning Map](https://cityofalexandria-alexgis.opendata.arcgis.com/datasets/AlexGIS::zoning/explore)
   (downloaded but not yet used; zoning comes from the parcel layer)
 
 The Zoning Ordinance is published at

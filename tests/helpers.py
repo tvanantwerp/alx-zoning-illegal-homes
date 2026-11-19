@@ -11,7 +11,8 @@ MAIN = ("MAIN", LineString([(-300, -25), (500, -25)]))
 
 def check(lot, home, zone, home_type="single", neighbors=None, attached=None,
           height=20, floor_area=1000, units=1, rules=None, streets=(), all_buildings=None,
-          sections=(), year_built=None, historic=False, near_eisenhower=False, stories=None):
+          sections=(), year_built=None, historic=False, near_eisenhower=False, stories=None,
+          height_map=None, retail=None):
     """Check one lot holding one home, fronting Main St to its south.
 
     Pass `rules` to use those instead of the zone's own, `streets` to add
@@ -20,7 +21,8 @@ def check(lot, home, zone, home_type="single", neighbors=None, attached=None,
     `stories` to give its number of stories.
     `year_built` is the year the oldest home went up, `historic` puts the
     lot in a historic district, and `near_eisenhower` puts it within
-    1,000 ft of Eisenhower Avenue.
+    1,000 ft of Eisenhower Avenue. `height_map` is the height district
+    map's rule for the lot and `retail` whether the home has ground floor shops.
     """
     facts = LotFacts(
         shape=lot,
@@ -28,7 +30,8 @@ def check(lot, home, zone, home_type="single", neighbors=None, attached=None,
         rules=rules if rules is not None else ZONES[zone],
         home_type=home_type,
         homes=[Home(shape=home, height=height, floor_area=floor_area,
-                    sections=list(sections), stories=stories)],
+                    sections=list(sections), stories=stories,
+                    ground_floor_retail=retail)],
         lines=classify(lot, neighbors, [MAIN, *streets], "MAIN"),
         units=units,
         all_buildings=[home] if all_buildings is None else all_buildings,
@@ -36,6 +39,7 @@ def check(lot, home, zone, home_type="single", neighbors=None, attached=None,
         year_built=year_built,
         in_historic_district=historic,
         near_eisenhower_avenue=near_eisenhower,
+        height_map=height_map,
     )
     findings = check_lot(facts)
     return {reason.kind for reason in findings.reasons}, findings

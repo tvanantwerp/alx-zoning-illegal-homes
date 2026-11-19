@@ -154,6 +154,9 @@ class ZoneRules:
     # Shown on the floor space row's name, where the zone's limit needs explaining.
     floor_area_note: str = ""
     max_height: dict = field(default_factory=dict)
+    # Where the zone sends you for its height limit instead of setting one,
+    # e.g. "the Old Town North Small Area Plan".
+    height_set_by: str = ""
     # Share of the lot that must stay open (0.35 = 35%).
     min_open_space: float | None = None
     # Least open space in sq ft, however small the lot (RM only).
@@ -471,9 +474,11 @@ ZONES |= {
     "CSL": _commercial("CSL", 1980, 0.75, 50, historic_far=True),
     "CG": _commercial("CG", 1980, 0.75, 50),
     "OC": _commercial("OC", 1600, 1.25, 50, historic_far=True),
-    # Height in CDX comes from a neighborhood plan, so it is not checked.
+    # Height in CDX comes from a neighborhood plan (section 4-606(C)), which
+    # the map doesn't have; only the height district map's limit is checked.
     "CDX": _commercial("CDX", 1245, 1.25, None, historic_far=True,
-                       end_lot_width={}, corner_lot_width={}),
+                       end_lot_width={}, corner_lot_width={},
+                       height_set_by="the Old Town North Small Area Plan"),
     "OCM(50)": _commercial("OCM(50)", 800, 1.50, 50, **_OFFICE),
     # Both OCM(100) and OCH allow homes near Eisenhower Avenue only with a
     # special permit (sections 4-1003(AA) and 4-1103(W)).
@@ -505,7 +510,7 @@ ZONES |= {
         open_space_applies_to=frozenset({"multi"}),
     ),
     # Waterfront mixed-use zone (sections 5-505, 5-506 and 5-512). Its height
-    # comes from the height district map, which isn't checked yet.
+    # is the height district map's (section 5-507).
     "W-1": ZoneRules(
         name="W-1",
         allowed=ALL_TYPES,
@@ -527,6 +532,7 @@ ZONES |= {
         max_floor_area_ratio=1.0,
         historic_floor_area_ratio={kind: 1.50 for kind in HOUSE_LIKE},
         min_open_space=0.35,
+        height_set_by="the height district map",
     ),
 }
 
@@ -546,7 +552,9 @@ _MIXED_USE_HOUSES = {
 # The mixed-use zones. Bigger projects there need a special permit; these
 # are the limits that apply without one. Townhouses get the house yard
 # rules but no lot size or frontage rule. Apartments get only floor space
-# and open space.
+# and open space. Height comes from a small area plan (section 5-106 and its
+# matches), which the map doesn't have; only the height district map's
+# limit is checked.
 for _name in ("CRMU/L", "CRMU/M", "CRMU/H"):
     ZONES[_name] = ZoneRules(
         name=_name.replace("/", "-"),
@@ -554,6 +562,7 @@ for _name in ("CRMU/L", "CRMU/M", "CRMU/H"):
         max_floor_area_ratio=1.0,
         historic_floor_area_ratio={kind: 1.50 for kind in HOUSE_LIKE},
         min_open_space=0.35,
+        height_set_by="the neighborhood's small area plan",
         **(_MIXED_USE_HOUSES | {
             "side_yard": {kind: Yard(8, 1 / 3) for kind in HOUSE_LIKE},
             "rear_yard": {kind: Yard(8, 1.0) for kind in HOUSE_LIKE},
@@ -566,6 +575,7 @@ ZONES |= {
         name="CRMU-X",
         allowed=frozenset(HOUSE_LIKE),
         max_floor_area_ratio=1.50,
+        height_set_by="the Old Town North Small Area Plan",
         **(_MIXED_USE_HOUSES | {
             "lot_area": _MIXED_USE_HOUSES["lot_area"] | {"townhouse": 1452},
             "lot_width": _MIXED_USE_HOUSES["lot_width"] | {"townhouse": 18},
@@ -607,11 +617,12 @@ def king_street_retail_rules(east_of_peyton_and_harvard: bool, residential_only=
       Street (north side): 1.25 for homes and 1.5 for shops, so 1.5. Height
       there is capped at 50 ft (section 6-705(D)(1)).
     - West of them: 1.25 for homes (2.0 near a Metro station) and 2.0 for
-      shops, so 2.0. Height follows the King Street Metro height district,
-      which isn't checked here.
+      shops, so 2.0. Height follows the King Street Metro Station height
+      district (section 6-705(D)(2)), which the height district map gives.
     """
     rules = ZONES["KR"]
     if not east_of_peyton_and_harvard:
+        rules = replace(rules, height_set_by="the King Street Metro Station height district")
         if residential_only:
             return replace(rules, max_floor_area_ratio=2.0 if near_station else 1.25,
                            floor_area_note="The residential limit increases within 1,000 ft of Metro.")
@@ -905,6 +916,98 @@ OLDER_LOTS = OlderLotRule(
     floor_area_ratio=1.50,
     height=35.0,
 )
+
+
+@dataclass(frozen=True)
+class HeightMapLimit:
+    """What one area of the city's height district maps allows.
+
+    Section 6-402 ("Operation of height districts") says every building must
+    stay within both its zone's height limit and the limit on the height
+    district map, and "the lowest applicable height limitation shall
+    prevail."
+
+    district:      the height district's name, after "the".
+    height:        the map's limit in feet, or None where it adds none ("By Zone").
+    retail_height: a higher limit for a building with shops on its ground floor.
+    permit_height: the most a special permit from City Council could allow.
+    along_street:  a street, as the street layer names it, where a lower
+                   limit applies to lots facing it; `along_name` is what to
+                   call it and `along_height` is that lower limit.
+    note:          a part of the map's rule that can't be judged lot by lot.
+    """
+
+    district: str = ""
+    height: float | None = None
+    retail_height: float | None = None
+    permit_height: float | None = None
+    along_street: str | None = None
+    along_name: str = ""
+    along_height: float | None = None
+    note: str = ""
+
+
+# The six height districts named in section 6-401, by the code the city's
+# height district layer gives them.
+HEIGHT_DISTRICT_NAMES = {
+    "HD1": "Old and Historic Alexandria height district",
+    "HD2": "Parker-Gray height district",
+    "HD3": "Potomac River Vicinity height district",
+    "HD4": "Old Town North height district",
+    "HD5": "King Street Metro Station height district",
+    "HD6": "height district for the rest of the city",
+}
+
+# The limit each area of the height district maps sets, keyed by the text
+# the city's height district layer gives it. Written out here once, with
+# where each comes from, rather than read from that text as the map runs.
+HEIGHT_MAP_LIMITS = {
+    "By Zone": HeightMapLimit(),
+    "30'": HeightMapLimit(height=30),
+    "45'": HeightMapLimit(height=45),
+    "50'": HeightMapLimit(height=50),
+    "66'": HeightMapLimit(height=66),
+    "77'": HeightMapLimit(height=77),
+    "100'": HeightMapLimit(height=100),
+    # Section 6-404(A): 30 ft, or up to 50 ft "subject to the issuance of a
+    # special use permit" and a certificate of appropriateness.
+    "30'/50'": HeightMapLimit(height=30, permit_height=50),
+    # Section 6-405: 77 ft, "increased by up to five feet in those buildings
+    # in which at least 30 feet of depth facing public streets is designed to
+    # accommodate predominantly retail uses." No permit is needed. The city's
+    # building records mark buildings with ground floor shops, which the
+    # map uses to decide.
+    "77', 82' if 60% of first floor used for retail": HeightMapLimit(
+        height=77, retail_height=82),
+    # The Old Town North Small Area Plan's height map pairs a 77 ft maximum
+    # with a 50 ft average. The average covers a whole block or development,
+    # so only the maximum is checked.
+    "77' Max. 50' Avg.": HeightMapLimit(
+        height=77,
+        note=("This part of the height district map also caps the average height "
+              "at 50 ft. That average is taken over a whole block or development, "
+              "so the map can't judge it lot by lot and checks only the 77 ft "
+              "maximum.")),
+    # The Old Town North Small Area Plan's height map gives 50 ft "along N
+    # Royal" and 77 ft behind it. The plan's map couldn't be read to find how
+    # deep the 50 ft strip runs, so a lot with any street edge on North Royal
+    # Street gets 50 ft and every other lot in the area 77 ft.
+    "77' (50' along N. Royal)": HeightMapLimit(
+        height=77, along_street="ROYAL", along_name="North Royal Street",
+        along_height=50),
+}
+
+
+def height_map_limit(district: str, text: str) -> HeightMapLimit:
+    """The rule for one area of the height district maps, from its district code and text.
+
+    Raises ValueError for text not in `HEIGHT_MAP_LIMITS`, so a change to the
+    city's layer is noticed rather than skipped.
+    """
+    if text not in HEIGHT_MAP_LIMITS:
+        raise ValueError(f"No rule written for height district map text {text!r}")
+    return replace(HEIGHT_MAP_LIMITS[text],
+                   district=HEIGHT_DISTRICT_NAMES.get(district, "height district map"))
 
 
 HOME_TYPE_NAMES = {

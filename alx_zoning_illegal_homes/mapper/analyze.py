@@ -14,7 +14,7 @@ from .checks import Home, LotFacts, check_lot
 from .lot_lines import MAX_STREET_DISTANCE, classify
 from .rule_results import under_special_approval
 from .rules import (HOME_TYPE_NAMES, PLANNED_DISTRICTS, braddock_gateway_fallback,
-                    duke_street_floor_area, king_street_retail_rules,
+                    duke_street_floor_area, height_map_limit, king_street_retail_rules,
                     normalize_zone, office_high_rules, planned_district_rules,
                     potomac_yard_zone, route_1_properties_fallback, rules_for)
 
@@ -240,7 +240,7 @@ def _place_buildings(lots, buildings, pairs):
         geometry="geometry", crs=lots.crs)
     details = buildings.set_index("building_id")[
         ["is_home", "BUSE", "BTYPE", "BSIZE", "BUNITS", "STORIES", "YEARBLT", "height",
-         "footprint", "sections"]]
+         "footprint", "sections", "ground_floor_retail"]]
     return placed.join(details, on="building_id")
 
 
@@ -436,6 +436,20 @@ def _paving_on(shape, tree, paving_shapes, is_parking):
             parking if parking is not None and parking.area > 0 else None)
 
 
+def _height_map_areas(lot_points, areas) -> pd.Series:
+    """The height district map's rule for each lot, by the area holding a point inside it.
+
+    Lots outside every area get None.
+    """
+    points = gpd.GeoDataFrame(geometry=lot_points, crs=areas.crs)
+    found = gpd.sjoin(points, areas, predicate="within")
+    found = found[~found.index.duplicated()]
+    rules = {(code, text): height_map_limit(code, text)
+             for code, text in set(zip(found["district"], found["limit_text"]))}
+    return pd.Series([rules[key] for key in zip(found["district"], found["limit_text"])],
+                     index=found.index, dtype=object).reindex(lot_points.index)
+
+
 def _lot_area(lot):
     """Prefer the assessor's recorded land area when it agrees with the map."""
     drawn = lot.geometry.area
@@ -495,6 +509,7 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
     parts_by_lot = dict(tuple(placed.groupby("lot_id")))
     lot_points = lots.geometry.representative_point()
     in_historic = lot_points.within(historic)
+    height_map = _height_map_areas(lot_points, loader.load_height_districts())
     lot_lon_lat = lot_points.to_crs("EPSG:4326")
     route_1 = _street(streets, "RICHMOND")
     kr_is_east = _king_street_divide(streets)
@@ -612,6 +627,8 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
                     floor_area=_floor_area(part),
                     sections=part["sections"],
                     stories=float(part["STORIES"]) if part["STORIES"] > 0 else None,
+                    ground_floor_retail=(bool(part["ground_floor_retail"])
+                                         if pd.notna(part["ground_floor_retail"]) else None),
                 )
                 for _, part in homes.iterrows()
             ],
@@ -625,6 +642,7 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
             near_eisenhower_avenue=near_eisenhower_avenue(shape, places["eisenhower"]),
             paved=paved,
             parking=parking,
+            height_map=height_map.loc[lot_id] if pd.notna(height_map.loc[lot_id]) else None,
         )
         findings = check_lot(facts)
         if lot["land_use"] == TWIN_LAND_USE and home_type in ("two_unit", "single"):

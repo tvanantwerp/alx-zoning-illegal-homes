@@ -23,11 +23,14 @@ from .rule_results import (
     CRMU_M_OLDER_LOT_NOTE, HEIGHT_MEASURED, RuleResult,
     eisenhower_older_home_note, eisenhower_special_permit_explanation,
     explain_margin, format_feet as _feet, front_yard_explanation, frontage_about,
-    height_explanation, margin_explanation, no_front_yard_explanation, no_rule_explanation,
+    height_explanation, height_map_explanation, height_winner_explanation,
+    margin_explanation, no_front_yard_explanation, no_height_limit_explanation,
+    no_rule_explanation, zone_height_source_explanation,
     older_lot_explanation, older_lot_limit_explanation,
     older_rules_explanation, open_space_about, side_count_explanation,
     split_twin_explanation, split_twin_reason, yard_height_explanation)
-from .rules import HOME_TYPE_NAMES, HOUSE_LIKE, OLDER_LOTS, OlderHomeAllowance, ZoneRules
+from .rules import (HOME_TYPE_NAMES, HOUSE_LIKE, OLDER_LOTS, HeightMapLimit,
+                    OlderHomeAllowance, ZoneRules)
 
 # Slack given to distance measurements, in feet. Covers measuring error and
 # the 30 inches that eaves and roof overhangs may reach into a yard, since
@@ -78,6 +81,9 @@ class Home:
     year_built: int | None = None
     # Number of stories from the city's building records, or None.
     stories: float | None = None
+    # Whether city building records mark shops on the ground floor, or None
+    # when they don't say.
+    ground_floor_retail: bool | None = None
 
 
 @dataclass
@@ -110,6 +116,8 @@ class LotFacts:
     # The parking part of `paved`, for zones that count some parking as
     # open space (RD).
     parking: object = None
+    # The height district map's rule for the area the lot is in, or None.
+    height_map: HeightMapLimit | None = None
 
 
 @dataclass
@@ -1015,29 +1023,105 @@ def _missing_home_height(facts: LotFacts, known: list[tuple[Home, BuildingHeight
         for home, estimate in known)
 
 
+@dataclass
+class HeightLimit:
+    """One height limit that applies to a home, and how to speak of it.
+
+    allows: what the limit allows, for a reason ("the RC zone allows 150 ft").
+    source: the limit's name, for saying which limit set the height
+            ("the limit in the RC zone").
+    """
+
+    feet: float
+    allows: str
+    source: str
+
+
+def _map_height_limit(facts: LotFacts, home: Home) -> HeightLimit | None:
+    """The height district map's limit for one home, or None where the map sets none."""
+    area = facts.height_map
+    if area is None or area.height is None:
+        return None
+    name = f"the {area.district}"
+    source = f"{name}'s limit"
+    if area.along_street and area.along_street in facts.lines.fronts:
+        return HeightLimit(area.along_height,
+                           f"{name} allows {_feet(area.along_height)} along {area.along_name}",
+                           f"{source} along {area.along_name}")
+    if area.retail_height and home.ground_floor_retail:
+        return HeightLimit(area.retail_height,
+                           f"{name} allows {_feet(area.retail_height)} for a building with "
+                           "shops on its ground floor, as city records show this one has",
+                           f"{source} for a building with ground floor shops")
+    allows = f"{name} allows {_feet(area.height)}"
+    if area.retail_height:
+        allows += (f" ({_feet(area.retail_height)} only for a building with shops on its "
+                   "ground floor, which city records don't show here)")
+    elif area.permit_height:
+        allows += (f" without a special permit; up to {_feet(area.permit_height)} would "
+                   "need a special permit from City Council")
+    elif area.along_street:
+        allows += f" away from {area.along_name}"
+    return HeightLimit(area.height, allows, source)
+
+
+def _height_limits(facts: LotFacts, home: Home, older_lot: bool) -> list[HeightLimit]:
+    """Every height limit that applies to one home: the zone's, or the older-lot limit, and the map's.
+
+    The rule for older lots replaces the zone's own height limit. The height
+    district map's limit applies on top of either, since "the lowest
+    applicable height limitation shall prevail" (section 6-402).
+    """
+    rules = facts.rules
+    limits = []
+    if older_lot:
+        limits.append(HeightLimit(
+            OLDER_LOTS.height,
+            f"on an older lot that falls short of the {rules.label}'s minimums for new "
+            f"lots, homes may be only {_feet(OLDER_LOTS.height)} tall",
+            "the limit for older lots"))
+    elif rules.max_height.get(facts.home_type):
+        usual = rules.max_height[facts.home_type]
+        limits.append(HeightLimit(usual, f"the {rules.label} allows {_feet(usual)}",
+                                  f"the limit in the {rules.label}"))
+    on_map = _map_height_limit(facts, home)
+    if on_map is not None:
+        limits.append(on_map)
+    return limits
+
+
 def _check_height(facts, findings, older_lot=False):
-    """Check the tallest home against the zone's limit, or the older-lot limit when `older_lot`."""
-    kind = facts.home_type
-    usual = facts.rules.max_height.get(kind)
-    limit = OLDER_LOTS.height if older_lot else usual
+    """Check each home against the lowest height limit that applies to it.
+
+    That is the zone's limit (or the older-lot limit when `older_lot`) and
+    the height district map's limit, whichever is lower. The row shows the
+    home that comes closest to, or goes furthest over, its limit.
+    """
+    rules, kind = facts.rules, facts.home_type
+    usual = rules.max_height.get(kind)
     row = RuleResult("height", "Height", NO_RULE, unit="ft", limit="max",
                      about=HEIGHT_MEASURED)
     findings.results.append(row)
-    if not limit:
-        row.explanation = no_rule_explanation(
-            facts.rules.label, HOME_TYPE_NAMES[kind], "height limit")
-        return
     note = older_lot_limit_explanation(
-        facts.rules.label, f"a height of up to {_feet(limit)}",
+        rules.label, f"a height of up to {_feet(OLDER_LOTS.height)}",
         f"limit of {_feet(usual)}" if usual else None) if older_lot else None
+    on_map = facts.height_map is not None and facts.height_map.height is not None
+    if not (older_lot or usual or on_map):
+        row.explanation = no_height_limit_explanation(rules, HOME_TYPE_NAMES[kind])
+        return
     known = home_heights(facts)
     if not known:
         row.status, row.explanation = NOT_CHECKED, NO_HEIGHT
         if note:
             _add_older_lot_note(row, note)
         return
-    tallest, estimate = max(known, key=lambda found: found[1].height)
-    height = estimate.height
+    tallest, estimate, limits = max(
+        ((home, estimate, _height_limits(facts, home, older_lot)) for home, estimate in known),
+        key=lambda found: (found[1].height - min(l.feet for l in found[2]),
+                                  found[1].height))
+    # On a tie the earlier limit (the zone's) is named as the one that sets it.
+    deciding = min(limits, key=lambda limit: limit.feet)
+    height, limit = estimate.height, deciding.feet
     findings.measurements["height"] = height
     row.status, row.measured, row.required = PASSES, height, limit
     missing_height = _missing_home_height(facts, known)
@@ -1052,14 +1136,16 @@ def _check_height(facts, findings, older_lot=False):
         row.status = FAILS
         measured = (f"about {_feet(height)} measured the ordinance's way (roof peak about "
                     f"{_feet(estimate.peak)})" if shrunk else f"about {_feet(height)}")
-        allows = (f"on an older lot that falls short of the {facts.rules.label}'s "
-                  f"minimums for new lots, homes may be only {_feet(limit)} tall"
-                  if older_lot else f"the {facts.rules.label} allows {_feet(limit)}")
-        findings.reasons.append(Reason("height", f"Too tall: {measured}, but {allows}."))
+        findings.reasons.append(Reason("height", f"Too tall: {measured}, but {deciding.allows}."))
+    others = [(other.source, other.feet) for other in limits if other is not deciding]
     row.explanation = " ".join(filter(None, [
         note,
         "Some building heights are unknown." if missing_height else None,
-        height_explanation(estimate), margin_explanation(row)]))
+        zone_height_source_explanation(rules) if on_map and not usual else None,
+        height_winner_explanation(deciding.source, limit, others),
+        height_map_explanation(facts.height_map, facts.lines.fronts) if on_map else None,
+        height_explanation(estimate),
+        margin_explanation(row)]))
 
 
 def _polygons(shape):

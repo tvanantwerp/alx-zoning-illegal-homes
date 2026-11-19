@@ -23,6 +23,7 @@ def place(lot_shapes, building_shapes):
         "YEARBLT": 1950,
         "height": 25.0,
         "sections": [[] for _ in building_shapes],
+        "ground_floor_retail": None,
     }, geometry=list(building_shapes))
     buildings["footprint"] = buildings.geometry.area
     pairs = _match_buildings_to_lots(lots, buildings)
