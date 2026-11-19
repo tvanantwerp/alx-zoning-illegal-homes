@@ -875,6 +875,38 @@ RB_HISTORIC = ZoneRules(
     min_open_space=0.35,
 )
 
+@dataclass(frozen=True)
+class OlderLotRule:
+    """The rule that lets an older lot too small for today's minimums hold a house.
+
+    Section 12-1000 says any lot recorded before December 16, 2023 in the
+    listed zones that "exceeds the maximum density permitted or has less lot
+    area, width, or frontage than the minimum required" may still be built on
+    with a detached house, a two-unit house or a townhouse. The home must meet
+    the zone's other bulk and open space rules (yards, open space), but
+    "regardless of the maximum height and floor area ratio otherwise
+    established", its height is capped at 35 ft and its floor area ratio at
+    1.50. That cap can be looser or stricter than the zone's own.
+
+    The section's title also names CRMU-M, but its text leaves CRMU-M out,
+    and the text governs. So CRMU-M is not in `zones`.
+    """
+
+    zones: frozenset
+    recorded_before: str
+    floor_area_ratio: float
+    height: float
+
+
+OLDER_LOTS = OlderLotRule(
+    zones=frozenset({"RA", "RB", "RM", "CL", "CSL", "CD", "CDX", "OC", "OCM(50)",
+                     "OCM(100)", "OCH", "CRMU-L", "CRMU-H", "CRMU-X"}),
+    recorded_before="December 16, 2023",
+    floor_area_ratio=1.50,
+    height=35.0,
+)
+
+
 HOME_TYPE_NAMES = {
     "single": "detached house",
     "semi": "twin house (one half)",

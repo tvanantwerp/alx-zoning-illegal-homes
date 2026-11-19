@@ -17,15 +17,17 @@ from .heights import MIN_PART_AREA, BuildingHeight, RoofHeight, building_height
 from .lot_lines import LotLines, largest_polygon, lot_width, lot_width_line
 from .rule_results import (
     CORNER_NO_REAR, CROSSES_LOT_LINE, FAILS, MAPPING_ERROR, NO_FLOOR_AREA, NO_HEIGHT,
-    NO_OUTLINES, NO_REAR_FOUND, NO_RULE, NO_SIDE_LINE, NO_STREET, NOT_CHECKED, NOT_REQUIRED, PASSES, RULE_IDS,
+    NO_OUTLINES, NO_REAR_FOUND, NO_RULE, NO_SIDE_LINE, NO_STREET, NOT_CHECKED, NOT_REQUIRED,
+    OLDER_LOT, PASSES, RULE_IDS,
     SHARED_LOT, SHARED_WALL, SIDE_COUNT_ON_CORNER, TOO_SHALLOW, TWO_UNIT_LOT, YARD_BENEFIT_OF_DOUBT,
-    HEIGHT_MEASURED, RuleResult,
+    CRMU_M_OLDER_LOT_NOTE, HEIGHT_MEASURED, RuleResult,
     eisenhower_older_home_note, eisenhower_special_permit_explanation,
     explain_margin, format_feet as _feet, front_yard_explanation, frontage_about,
     height_explanation, margin_explanation, no_front_yard_explanation, no_rule_explanation,
+    older_lot_explanation, older_lot_limit_explanation,
     older_rules_explanation, open_space_about, side_count_explanation,
     split_twin_explanation, split_twin_reason, yard_height_explanation)
-from .rules import HOME_TYPE_NAMES, OlderHomeAllowance, ZoneRules
+from .rules import HOME_TYPE_NAMES, HOUSE_LIKE, OLDER_LOTS, OlderHomeAllowance, ZoneRules
 
 # Slack given to distance measurements, in feet. Covers measuring error and
 # the 30 inches that eaves and roof overhangs may reach into a yard, since
@@ -54,6 +56,9 @@ TOUCHING_GAP = 0.5
 MAX_SHARE_OUTSIDE_LOT = 0.12
 
 YARD_ROLES = ("front", "left", "right", "rear")
+# Rows the rule for older lots can excuse: lot size (or land per home),
+# lot width and street frontage.
+LOT_RULES = ("lot_area", "width", "frontage")
 YARD_NAMES = {"front": "Front yard", "left": "Left side yard",
               "right": "Right side yard", "rear": "Rear yard",
               "nearest": "Closest lot line"}
@@ -152,9 +157,10 @@ def check_lot(facts: LotFacts) -> Findings:
         return findings
     _check_lot_area(facts, findings, position)
     width = _check_width_and_frontage(facts, findings, position)
+    older_lot = _excuse_older_lot(facts, findings)
     _check_yards(facts, findings, width)
-    _check_floor_area(facts, findings)
-    _check_height(facts, findings)
+    _check_floor_area(facts, findings, older_lot)
+    _check_height(facts, findings, older_lot)
     _check_open_space(facts, findings)
     explain_margin(findings.results)
     findings.results.sort(key=lambda row: RULE_IDS.index(row.rule))
@@ -403,6 +409,52 @@ def _check_width_and_frontage(facts, findings, position):
             f"{where if kind == 'townhouse' else _for_whole_house(kind)}.",
         ))
     return width
+
+
+def _excuse_older_lot(facts, findings) -> bool:
+    """Excuse a house, twin or townhouse on an older lot that falls short of the lot rules.
+
+    In the zones the rule for older lots covers (see `OLDER_LOTS`), a lot
+    recorded before December 16, 2023 that is too small, too narrow, has too
+    little street frontage, or holds more homes than its land allows, may
+    still hold a detached house, a two-unit house or a townhouse. Every lot
+    on the map is taken to be that old. The rows it falls short on get a
+    status of their own that counts as passing, keeping the shortfall on
+    show, and their reasons are dropped.
+
+    Returns True when the lot is excused this way, so floor space and
+    height are judged by that rule's limits instead of the zone's.
+    """
+    rules, kind = facts.rules, facts.home_type
+    short = [row for row in findings.results
+             if row.rule in LOT_RULES and row.status == FAILS]
+    if not short or kind not in HOUSE_LIKE or kind not in rules.allowed:
+        return False
+    if rules.name not in OLDER_LOTS.zones:
+        if rules.name == "CRMU-M":
+            findings.notes.append(CRMU_M_OLDER_LOT_NOTE)
+        return False
+    for row in short:
+        row.status = OLDER_LOT
+        row.explanation = older_lot_explanation(row, rules.label)
+    findings.reasons = [reason for reason in findings.reasons
+                        if reason.kind not in ("lot_size", "lot_width")]
+    findings.notes.append(
+        f"This lot falls short of what the {rules.label} asks of new lots, but lots "
+        f"recorded before {OLDER_LOTS.recorded_before} may still hold a house, a "
+        "two-unit house or a townhouse. The home is held to the zone's yard and open "
+        f"space rules, floor space up to {OLDER_LOTS.floor_area_ratio:.0%} of the lot, "
+        f"and a height of {_feet(OLDER_LOTS.height)}.")
+    return True
+
+
+def _add_older_lot_note(row: RuleResult, note: str) -> None:
+    """Put the older-lot note ahead of whatever the row's tooltip already says.
+
+    A row that passes only thanks to the margin also keeps that explanation,
+    which `explain_margin` would otherwise add later.
+    """
+    row.explanation = " ".join(filter(None, [note, row.explanation or margin_explanation(row)]))
 
 
 @dataclass
@@ -886,9 +938,11 @@ def _home_indexes(facts) -> list[int]:
     return found
 
 
-def _check_floor_area(facts, findings):
+def _check_floor_area(facts, findings, older_lot=False):
+    """Check floor space against the zone's limit, or the older-lot limit when `older_lot`."""
     kind = facts.home_type
-    limit = facts.rules.floor_area_ratio_for(kind, facts.in_historic_district)
+    usual = facts.rules.floor_area_ratio_for(kind, facts.in_historic_district)
+    limit = OLDER_LOTS.floor_area_ratio if older_lot else usual
     row = RuleResult("floor_area", "Floor space", NO_RULE, unit="sq ft", limit="max",
                      about=facts.rules.floor_area_note or None)
     findings.results.append(row)
@@ -896,8 +950,13 @@ def _check_floor_area(facts, findings):
         row.explanation = no_rule_explanation(
             facts.rules.label, HOME_TYPE_NAMES[kind], "floor space limit")
         return
+    note = older_lot_limit_explanation(
+        facts.rules.label, f"floor space up to {limit:.0%} of the lot",
+        f"limit of {usual:.0%}" if usual else None) if older_lot else None
     if any(home.floor_area is None for home in facts.homes):
         row.status, row.explanation = NOT_CHECKED, NO_FLOOR_AREA
+        if note:
+            _add_older_lot_note(row, note)
         return
     floor_area = sum(home.floor_area for home in facts.homes)
     ratio = floor_area / facts.area
@@ -906,13 +965,17 @@ def _check_floor_area(facts, findings):
     row.buildings = _home_indexes(facts)
     if ratio > limit * (1 + FLOOR_AREA_MARGIN):
         row.status = FAILS
+        allows = (f"On an older lot that falls short of the {facts.rules.label}'s "
+                  "minimums for new lots, floor space may be" if older_lot
+                  else f"The {facts.rules.label} allows floor space")
         findings.reasons.append(Reason(
             "floor_area",
             f"Too much building for the lot: about {_square_feet(floor_area)} "
-            f"of floor space on a {_square_feet(facts.area)} lot. The "
-            f"{facts.rules.label} allows floor space up to "
+            f"of floor space on a {_square_feet(facts.area)} lot. {allows} up to "
             f"{limit:.0%} of the lot ({_square_feet(limit * facts.area)}).",
         ))
+    if note:
+        _add_older_lot_note(row, note)
 
 
 def _home_height(facts: LotFacts, home: Home) -> BuildingHeight | None:
@@ -938,9 +1001,11 @@ def _missing_home_height(facts: LotFacts, known: list[tuple[Home, BuildingHeight
         for home, estimate in known)
 
 
-def _check_height(facts, findings):
+def _check_height(facts, findings, older_lot=False):
+    """Check the tallest home against the zone's limit, or the older-lot limit when `older_lot`."""
     kind = facts.home_type
-    limit = facts.rules.max_height.get(kind)
+    usual = facts.rules.max_height.get(kind)
+    limit = OLDER_LOTS.height if older_lot else usual
     row = RuleResult("height", "Height", NO_RULE, unit="ft", limit="max",
                      about=HEIGHT_MEASURED)
     findings.results.append(row)
@@ -948,9 +1013,14 @@ def _check_height(facts, findings):
         row.explanation = no_rule_explanation(
             facts.rules.label, HOME_TYPE_NAMES[kind], "height limit")
         return
+    note = older_lot_limit_explanation(
+        facts.rules.label, f"a height of up to {_feet(limit)}",
+        f"limit of {_feet(usual)}" if usual else None) if older_lot else None
     known = home_heights(facts)
     if not known:
         row.status, row.explanation = NOT_CHECKED, NO_HEIGHT
+        if note:
+            _add_older_lot_note(row, note)
         return
     tallest, estimate = max(known, key=lambda found: found[1].height)
     height = estimate.height
@@ -968,11 +1038,12 @@ def _check_height(facts, findings):
         row.status = FAILS
         measured = (f"about {_feet(height)} measured the ordinance's way (roof peak about "
                     f"{_feet(estimate.peak)})" if shrunk else f"about {_feet(height)}")
-        findings.reasons.append(Reason(
-            "height",
-            f"Too tall: {measured}, but the {facts.rules.label} allows {_feet(limit)}.",
-        ))
+        allows = (f"on an older lot that falls short of the {facts.rules.label}'s "
+                  f"minimums for new lots, homes may be only {_feet(limit)} tall"
+                  if older_lot else f"the {facts.rules.label} allows {_feet(limit)}")
+        findings.reasons.append(Reason("height", f"Too tall: {measured}, but {allows}."))
     row.explanation = " ".join(filter(None, [
+        note,
         "Some building heights are unknown." if missing_height else None,
         height_explanation(estimate), margin_explanation(row)]))
 

@@ -3,7 +3,8 @@ import pytest
 from shapely.geometry import box
 from shapely.ops import unary_union
 
-from alx_zoning_illegal_homes.mapper.rules import normalize_zone, rules_for
+from alx_zoning_illegal_homes.mapper.rules import (
+    normalize_zone, planned_district_rules, rules_for)
 
 from .helpers import between_neighbors, check
 
@@ -227,7 +228,7 @@ def test_end_townhouse_needs_a_wider_lot():
     lot = box(0, 0, 20, 110)
     home = box(0, 15, 12, 55)
     attached = box(-20, 15, 0, 55)
-    kinds, findings = check(lot, home, "RB", home_type="townhouse",
+    kinds, findings = check(lot, home, "RS", home_type="townhouse",
                             neighbors=between_neighbors(lot), attached=attached)
     assert findings.measurements["position"] == "end"
     assert "lot_width" in kinds
@@ -314,14 +315,24 @@ def test_ra_townhouse_frontage_still_follows_width():
     kinds, findings = check(lot, box(0, 20, 14, 60), "RA", home_type="townhouse",
                             neighbors=between_neighbors(lot))
     rows = {row.rule: row for row in findings.results}
-    assert rows["frontage"].required == 18 and rows["frontage"].status == "fails"
+    # The rule for older lots excuses the shortfall, but the row still shows it.
+    assert rows["frontage"].required == 18 and rows["frontage"].status == "older_lot"
 
 
-@pytest.mark.parametrize("zone", ["CRMU/L", "CRMU/M", "CRMU/H", "CRMU/X", "W-1"])
+@pytest.mark.parametrize("zone", ["CRMU/M", "W-1"])
 def test_mixed_use_house_on_a_small_lot_is_flagged(zone):
     lot = box(0, 0, 40, 100)  # 4,000 sq ft, 40 ft wide: under 5,000 and 50
     kinds, _ = check(lot, box(10, 35, 30, 65), zone, neighbors=between_neighbors(lot))
     assert {"lot_size", "lot_width"} <= kinds
+
+
+@pytest.mark.parametrize("zone", ["CRMU/L", "CRMU/H", "CRMU/X"])
+def test_mixed_use_house_on_a_small_older_lot_is_excused(zone):
+    lot = box(0, 0, 40, 100)
+    kinds, findings = check(lot, box(10, 35, 30, 65), zone, neighbors=between_neighbors(lot))
+    assert not {"lot_size", "lot_width"} & kinds
+    rows = {row.rule: row for row in findings.results}
+    assert rows["lot_area"].status == rows["width"].status == "older_lot"
 
 
 @pytest.mark.parametrize("zone", ["CRMU/L", "CRMU/X", "W-1"])
@@ -480,12 +491,20 @@ def test_two_unit_house_on_a_twin_halfs_lot_is_too_small():
     assert "lot_size" not in kinds
     kinds, findings = check(lot, halves[0], "RB", home_type="two_unit", units=2,
                             neighbors=between_neighbors(lot), all_buildings=halves)
+    # The RB zone's rule for older lots excuses it, but the rows keep the
+    # whole house's minimums.
+    assert not {"lot_size", "lot_width"} & kinds
+    rows = {row.rule: row for row in findings.results}
+    assert rows["lot_area"].required == 3960 and rows["lot_area"].status == "older_lot"
+    assert rows["frontage"].required == 50 and rows["frontage"].status == "older_lot"
+    assert rows["lot_area"].name == "Lot size" and "whole two-unit house" in rows["lot_area"].about
+    # R-2-5 has no such rule, so there the reasons spell out the whole house.
+    kinds, findings = check(lot, halves[0], "R-2-5", home_type="two_unit", units=2,
+                            neighbors=between_neighbors(lot), all_buildings=halves)
     assert {"lot_size", "lot_width"} <= kinds
     text = " ".join(r.text for r in findings.reasons)
-    assert "requires 3,960 sq ft for a two-unit house" in text
+    assert "requires 5,000 sq ft for a two-unit house" in text
     assert "requires 50 ft for a two-unit house" in text
-    row = next(r for r in findings.results if r.rule == "lot_area")
-    assert row.name == "Lot size" and "whole two-unit house" in row.about
 
 
 def test_older_two_unit_house_passes_in_rc():
@@ -553,3 +572,93 @@ def test_whole_two_unit_house_in_r5_needs_no_extra_side_yard():
                             units=2, neighbors=between_neighbors(lot),
                             all_buildings=halves)
     assert "yards" not in kinds
+
+
+def _rows(findings):
+    return {row.rule: row for row in findings.results}
+
+
+def test_older_undersized_lot_may_hold_a_house():
+    lot = box(0, 0, 30, 60)  # 1,800 sq ft and 30 ft wide in RB: under 1,980 and 50
+    kinds, findings = check(lot, box(8, 20, 22, 45), "RB",
+                            neighbors=between_neighbors(lot), floor_area=1000)
+    assert not {"lot_size", "lot_width"} & kinds
+    rows = _rows(findings)
+    for rule in ("lot_area", "width", "frontage"):
+        assert rows[rule].status == "older_lot"
+        assert "December 16, 2023" in rows[rule].explanation
+    assert rows["lot_area"].measured == 1800 and rows["lot_area"].required == 1980
+    assert "about 1,800 sq ft; the RB zone asks 1,980 sq ft" in rows["lot_area"].explanation
+    assert any("may still hold a house" in note for note in findings.notes)
+
+
+def test_older_lot_floor_space_is_capped_at_one_and_a_half():
+    lot = box(0, 0, 30, 60)  # 1,800 sq ft
+    home = box(8, 20, 22, 45)
+    # 1.40 times the lot: far over RB's 0.75, but under the older-lot 1.50.
+    kinds, findings = check(lot, home, "RB", neighbors=between_neighbors(lot),
+                            floor_area=2520)
+    assert "floor_area" not in kinds
+    row = _rows(findings)["floor_area"]
+    assert row.required == 1.5 * 1800
+    assert "rule for older lots" in row.explanation and "75%" in row.explanation
+    kinds, findings = check(lot, home, "RB", neighbors=between_neighbors(lot),
+                            floor_area=3240)  # 1.80 times the lot
+    assert "floor_area" in kinds
+    assert "older lot" in next(r.text for r in findings.reasons if r.kind == "floor_area")
+
+
+def test_older_lot_height_is_capped_at_35_ft():
+    lot = box(0, 0, 20, 60)  # 1,200 sq ft in RM: under 1,452
+    home = box(0, 15, 20, 45)
+    # A flat roof 42 ft up (four stories): under RM's 45 ft, over 35 ft.
+    kinds, findings = check(lot, home, "RM", neighbors=between_neighbors(lot),
+                            height=42, stories=4)
+    assert "lot_size" not in kinds and "height" in kinds
+    row = _rows(findings)["height"]
+    assert row.required == 35 and "rule for older lots" in row.explanation
+    roomy = box(0, 0, 30, 60)  # 1,800 sq ft: no excuse needed, RM's own 45 ft applies
+    kinds, findings = check(roomy, box(0, 15, 30, 45), "RM",
+                            neighbors=between_neighbors(roomy), height=42, stories=4)
+    assert "height" not in kinds and _rows(findings)["height"].required == 45
+
+
+def test_roomy_lot_keeps_the_zones_own_floor_space_limit():
+    lot = box(0, 0, 60, 100)
+    kinds, findings = check(lot, box(15, 30, 45, 70), "RB",
+                            neighbors=between_neighbors(lot), floor_area=6000)
+    assert "floor_area" in kinds and _rows(findings)["floor_area"].required == 0.75 * 6000
+
+
+def test_older_lot_rule_skips_apartments():
+    lot = box(0, 0, 40, 100)  # 40 ft wide in RA: apartments need 50
+    kinds, findings = check(lot, box(10, 35, 30, 65), "RA", home_type="multi", units=3,
+                            neighbors=between_neighbors(lot))
+    assert "lot_width" in kinds and _rows(findings)["width"].status == "fails"
+
+
+def test_crmu_m_is_left_out_of_the_older_lot_rule():
+    lot = box(0, 0, 40, 100)
+    kinds, findings = check(lot, box(10, 35, 30, 65), "CRMU/M",
+                            neighbors=between_neighbors(lot))
+    assert "lot_size" in kinds
+    assert any("leaves CRMU-M out" in note for note in findings.notes)
+
+
+def test_planned_district_fallback_uses_the_older_lot_rule():
+    _, _, fallback = planned_district_rules("CDD#16")  # James Bland falls back to RB
+    lot = box(0, 0, 30, 60)
+    kinds, findings = check(lot, box(8, 20, 22, 45), "RB", rules=fallback,
+                            neighbors=between_neighbors(lot))
+    assert not {"lot_size", "lot_width"} & kinds
+    assert _rows(findings)["lot_area"].status == "older_lot"
+
+
+def test_older_lot_rule_covers_land_per_home_on_a_shared_townhouse_lot():
+    lot = box(0, 0, 50, 60)  # 3,000 sq ft for three townhouses: 1,000 each, under 1,980
+    kinds, findings = check(lot, box(0, 15, 50, 45), "RB", home_type="townhouse", units=3,
+                            neighbors=between_neighbors(lot))
+    assert "lot_size" not in kinds
+    row = _rows(findings)["lot_area"]
+    assert row.name == "Land per home" and row.status == "older_lot"
+    assert "of land for each home; the RB zone asks 1,980 sq ft" in row.explanation

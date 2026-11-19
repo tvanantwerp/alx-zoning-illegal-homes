@@ -40,7 +40,18 @@ the residential zones (R-20, R-12, R-8, R-5, R-2-5, RA, RB, RCX, RC, RD, RM,
 RS, RT) and homes in the commercial, office and waterfront zones (CL, CC, CSL,
 CG, CD, CDX, OC, OCM, OCH, W-1, CRMU, KR) and in planned districts:
 
-- **Lot size**, **lot width** and **street frontage**
+- **Lot size**, **lot width** and **street frontage**. In RA, RB, RM, CL,
+  CSL, CD, CDX, OC, OCM, OCH, CRMU-L, CRMU-H and CRMU-X, a lot recorded
+  before December 16, 2023 may still hold a detached house, a two-unit house
+  or a townhouse when it is too small, too narrow, has too little street
+  frontage, or has too little land per home (section 12-1000, on older lots).
+  Those rows show as "older lot OK", which counts as passing, and still show
+  the shortfall. The home must still meet the zone's yard and open space
+  rules, but its floor space is capped at 150% of the lot and its height at
+  35 ft, whatever the zone's own limits. That height cap is stricter than
+  the 45 ft many of these zones give townhouses. The section's title also
+  names CRMU-M, but its text leaves CRMU-M out, so the map doesn't apply it
+  there. Apartment buildings get no such excuse.
 - **Side and rear yards**, both the fixed minimum and the deeper yard taller
   buildings need. The deeper yard is judged for each part of a home (a
   low wing, a taller main block) at that part's own height and distance
@@ -241,6 +252,9 @@ Other details that matter:
 - A few hundred home lots are left unchecked because the city's data gives
   them no zone, two zones, or no matching building.
 - Variances and special approvals for individual properties are unknown.
+- Every lot is taken to have been recorded before December 16, 2023, so the
+  rule for older undersized lots applies to all of them. The parcel map shows
+  lots as they are today and can't tell a lot split or redrawn since then.
 
 ## Data sources
 

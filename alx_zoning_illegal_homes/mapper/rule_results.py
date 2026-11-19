@@ -7,10 +7,14 @@ reason, so the table and the reasons never disagree.
 from dataclasses import dataclass, field, replace
 
 from .heights import FLAT, UNKNOWN, RoofHeight
-from .rules import OlderHomeAllowance, PlannedDistrict, ZoneRules
+from .rules import OLDER_LOTS, OlderHomeAllowance, PlannedDistrict, ZoneRules
+
 
 FAILS, PASSES, NOT_CHECKED, NO_RULE, NOT_REQUIRED = (
     "fails", "passes", "not_checked", "no_rule", "not_required")
+# A lot rule this older lot falls short of, but which the rule for older
+# lots excuses. Counts as passing; the row keeps the shortfall on show.
+OLDER_LOT = "older_lot"
 
 RULE_IDS = ("lot_area", "frontage", "width", "yard:front", "yard:left", "yard:right",
             "yard:rear", "yard:nearest", "floor_area", "height", "coverage",
@@ -131,6 +135,51 @@ def older_rules_explanation(zone_label: str, before: str) -> str:
     return (f"This home was built before {before}, so the {zone_label} lets it be "
             "rebuilt under the limits in force when it was built. The map doesn't "
             "know those older limits.")
+
+
+def _older_lot_rule(zone_label: str) -> str:
+    """The rule for older lots, in plain words."""
+    return (f"Lots recorded before {OLDER_LOTS.recorded_before} in the {zone_label} may "
+            "still hold a detached house, a two-unit house or a townhouse when they fall "
+            "short of the minimum lot size, width, street frontage or land per home. The "
+            "home must still meet the zone's yard and open space rules, with floor space "
+            f"up to {OLDER_LOTS.floor_area_ratio:.0%} of the lot area and a height of "
+            f"up to {format_feet(OLDER_LOTS.height)}, whatever the zone's own limits. The "
+            "map takes every lot as recorded before that date; it can't tell a lot that "
+            "was split or redrawn since.")
+
+
+def older_lot_explanation(row: "RuleResult", zone_label: str) -> str:
+    """Explain a lot size, width or frontage row that the rule for older lots excuses."""
+    measured, required = _show(row.measured, row.unit), _show(row.required, row.unit)
+    if row.rule == "lot_area" and row.name == "Land per home":
+        shortfall = (f"About {measured} of land for each home; the {zone_label} asks "
+                     f"{required} for each home on a new lot.")
+    else:
+        what = {"lot_area": f"This lot is about {measured}",
+                "width": f"This lot is about {measured} wide",
+                "frontage": f"This lot has about {measured} of street frontage"}[row.rule]
+        shortfall = f"{what}; the {zone_label} asks {required} of a new lot."
+    return f"{shortfall} {_older_lot_rule(zone_label)}"
+
+
+def older_lot_limit_explanation(zone_label: str, what: str, usual: str | None) -> str:
+    """Say that the rule for older lots sets this row's limit in place of the zone's own.
+
+    `what` names the limit ("floor space up to 1.50 times the lot area") and
+    `usual` is the zone's own limit in words, or None when it sets none.
+    """
+    instead = (f"in place of the zone's usual {usual}" if usual
+               else "where the zone sets no limit of its own")
+    return (f"This lot falls short of what the {zone_label} asks of new lots, so the rule "
+            f"for older lots applies: {what}, {instead}.")
+
+
+CRMU_M_OLDER_LOT_NOTE = (
+    "This lot falls short of what the CRMU-M zone asks of new lots. The zoning rules "
+    "let older lots in many zones that fall short still hold a house, a two-unit house "
+    "or a townhouse (section 12-1000). That section's title names the CRMU-M zone, but "
+    "its text leaves CRMU-M out, and the text governs, so the map doesn't apply it here.")
 
 
 def eisenhower_special_permit_explanation(zone_label: str) -> str:
