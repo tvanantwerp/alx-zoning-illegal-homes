@@ -1,4 +1,5 @@
 """Check every lot with a home in the city against today's zoning rules."""
+import warnings
 from dataclasses import replace
 
 import geopandas as gpd
@@ -11,13 +12,14 @@ from shapely.ops import unary_union
 from . import loader
 from .block_faces import BlockFaces
 from .places import near_a_station, near_eisenhower_avenue, station_points
-from .checks import Home, LotFacts, check_lot
+from .checks import Home, LotFacts, TownhouseRow, check_lot
 from .lot_lines import MAX_DIVIDED_GAP, MAX_STREET_DISTANCE, Street, classify
 from .rule_results import under_special_approval
-from .rules import (HOME_TYPE_NAMES, PLANNED_DISTRICTS, braddock_gateway_fallback,
-                    duke_street_floor_area, height_map_limit, king_street_retail_rules,
-                    normalize_zone, office_high_rules, planned_district_rules,
-                    potomac_yard_zone, route_1_properties_fallback, rules_for)
+from .rules import (HOME_TYPE_NAMES, MAX_TOWNHOUSES_IN_ROW, PLANNED_DISTRICTS,
+                    braddock_gateway_fallback, duke_street_floor_area, height_map_limit,
+                    king_street_retail_rules, normalize_zone, office_high_rules,
+                    planned_district_rules, potomac_yard_zone, route_1_properties_fallback,
+                    rules_for)
 
 # A building counts as sitting on a second lot when this much of it does.
 STRADDLE_SHARE = 0.15
@@ -42,6 +44,15 @@ POTOMAC_YARD_WEST_EDGE = -77.06
 ATTACHED_GAP = 1.5
 # Homes this close together count as one attached row.
 ROW_GAP = 1.0
+# For the limit on townhouses in one building, homes join a row only where
+# their outlines run together, this close, for at least MIN_SHARED_WALL feet:
+# a shared wall, not two rows whose corners meet across an alley.
+WALL_GAP = 0.5
+MIN_SHARED_WALL = 4.0
+# The pop-up outlines at most this many of the other buildings in a row.
+MAX_ROW_OUTLINES = 40
+# Building outlines in a row drawing are simplified to within this many feet.
+ROW_OUTLINE_TOLERANCE = 0.5
 # A lot the assessor calls half of a twin, holding one detached house with
 # no other home this close, is judged as a detached house.
 LONE_HOUSE_GAP = 6.0
@@ -265,6 +276,136 @@ def _row_sizes(home_shapes, home_lots):
             parent[find(a)] = find(b)
     roots = pd.Series({lot: find(lot) for lot in parent})
     return roots.map(roots.value_counts()).to_dict()
+
+
+def _union_groups(count: int, left, right) -> np.ndarray:
+    """Join items 0..count-1 linked by the pairs (left[i], right[i]); return each one's group."""
+    parent = list(range(count))
+
+    def find(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    for a, b in zip(left, right):
+        parent[find(a)] = find(b)
+    return np.array([find(i) for i in range(count)])
+
+
+def _shared_walls(home_shapes) -> tuple[np.ndarray, np.ndarray]:
+    """Pairs of home outlines that share a wall: they run together for at least MIN_SHARED_WALL."""
+    left, right = shapely.STRtree(home_shapes).query(home_shapes, predicate="dwithin",
+                                                     distance=WALL_GAP)
+    keep = left < right
+    left, right = left[keep], right[keep]
+    a, b = home_shapes[left], home_shapes[right]
+    # Measure both ways, so a long wall can't pass on the strength of a short one.
+    along = np.minimum(
+        shapely.length(shapely.intersection(shapely.boundary(a), shapely.buffer(b, WALL_GAP))),
+        shapely.length(shapely.intersection(shapely.boundary(b), shapely.buffer(a, WALL_GAP))))
+    keep = along >= MIN_SHARED_WALL
+    return left[keep], right[keep]
+
+
+def _long_side(shape) -> float:
+    """The long side of the smallest rectangle, turned to any angle, that holds a shape."""
+    # GEOS warns, harmlessly, about some outlines with nearly straight runs of points.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        rectangle = shapely.oriented_envelope(shape)
+    if rectangle.geom_type != "Polygon":
+        return float(rectangle.length)
+    corners = np.array(rectangle.exterior.coords)
+    return float(max(np.hypot(*(corners[1] - corners[0])), np.hypot(*(corners[2] - corners[1]))))
+
+
+def _row_outlines(group: pd.DataFrame, lot_id: int) -> tuple[list, bool]:
+    """Outlines of a row's buildings on lots other than this one, nearest first.
+
+    Each building's pieces on other lots are joined and simplified. Returns
+    at most MAX_ROW_OUTLINES of them, and whether that was all of them.
+    """
+    others = group[group["lot_id"] != lot_id]
+    if others.empty:
+        return [], True
+    here = unary_union(group.geometry[group["lot_id"] == lot_id].values)
+    outlines = [unary_union(pieces.values).simplify(ROW_OUTLINE_TOLERANCE)
+                for _, pieces in others.geometry.groupby(others["building_id"])]
+    outlines.sort(key=here.distance)
+    return outlines[:MAX_ROW_OUTLINES], len(outlines) <= MAX_ROW_OUTLINES
+
+
+def _home_sites(parts: pd.DataFrame, lots: gpd.GeoDataFrame) -> dict:
+    """Group lots that hold one home recorded as several parcels.
+
+    Some condo townhouses are recorded as a unit parcel plus a second parcel
+    beside it, each holding part of the same building. Lots holding pieces of
+    exactly the same buildings, at least one of them a condo, are one site.
+    Lots beside each other in an ordinary row hold different sets, since each
+    home's outline is cut along its own lot lines. Returns each lot id's
+    site, keyed by lot id.
+    """
+    held = parts.groupby("lot_id")["building_id"].agg(frozenset)
+    condo = lots.loc[held.index, "condo_units"].values > 0
+    sites = {}
+    for buildings, group in pd.Series(held.index, index=held.values).groupby(level=0):
+        lot_ids = list(group.values)
+        if len(lot_ids) > 1 and condo[held.index.get_indexer(lot_ids)].any():
+            sites |= {lot_id: lot_ids[0] for lot_id in lot_ids}
+        else:
+            sites |= {lot_id: lot_id for lot_id in lot_ids}
+    return sites
+
+
+def _townhouse_rows(home_parts: gpd.GeoDataFrame, lots: gpd.GeoDataFrame) -> dict:
+    """Find the row of attached homes each lot's homes stand in, for the townhouse row limit.
+
+    Stricter than `_row_sizes`: homes join only where they share a wall (see
+    `_shared_walls`), and the pieces of one building cut by lot lines always
+    stay together. When each home was built doesn't matter; the rule counts
+    the homes in "a single structure".
+
+    Homes are counted, not outlines. Each lot in the row counts as one home,
+    since the city often draws a townhouse a few feet off its lot lines, so
+    one home's outline spreads over two lots. A condo lot counts each of its
+    building outlines in the row instead. A home recorded as two parcels
+    counts once (see `_home_sites`). A lot not used for homes adds none, but
+    still joins the homes on either side of it.
+
+    Returns a TownhouseRow for each lot with homes, keyed by lot id. Where a
+    lot's homes stand in several rows, it gets the one with the most homes.
+    """
+    parts = home_parts[["building_id", "lot_id", "geometry"]].reset_index(drop=True)
+    shapes = parts.geometry.values
+    left, right = _shared_walls(shapes)
+    same_building = parts.groupby("building_id").indices.values()
+    left = np.concatenate([left] + [group[1:] for group in same_building])
+    right = np.concatenate([right] + [np.full(len(group) - 1, group[0])
+                                      for group in same_building])
+    parts["row"] = _union_groups(len(parts), left, right)
+    parts["site"] = parts["lot_id"].map(_home_sites(parts, lots))
+
+    home_uses = set(loader.HOME_TYPE_BY_LAND_USE) | set(loader.HOME_TYPE_FROM_BUILDINGS)
+    rows = {}
+    for _, group in parts.groupby("row"):
+        lot_ids = group["lot_id"].unique()
+        homes = 0
+        for _, site in group.groupby("site"):
+            site_lots = site["lot_id"].unique()
+            if (lots.loc[site_lots, "condo_units"] > 0).any():
+                homes += site["building_id"].nunique()
+            elif lots.loc[site_lots, "land_use"].isin(home_uses).any():
+                homes += 1
+        length = _long_side(unary_union(group.geometry.values))
+        for lot_id in lot_ids:
+            if lot_id in rows and rows[lot_id].homes >= homes:
+                continue
+            row = TownhouseRow(homes=max(homes, 1), length=length)
+            if homes > MAX_TOWNHOUSES_IN_ROW:
+                row.outlines, row.all_outlined = _row_outlines(group, lot_id)
+            rows[lot_id] = row
+    return rows
 
 
 def _has_attached_homes(shapes) -> bool:
@@ -556,6 +697,7 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
     home_shapes, home_lots = home_parts.geometry.values, home_parts["lot_id"].values
     home_tree = shapely.STRtree(home_shapes)
     row_sizes = _row_sizes(home_shapes, home_lots)
+    townhouse_rows = _townhouse_rows(home_parts, lots)
     parts_by_lot = dict(tuple(placed.groupby("lot_id")))
     lot_points = lots.geometry.representative_point()
     in_historic = lot_points.within(historic)
@@ -706,6 +848,7 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
             near_eisenhower_avenue=near_eisenhower_avenue(shape, places["eisenhower"]),
             paved=paved,
             parking=parking,
+            row=townhouse_rows.get(lot_id),
         )
         waiting.append((lot_id, lot, record, facts, district, fallback_rules))
 

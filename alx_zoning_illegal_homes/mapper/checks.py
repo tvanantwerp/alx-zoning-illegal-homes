@@ -36,10 +36,13 @@ from .rule_results import (
     no_rule_explanation, pitched_roof_height_explanation, zone_height_source_explanation,
     older_lot_explanation, older_lot_limit_explanation,
     older_rules_explanation, open_space_about, side_count_explanation,
+    ROW_LENGTH_ABOUT, long_row_explanation, long_row_reason, row_length_summary,
+    row_no_townhouses_explanation, row_set_by_plan_explanation,
     split_twin_explanation, split_twin_reason, unplaced_divided_explanation,
     yard_height_explanation)
-from .rules import (HOME_TYPE_NAMES, HOUSE_LIKE, OLDER_LOTS, HeightMapLimit,
-                    OlderHomeAllowance, ZoneRules)
+from .rules import (HOME_TYPE_NAMES, HOUSE_LIKE, MAX_TOWNHOUSE_ROW_LENGTH,
+                    MAX_TOWNHOUSES_IN_ROW, OLDER_LOTS, HeightMapLimit, OlderHomeAllowance,
+                    ZoneRules)
 
 # Slack given to distance measurements, in feet. Covers measuring error and
 # the 30 inches that eaves and roof overhangs may reach into a yard, since
@@ -105,6 +108,24 @@ class Home:
 
 
 @dataclass
+class TownhouseRow:
+    """The row of attached homes a lot's homes stand in, found by shared walls.
+
+    homes:        how many homes the row holds, this lot's included.
+    length:       the row's overall length in feet.
+    outlines:     outlines of the row's buildings on other lots, for drawing.
+                  Filled in only for rows too long to pass.
+    all_outlined: False when `outlines` leaves out the buildings furthest
+                  from this lot, to keep the drawing small.
+    """
+
+    homes: int
+    length: float
+    outlines: list = field(default_factory=list)
+    all_outlined: bool = True
+
+
+@dataclass
 class LotFacts:
     """Everything known about a lot before checking it."""
 
@@ -142,6 +163,9 @@ class LotFacts:
     # the block. Filled in only for zones whose front yard rule uses them.
     contextual_block_face: dict = field(default_factory=dict)
     block_side: dict = field(default_factory=dict)
+    # The row of attached homes this lot's homes stand in, or None when they
+    # share a wall with no home on another lot.
+    row: TownhouseRow | None = None
 
 
 @dataclass
@@ -177,6 +201,7 @@ def check_lot(facts: LotFacts) -> Findings:
     position = _position(facts)
     findings.measurements["position"] = position
     allowance = _check_home_type(facts, findings)
+    _check_row_length(facts, findings)
     if allowance is not None and allowance.older_rules:
         note = older_rules_explanation(facts.rules.label, allowance.before)
         for rule, name in (("lot_area", "Lot size"), ("frontage", "Street frontage"),
@@ -337,6 +362,50 @@ def _check_home_type(facts, findings) -> OlderHomeAllowance | None:
     findings.results.append(RuleResult(
         "home_type", "Home type", status, summary=summary, explanation=explanation))
     return allowance
+
+
+def _check_row_length(facts, findings):
+    """Check how many townhouses share one building with this lot's.
+
+    The townhouse rule allows at most eight townhouses in one building; City
+    Council can allow more with a special permit in some zones, up to a
+    building 212 ft long. A row a few feet over that length passes, since
+    outlines are traced from roofs and include the eaves at both ends. Only
+    townhouses get this row.
+    """
+    if facts.home_type != "townhouse":
+        return
+    rules = facts.rules
+    row = facts.row or TownhouseRow(homes=1, length=0.0)
+    result = RuleResult("row_length", "Townhouses in one row", PASSES,
+                        measured=float(row.homes), required=float(MAX_TOWNHOUSES_IN_ROW),
+                        limit="max", about=ROW_LENGTH_ABOUT,
+                        summary=row_length_summary(row.homes))
+    findings.results.append(result)
+    if "townhouse" not in rules.allowed:
+        result.status = NO_RULE
+        result.explanation = row_no_townhouses_explanation(rules.label)
+        return
+    if rules.long_townhouse_rows == "plan":
+        result.status = NOT_CHECKED
+        result.explanation = row_set_by_plan_explanation(rules.label)
+        return
+    if row.homes <= MAX_TOWNHOUSES_IN_ROW:
+        return
+    permit = rules.long_townhouse_rows == "permit"
+    too_long = row.length > MAX_TOWNHOUSE_ROW_LENGTH + 2 * DISTANCE_MARGIN
+    result.status = FAILS
+    result.explanation = long_row_explanation(rules.label, row.homes, row.length,
+                                              permit, too_long)
+    result.buildings = _home_indexes(facts)
+    if row.outlines:
+        result.shapes["row"] = shapely.MultiPolygon(
+            [part for outline in row.outlines
+             for part in getattr(outline, "geoms", [outline])])
+    if not row.all_outlined:
+        result.detail = f"the {len(row.outlines)} buildings nearest this lot outlined"
+    findings.reasons.append(Reason(
+        "row_length", long_row_reason(rules.label, row.homes, row.length, permit, too_long)))
 
 
 def _check_lot_area(facts, findings, position):

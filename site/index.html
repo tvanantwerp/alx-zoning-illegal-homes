@@ -370,6 +370,7 @@ const KINDS = [
   ["height", "Too tall", "Higher than the zone allows, or too tall this close to the street"],
   ["open_space", "Too little open space", "Buildings cover too much of the lot"],
   ["home_type", "Home type not allowed", "e.g. townhouses where only houses are allowed, or homes that need a special permit"],
+  ["row_length", "Too many townhouses in a row", "More than 8 attached townhouses in one building"],
 ];
 const COLORS = { ok: "#9db8b0", unchecked: "#d9d4cb", planned: "#a9a3cf", ramp: ["#f3b469", "#e9783c", "#bf3a1e", "#7d1212"] };
 const selected = new Set(KINDS.map(k => k[0]));

@@ -135,6 +135,22 @@ CG, CD, CDX, OC, OCM, OCH, W-1, CRMU, KR) and in planned districts:
   built by 1999 get a note that they may be kept without one (homes there by
   November 9, 1999 are exempt), but are still judged as new construction.
   South Carlyle's ordinary-zoning view (OCM(100)) gets the same rule.
+- **Townhouses in one row.** The ordinance allows at most eight townhouses
+  in one building (section 7-1600). In RA, RB, RM, RS, RT, CD and CL no
+  special permit can allow more. In the other zones that allow townhouses,
+  City Council can allow more with a special permit, so a longer row counts
+  as breaking the rules, but no permit can allow a building longer than
+  212 ft. A row is every home whose outline shares a wall with the next one
+  along, whenever each was built, which is how the ordinance's "single
+  structure" reads. Two outlines share a wall when they run together for at
+  least 4 ft; rows whose corners meet across an alley stay apart, while
+  townhouses built back to back count as one building. Each lot in the row
+  counts as one home, except a condo lot, where each building outline counts
+  as one. The row's length is the long side of the smallest rectangle around
+  it, with 5 ft of slack for the eaves at its two ends. In planned districts
+  the approved plan sets this, so only the ordinary-zoning view checks it.
+  The pop-up outlines the row's other buildings (up to 40 of them, nearest
+  first).
 
 The rules live as plain data in `alx_zoning_illegal_homes/mapper/rules.py`.
 They come from Articles III, IV and V of the Zoning Ordinance as amended
@@ -278,6 +294,13 @@ Other details that matter:
   neighbor still counts that strip as part of the yard left over, as the
   ordinance's words say, so it fails; some of those strips may really be
   a shared wall drawn off its line.
+- Townhouse rows are found from building outlines. Outlines more than half a
+  foot apart break a row even where the homes may really share a wall, and a
+  row the city draws as one outline on one condo lot counts as one home. A
+  lot holding several townhouses that isn't a condo counts as one home. Many
+  Old Town rows were built a house or two at a time, but where their walls
+  are shared the map counts them as one building, as the ordinance's words
+  read, so a number of Old Town blocks fail.
 - The extra street setbacks along Duke Street, King Street and four other
   streets (section 7-1006) aren't checked yet.
 - Roads, driveways and parking lots come from the city's planimetric map,

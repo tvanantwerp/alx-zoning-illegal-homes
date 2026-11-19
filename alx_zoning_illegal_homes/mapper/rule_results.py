@@ -7,8 +7,8 @@ reason, so the table and the reasons never disagree.
 from dataclasses import dataclass, field, replace
 
 from .heights import FLAT, UNKNOWN, RoofHeight
-from .rules import (OLDER_LOTS, HeightMapLimit, OlderHomeAllowance, PlannedDistrict,
-                    ZoneRules)
+from .rules import (MAX_TOWNHOUSE_ROW_LENGTH, MAX_TOWNHOUSES_IN_ROW, OLDER_LOTS,
+                    HeightMapLimit, OlderHomeAllowance, PlannedDistrict, ZoneRules)
 
 
 FAILS, PASSES, NOT_CHECKED, NO_RULE, NOT_REQUIRED = (
@@ -19,7 +19,7 @@ OLDER_LOT = "older_lot"
 
 RULE_IDS = ("lot_area", "frontage", "width", "yard:front", "yard:left", "yard:right",
             "yard:rear", "yard:nearest", "floor_area", "height", "height_near_street",
-            "coverage", "open_space", "home_type")
+            "coverage", "open_space", "home_type", "row_length")
 
 NO_STREET = ("The map couldn't find a public street next to this lot, so it "
              "can't tell which edge is the front.")
@@ -669,3 +669,81 @@ def corner_wall_not_found_explanation(zone_label: str) -> str:
             "share: the lot lines and building outlines are a few feet apart. The map "
             "can't tell which line is the shared wall and which bounds the yard left "
             "over, so this wasn't judged.")
+
+
+ROW_LENGTH_ABOUT = (
+    f"The zoning rules allow at most {MAX_TOWNHOUSES_IN_ROW} townhouses in one building. "
+    "City Council can allow more with a special permit, but not in the RA, RB, RM, RS, "
+    f"RT, CD and CL zones, and never in a building longer than "
+    f"{format_feet(MAX_TOWNHOUSE_ROW_LENGTH)}. The map counts as one building every home "
+    "whose outline shares a wall with the next one along, whenever each was built, since "
+    "the rule counts homes in \"a single structure\". Outlines that only meet at a corner "
+    "don't count as sharing a wall. Each lot in the row counts as one home, except a condo "
+    "lot, where each building outline counts as one; a row the city's map draws as one "
+    "outline on one condo lot counts as one home. The row's length is the long side of "
+    "the smallest rectangle around it, so a row that bends may be longer than that.")
+
+
+def row_length_summary(homes: int) -> str:
+    """The table's one-line result for the townhouse row rule: "11 homes; at most 8 allowed"."""
+    return (f"{homes} home{'' if homes == 1 else 's'}; "
+            f"at most {MAX_TOWNHOUSES_IN_ROW} allowed")
+
+
+def _row_words(homes: int, length: float) -> str:
+    return f"a row of {homes} attached homes about {format_feet(length)} long"
+
+
+def long_row_reason(zone_label: str, homes: int, length: float, permit: bool,
+                    too_long: bool) -> str:
+    """The reason a townhouse fails the townhouse row rule.
+
+    `permit` is True where the zone lets City Council allow a longer row with
+    a special permit, and `too_long` when the row is longer than any special
+    permit may allow.
+    """
+    text = (f"Stands in {_row_words(homes, length)}; the {zone_label} allows at most "
+            f"{MAX_TOWNHOUSES_IN_ROW} townhouses in one building")
+    if not permit:
+        return f"{text}, and no special permit can allow more there."
+    if too_long:
+        return (f"{text}, and no special permit can allow a building longer than "
+                f"{format_feet(MAX_TOWNHOUSE_ROW_LENGTH)}.")
+    return (f"{text} without a special permit. It would need a special permit from "
+            "City Council.")
+
+
+def long_row_explanation(zone_label: str, homes: int, length: float, permit: bool,
+                         too_long: bool) -> str:
+    """Explain a failing townhouse row: its size, and whether a special permit could allow it.
+
+    `permit` and `too_long` are as for `long_row_reason`.
+    """
+    parts = [f"This home stands in {_row_words(homes, length)}, counted by shared walls "
+             "whenever each home was built."]
+    if not permit:
+        parts.append(f"The {zone_label} allows at most {MAX_TOWNHOUSES_IN_ROW} townhouses "
+                     "in one building, and no special permit can allow more there.")
+    elif too_long:
+        parts.append(f"The {zone_label} allows more than {MAX_TOWNHOUSES_IN_ROW} townhouses "
+                     "in one building only with a special permit from City Council, and no "
+                     "special permit can allow a building longer than "
+                     f"{format_feet(MAX_TOWNHOUSE_ROW_LENGTH)}.")
+    else:
+        parts.append(f"The {zone_label} allows more than {MAX_TOWNHOUSES_IN_ROW} townhouses "
+                     "in one building only with a special permit from City Council. The map "
+                     "has no record of special permits, so it can't tell whether this row "
+                     "has one.")
+    return " ".join(parts)
+
+
+def row_set_by_plan_explanation(rules_label: str) -> str:
+    """Say that a planned district's approval, not the townhouse rule, sets how homes are grouped."""
+    return (f"The {rules_label} sets how townhouses are grouped, so this isn't judged here. "
+            "The ordinary zoning view checks it.")
+
+
+def row_no_townhouses_explanation(zone_label: str) -> str:
+    """Say why the townhouse row rule doesn't come into it where townhouses aren't allowed."""
+    return (f"The {zone_label} doesn't allow townhouses (see the home type row), so the "
+            "limit on townhouses in one building doesn't come into it.")

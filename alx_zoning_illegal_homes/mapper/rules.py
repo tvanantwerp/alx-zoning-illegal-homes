@@ -23,6 +23,10 @@ from dataclasses import dataclass, field, replace
 
 ALL_TYPES = frozenset({"single", "semi", "two_unit", "townhouse", "multi"})
 HOUSE_LIKE = ("single", "semi", "two_unit", "townhouse")
+# The townhouse rule (section 7-1600): at most this many townhouses in one
+# building, and no special permit may allow a building longer than this.
+MAX_TOWNHOUSES_IN_ROW = 8
+MAX_TOWNHOUSE_ROW_LENGTH = 212.0
 
 
 @dataclass(frozen=True)
@@ -196,6 +200,12 @@ class ZoneRules:
     max_coverage: float | None = None
     # Home types the open space rule applies to. Empty means all.
     open_space_applies_to: frozenset = frozenset()
+    # What the townhouse rule (section 7-1600) allows a row of more than
+    # eight townhouses in one building: "permit" where City Council may allow
+    # it with a special permit, "never" where it may not (RA, RB, RM, RS, RT,
+    # CD and CL), and "plan" under a planned district's approved plan, which
+    # sets how homes are grouped there.
+    long_townhouse_rows: str = "permit"
 
     @property
     def label(self) -> str:
@@ -639,6 +649,9 @@ ZONES |= {
     "I": ZoneRules(name="I (industrial)", allowed=frozenset()),
     "UT": ZoneRules(name="UT (utility)", allowed=frozenset()),
 }
+# No special permit may allow a row of more than eight townhouses here.
+ZONES |= {zone: replace(ZONES[zone], long_townhouse_rows="never")
+          for zone in ("RA", "RB", "RM", "RS", "RT", "CD", "CL")}
 
 def king_street_retail_rules(east_of_peyton_and_harvard: bool, residential_only=False,
                             near_station=True) -> ZoneRules:
@@ -892,6 +905,7 @@ def planned_district_rules(label, in_historic_district=False, zone=None, changes
         max_height={kind: district.plan_height for kind in ALL_TYPES}
         if district.plan_height else {},
         height_near_street_waived=district.plan_waives_height_near_street,
+        long_townhouse_rows="plan",
     )
     from_table = {}
     if zone is None or zone == district.fallback_zone:
@@ -928,6 +942,7 @@ RB_HISTORIC = ZoneRules(
     max_floor_area_ratio=1.50,
     max_height={kind: 45 for kind in ALL_TYPES},
     min_open_space=0.35,
+    long_townhouse_rows=ZONES["RB"].long_townhouse_rows,
 )
 
 @dataclass(frozen=True)

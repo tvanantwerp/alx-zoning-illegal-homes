@@ -12,7 +12,7 @@ MAIN = ("MAIN", LineString([(-300, -25), (500, -25)]))
 def check(lot, home, zone, home_type="single", neighbors=None, attached=None,
           height=20, floor_area=1000, units=1, rules=None, streets=(), all_buildings=None,
           sections=(), year_built=None, historic=False, near_eisenhower=False, stories=None,
-          height_map=None, retail=None):
+          height_map=None, retail=None, row=None):
     """Check one lot holding one home, fronting Main St to its south.
 
     Pass `rules` to use those instead of the zone's own, `streets` to add
@@ -23,6 +23,7 @@ def check(lot, home, zone, home_type="single", neighbors=None, attached=None,
     lot in a historic district, and `near_eisenhower` puts it within
     1,000 ft of Eisenhower Avenue. `height_map` is the height district
     map's rule for the lot and `retail` whether the home has ground floor shops.
+    `row` is the TownhouseRow the home stands in.
     """
     facts = LotFacts(
         shape=lot,
@@ -40,6 +41,7 @@ def check(lot, home, zone, home_type="single", neighbors=None, attached=None,
         in_historic_district=historic,
         near_eisenhower_avenue=near_eisenhower,
         height_map=height_map,
+        row=row,
     )
     findings = check_lot(facts)
     return {reason.kind for reason in findings.reasons}, findings
