@@ -167,6 +167,10 @@ class ZoneRules:
     # Shown on the floor space row's name, where the zone's limit needs explaining.
     floor_area_note: str = ""
     max_height: dict = field(default_factory=dict)
+    # A higher height limit, by home type, for a home whose roof's ridge line
+    # runs parallel to the street and whose roof slope is compatible with
+    # neighboring buildings (RM, and houses and townhouses in CD).
+    pitched_roof_height: dict = field(default_factory=dict)
     # Where the zone sends you for its height limit instead of setting one,
     # e.g. "the Old Town North Small Area Plan".
     height_set_by: str = ""
@@ -384,9 +388,8 @@ ZONES = {
         side_yards_by_lot_width=True,
         rear_yard=Yard(16, 1 / 2),
         max_floor_area_ratio=1.50,
-        # 35 feet by default; 45 is allowed for some roof shapes, so we
-        # only count a building as too tall above 45.
-        max_height={kind: 45 for kind in HOUSE_LIKE},
+        max_height={kind: 35 for kind in HOUSE_LIKE},
+        pitched_roof_height={kind: 45 for kind in HOUSE_LIKE},
         # The zone also lets a lot keep the open space it had on June 24,
         # 1992 if that was less. That says nothing about building on an
         # empty lot today, so only the note mentions it.
@@ -528,8 +531,8 @@ ZONES |= {
         | {"multi": Yard(25, 1.0)},
         no_side_yard_below_width=25,
         max_floor_area_ratio={kind: 1.50 for kind in HOUSE_LIKE} | {"multi": 1.25},
-        # Houses: 35 feet, or 45 for some roof shapes, so we use 45.
-        max_height={kind: 45 for kind in HOUSE_LIKE} | {"multi": 50},
+        max_height={kind: 35 for kind in HOUSE_LIKE} | {"multi": 50},
+        pitched_roof_height={kind: 45 for kind in HOUSE_LIKE},
         min_open_space=0.35,
         open_space_applies_to=frozenset({"multi"}),
     ),
@@ -892,6 +895,7 @@ def planned_district_rules(label, in_historic_district=False, zone=None, changes
         if district.fallback_height:
             from_table["max_height"] = {
                 kind: district.fallback_height for kind in ALL_TYPES}
+            from_table["pitched_roof_height"] = {}
     zone = zone or district.fallback_zone
     if district.fallback_allowed is not None:
         from_table["allowed"] = district.fallback_allowed

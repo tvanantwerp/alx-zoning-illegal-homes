@@ -620,16 +620,71 @@ def test_older_lot_floor_space_is_capped_at_one_and_a_half():
 def test_older_lot_height_is_capped_at_35_ft():
     lot = box(0, 0, 20, 60)  # 1,200 sq ft in RM: under 1,452
     home = box(0, 15, 20, 45)
-    # A flat roof 42 ft up (four stories): under RM's 45 ft, over 35 ft.
+    # A sloped roof with a 50 ft peak over four stories, measured at 46 ft:
+    # under the 45 ft RM allows a sloped roof (with the margin), over 35 ft.
     kinds, findings = check(lot, home, "RM", neighbors=between_neighbors(lot),
-                            height=42, stories=4)
+                            height=50, stories=4)
     assert "lot_size" not in kinds and "height" in kinds
     row = _rows(findings)["height"]
     assert row.required == 35 and "rule for older lots" in row.explanation
+    assert "ridge" not in row.explanation
     roomy = box(0, 0, 30, 60)  # 1,800 sq ft: no excuse needed, RM's own 45 ft applies
     kinds, findings = check(roomy, box(0, 15, 30, 45), "RM",
-                            neighbors=between_neighbors(roomy), height=42, stories=4)
+                            neighbors=between_neighbors(roomy), height=50, stories=4)
     assert "height" not in kinds and _rows(findings)["height"].required == 45
+
+
+ROOMY_RM_LOT = box(0, 0, 30, 60)  # 1,800 sq ft: RM's own height limits apply
+ROOMY_RM_HOME = box(0, 15, 30, 45)
+
+
+def _roomy_height(zone="RM", **home):
+    """Check a house on a lot big enough for the zone. Returns (kinds, height row, findings)."""
+    kinds, findings = check(ROOMY_RM_LOT, ROOMY_RM_HOME, zone,
+                            neighbors=between_neighbors(ROOMY_RM_LOT), **home)
+    return kinds, _rows(findings)["height"], findings
+
+
+@pytest.mark.parametrize("zone", ["RM", "CD"])
+def test_flat_roofed_house_is_held_to_35_ft(zone):
+    # Four stories reach nearly to the 42 ft top, so the roof is taken as flat.
+    kinds, row, findings = _roomy_height(zone, height=42, stories=4)
+    assert "height" in kinds and row.required == 35
+    assert "this one looks flat" in findings.reasons[-1].text
+    assert "a flat roof has no ridge line" in row.explanation
+
+
+@pytest.mark.parametrize("zone", ["RM", "CD"])
+def test_sloped_roof_gets_45_ft_and_says_it_may_be_held_to_35(zone):
+    # A 50 ft peak over four stories is a sloped roof, measured at 46 ft.
+    kinds, row, _ = _roomy_height(zone, height=50, stories=4)
+    assert "height" not in kinds and row.required == 45
+    assert "can't see which way a roof's ridge runs" in row.explanation
+    assert "may be held to 35 ft if its roof doesn't qualify" in row.explanation
+    assert "At about 46 ft, it would fail the 35 ft limit." in row.explanation
+
+
+def test_short_sloped_roof_skips_the_would_fail_sentence():
+    _, row, _ = _roomy_height(height=30, stories=2)
+    assert row.required == 45 and "may be held to 35 ft" in row.explanation
+    assert "would fail" not in row.explanation
+
+
+def test_roof_of_the_tallest_part_decides_the_limit():
+    # The main block is a sloped roof measured at 46 ft, the home's height.
+    # The 44 ft wing has room for four stories under its top, so it is
+    # taken as flat, but the limit is on the whole building.
+    main, wing = box(0, 15, 30, 35), box(0, 35, 30, 45)
+    kinds, row, _ = _roomy_height(height=50, stories=4, sections=[(main, 50), (wing, 44)])
+    assert "height" not in kinds and row.required == 45 and row.measured == 46
+
+
+def test_cd_apartment_building_keeps_its_50_ft_limit():
+    lot = box(0, 0, 120, 120)
+    _, findings = check(lot, box(30, 30, 90, 90), "CD", home_type="multi", units=6,
+                        neighbors=between_neighbors(lot), height=48, stories=4)
+    row = _rows(findings)["height"]
+    assert row.required == 50 and "ridge" not in row.explanation
 
 
 def test_roomy_lot_keeps_the_zones_own_floor_space_limit():

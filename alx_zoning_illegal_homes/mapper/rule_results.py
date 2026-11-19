@@ -268,6 +268,31 @@ def height_explanation(estimate) -> str:
     return f"{numbers} {why}"
 
 
+def pitched_roof_height_explanation(zone_label: str, usual: float, higher: float,
+                                    flat: bool, fails_usual_at: float | None = None) -> str:
+    """Explain the RM and CD zones' two height limits and which one the map used.
+
+    `usual` is the zone's limit and `higher` the one allowed for a roof
+    whose ridge runs along the street. `flat` is whether the map takes the
+    roof it judged as flat. `fails_usual_at` is the home's height when it
+    would fail the lower limit, so whether its roof qualifies matters, and
+    None otherwise.
+    """
+    rule = (f"The {zone_label} allows {format_feet(usual)}, or up to {format_feet(higher)} "
+            "when the roof's ridge line runs parallel to the street and its slope is "
+            "compatible with neighboring buildings.")
+    if flat:
+        return (f"{rule} The map takes this roof as flat, and a flat roof has no ridge "
+                f"line, so the {format_feet(usual)} limit applies.")
+    held = (f" At about {format_feet(fails_usual_at)}, it would fail the "
+            f"{format_feet(usual)} limit." if fails_usual_at is not None else "")
+    return (f"{rule} The city's 3D data draws each part of a home as a flat-topped "
+            "block, so the map can't see which way a roof's ridge runs or compare its "
+            f"slope with the neighbors'. It allows {format_feet(higher)} for every home it takes to have a "
+            f"sloped roof, but this home may be held to {format_feet(usual)} if its roof "
+            f"doesn't qualify.{held}")
+
+
 def _capitalized(text: str) -> str:
     return text[:1].upper() + text[1:]
 

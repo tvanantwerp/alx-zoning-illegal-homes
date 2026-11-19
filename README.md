@@ -87,7 +87,11 @@ CG, CD, CDX, OC, OCM, OCH, W-1, CRMU, KR) and in planned districts:
   more than 15 ft, since a story count that leaves a taller roof is
   probably short. With no story count, a pitched roof is measured at 85% of
   its peak. The limit is the lower of the zone's own and the city's height
-  district map's, and the pop-up says which one set it. W-1 takes its height
+  district map's, and the pop-up says which one set it. RM, and houses and
+  townhouses in CD, allow 35 ft, or 45 ft when the roof's ridge runs
+  parallel to the street and its slope fits the neighbors'. A roof the map
+  takes as flat has no ridge, so it is held to 35 ft; every other roof gets
+  45 ft (see below). W-1 takes its height
   from the map; CDX and the CRMU zones take theirs from a small area plan
   the map doesn't have, so only the height district map's limit is checked
   there. In the Potomac River area the map allows 30 ft, and up to 50 ft
@@ -287,6 +291,15 @@ Other details that matter:
   flat-roofed building with a low parapet may be up to 3 ft shorter than
   the map says. These guesses feed the yard check as well as the height
   check.
+- In RM, and for houses and townhouses in CD, the map can't tell which way a
+  roof's ridge runs or how steep the roof is, so it can't check whether a
+  sloped roof earns the 45 ft limit. The 3D layer's tallest block is
+  usually the whole main house, not a thin strip along the ridge, and a
+  main house's long side says little about its ridge: many Old Town
+  rowhouses run deep from front to back while their ridges run along the
+  street. So every home the map takes to have a sloped roof gets 45 ft, and
+  its pop-up says it may be held to 35 ft. Flat roofs, as guessed from the
+  number of stories, get 35 ft.
 - When one owner holds both halves of a twin, each half on its own parcel,
   and the city's outline pokes a little over the line between them, the two
   parcels are joined and judged as one lot with a two-unit house on it. In

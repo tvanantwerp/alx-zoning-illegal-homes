@@ -13,7 +13,7 @@ import shapely
 from shapely.geometry import LineString
 from shapely.ops import nearest_points, substring, unary_union
 
-from .heights import MIN_PART_AREA, BuildingHeight, RoofHeight, building_height
+from .heights import FLAT, MIN_PART_AREA, BuildingHeight, RoofHeight, building_height
 from .lot_lines import (LotLines, StreetCenterline, front_for_yard, largest_polygon,
                         lot_width, lot_width_line)
 from .rule_results import (
@@ -30,7 +30,7 @@ from .rule_results import (
     block_average_front_yard_explanation,
     contextual_front_yard_explanation, contextual_front_yard_reason,
     historic_front_yard_explanation, no_block_face_explanation,
-    no_rule_explanation, zone_height_source_explanation,
+    no_rule_explanation, pitched_roof_height_explanation, zone_height_source_explanation,
     older_lot_explanation, older_lot_limit_explanation,
     older_rules_explanation, open_space_about, side_count_explanation,
     split_twin_explanation, split_twin_reason, unplaced_divided_explanation,
@@ -1226,12 +1226,21 @@ def _map_height_limit(facts: LotFacts, home: Home) -> HeightLimit | None:
     return HeightLimit(area.height, allows, source)
 
 
-def _height_limits(facts: LotFacts, home: Home, older_lot: bool) -> list[HeightLimit]:
+def _height_limits(facts: LotFacts, home: Home, older_lot: bool,
+                   roof: RoofHeight) -> list[HeightLimit]:
     """Every height limit that applies to one home: the zone's, or the older-lot limit, and the map's.
 
     The rule for older lots replaces the zone's own height limit. The height
     district map's limit applies on top of either, since "the lowest
     applicable height limitation shall prevail" (section 6-402).
+
+    Where the zone allows more for a roof whose ridge runs along the street
+    (RM, and houses and townhouses in CD), `roof` decides which limit
+    applies: the roof of the home's tallest part, as the ordinance measures
+    it, since the limit is on the height of the whole building. A roof the
+    map takes as flat gets the lower limit, since it has no ridge. Every
+    other roof gets the higher one: the map can't see a ridge's direction or
+    a roof's slope.
     """
     rules = facts.rules
     limits = []
@@ -1243,8 +1252,15 @@ def _height_limits(facts: LotFacts, home: Home, older_lot: bool) -> list[HeightL
             "the limit for older lots"))
     elif rules.max_height.get(facts.home_type):
         usual = rules.max_height[facts.home_type]
-        limits.append(HeightLimit(usual, f"the {rules.label} allows {_feet(usual)}",
-                                  f"the limit in the {rules.label}"))
+        higher = rules.pitched_roof_height.get(facts.home_type)
+        allows = f"the {rules.label} allows {_feet(usual)}"
+        if higher and roof.shape != FLAT:
+            usual, allows = higher, (f"the {rules.label} allows {_feet(higher)} for a roof "
+                                     "whose ridge runs along the street")
+        elif higher:
+            allows += (f" ({_feet(higher)} only for a roof whose ridge runs along the "
+                       "street, and this one looks flat)")
+        limits.append(HeightLimit(usual, allows, f"the limit in the {rules.label}"))
     on_map = _map_height_limit(facts, home)
     if on_map is not None:
         limits.append(on_map)
@@ -1285,7 +1301,7 @@ def _check_height(facts, findings, older_lot=False):
         for shape, area in regions:
             relevant = (estimate.parts if shape is None else
                         [p for p in estimate.parts if p.outline.intersection(shape).area > 0])
-            limits = _height_limits(replace(facts, height_map=area), home, older_lot)
+            limits = _height_limits(replace(facts, height_map=area), home, older_lot, estimate.tallest)
             if relevant and limits:
                 candidates.append((home, BuildingHeight(relevant), limits, area))
     if not candidates:
@@ -1316,11 +1332,19 @@ def _check_height(facts, findings, older_lot=False):
     if row.status == PASSES and (missing_plan or missing_height):
         row.status = NOT_CHECKED
     others = [(other.source, other.feet) for other in limits if other is not deciding]
+    higher = rules.pitched_roof_height.get(kind)
+    roof_rule = None
+    if higher and usual and not older_lot:
+        fails_usual = height > usual + HEIGHT_MARGIN and limit > usual
+        roof_rule = pitched_roof_height_explanation(
+            rules.label, usual, higher, estimate.shape == FLAT,
+            height if fails_usual else None)
     row.explanation = " ".join(filter(None, [
         note,
         "Some building heights are unknown." if missing_height else None,
         zone_height_source_explanation(rules) if on_map and not usual else None,
         height_winner_explanation(deciding.source, limit, others),
+        roof_rule,
         height_map_explanation(area, facts.lines.fronts) if on_map else None,
         height_explanation(estimate),
         margin_explanation(row)]))
