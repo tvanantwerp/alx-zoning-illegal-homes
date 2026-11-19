@@ -138,6 +138,10 @@ class ZoneRules:
     split_twin_lots_allowed: bool = True
     # One rear yard rule for the zone, or a dict keyed by home type.
     rear_yard: Yard | dict | None = None
+    # The RM zone's corner lot rule: both street sides are front yards, and
+    # on a townhouse lot at the end of a row "the remaining yard" must meet
+    # the rear yard rule. Elsewhere a corner lot has no rear yard at all.
+    corner_townhouse_rear_yard: bool = False
     # Fixed front yard. None where the rule depends on neighboring homes.
     front_yard: float | None = None
     # Where the front yard is set by the "contextual block face" (the
@@ -387,6 +391,7 @@ ZONES = {
         front_yard_by_block_average=True,
         side_yards_by_lot_width=True,
         rear_yard=Yard(16, 1 / 2),
+        corner_townhouse_rear_yard=True,
         max_floor_area_ratio=1.50,
         max_height={kind: 35 for kind in ALL_TYPES},
         pitched_roof_height={kind: 45 for kind in ALL_TYPES},

@@ -29,6 +29,9 @@ from .rule_results import (
     margin_explanation, no_front_yard_explanation, no_height_limit_explanation,
     block_average_front_yard_explanation,
     contextual_front_yard_explanation, contextual_front_yard_reason,
+    corner_no_rear_yard_explanation, corner_rear_yard_explanation,
+    corner_wall_not_found_explanation,
+    corner_side_as_rear_explanation,
     historic_front_yard_explanation, no_block_face_explanation,
     no_rule_explanation, pitched_roof_height_explanation, zone_height_source_explanation,
     older_lot_explanation, older_lot_limit_explanation,
@@ -550,6 +553,18 @@ def _part_gaps(gap: YardGap, parts: list[RoofHeight]) -> list[YardGap]:
     return measured
 
 
+def _corner_remainder_is_rear(facts) -> bool:
+    """Whether the lot lines away from both streets make up the lot's rear yard.
+
+    True for a townhouse on a corner lot in a zone with the RM zone's corner
+    lot rule: both street sides are front yards, and "the remaining yard on
+    an exterior townhouse lot" must meet the rear yard rule. A townhouse on
+    a corner is at the end of its row, so it is such an exterior lot.
+    """
+    return (facts.lines.is_corner and facts.rules.corner_townhouse_rear_yard
+            and facts.home_type == "townhouse")
+
+
 def _yard_gaps(facts, home) -> tuple[dict, dict]:
     """Measure a home's gap to each side, the rear, and the street.
 
@@ -558,6 +573,16 @@ def _yard_gaps(facts, home) -> tuple[dict, dict]:
     the keys that share a wall with a neighbor, each with the lot lines
     along that wall. Sides with a shared wall are left out of the first
     dict; a rear only loses the lines on the wall.
+
+    Corner and through lots have no rear: every lot line off the street is
+    a side. The exception is a corner townhouse lot under the RM zone's
+    corner lot rule, where every such line not on a shared wall is the rear,
+    as long as it lies straight across from some part of the home and no
+    attached neighbor fills the ground in between. That leaves out the
+    stretch of a shared-wall lot line that runs on past the back of the
+    home, which the home's corner sits right beside but which bounds no
+    yard of its own, and a shared wall the map draws a few feet off its
+    lot line.
     """
     lines = facts.lines
     along, inward = lines.front_direction, lines.inward
@@ -570,6 +595,7 @@ def _yard_gaps(facts, home) -> tuple[dict, dict]:
     # home. This keeps a small jog in a side line from passing as a rear.
     rear_starts = home_depth + 0.6 * (deepest - home_depth)
     has_rear = not (lines.is_corner or lines.is_through)
+    remainder_is_rear = _corner_remainder_is_rear(facts)
 
     gaps, shared_wall = {}, {}
     for piece in lines.pieces:
@@ -581,7 +607,11 @@ def _yard_gaps(facts, home) -> tuple[dict, dict]:
             behind_home = (piece.midpoint - front_anchor) @ inward > rear_starts
             on_shared_wall = not _shared_line(
                 piece.line, home.shape, facts.attached_neighbors).is_empty
-            if has_rear and runs_along_front and behind_home:
+            if remainder_is_rear and not on_shared_wall:
+                if not _faces(piece, outline) or _behind_neighbor(facts, home, piece):
+                    continue
+                key = "rear"
+            elif has_rear and runs_along_front and behind_home:
                 if on_shared_wall:
                     shared_wall.setdefault("rear", []).append(piece.line)
                     continue
@@ -604,6 +634,32 @@ def _yard_gaps(facts, home) -> tuple[dict, dict]:
     for key in shared_wall.keys() - {"rear"}:
         gaps.pop(key, None)
     return gaps, shared_wall
+
+
+def _faces(piece, outline, overlap=1.0) -> bool:
+    """Whether a lot line piece lies straight across from part of the home.
+
+    True when the home and the piece overlap by more than `overlap` feet
+    measured along the piece.
+    """
+    along = piece.direction
+    ends = np.asarray(piece.line.coords)[:, :2] @ along
+    spread = outline @ along
+    return min(ends.max(), spread.max()) - max(ends.min(), spread.min()) > overlap
+
+
+def _behind_neighbor(facts, home, piece) -> bool:
+    """Whether a home attached to this one fills the gap between it and a lot line piece.
+
+    A yard is open ground between a building and its lot line. When the
+    attached neighbor's outline covers that ground, the city's lot lines and
+    building outlines are a few feet apart there, and the line is really the
+    shared wall between the two.
+    """
+    if facts.attached_neighbors is None:
+        return False
+    gap = _nearest_line(home, piece.line)
+    return gap.intersection(facts.attached_neighbors).length > 0.5 * gap.length
 
 
 def _side_name(facts, key) -> str:
@@ -897,6 +953,11 @@ def _counted_side_row(facts, key, gap, shared, measure, needed, short):
     rows always agree with the reason written for the lot.
     """
     role = _side_name(facts, key)
+    if _corner_remainder_is_rear(facts):
+        if key in shared:
+            return _yard_row(facts, role, NOT_REQUIRED, explanation=SHARED_WALL)
+        return _yard_row(facts, role, NOT_CHECKED, explanation=(
+            corner_side_as_rear_explanation(facts.rules.label)))
     if facts.lines.is_corner:
         return _yard_row(facts, role, NOT_CHECKED, gap, explanation=SIDE_COUNT_ON_CORNER)
     text = side_count_explanation(facts.rules.label, measure, needed)
@@ -966,12 +1027,27 @@ def _split_twin_row(facts, record, role, wall_lines):
 
 
 def _rear_row(facts, record, gap, shared, touching, parts):
-    """The rear yard row, crediting half of an alley behind the lot."""
+    """The rear yard row, crediting half of an alley behind the lot.
+
+    On a corner lot this is checked only under the RM zone's corner lot
+    rule, where the yard left over on a townhouse lot, away from both
+    streets, must meet the rear yard rule. It isn't judged when the home is
+    attached to a neighbor but no lot line runs along the shared wall: the
+    lot lines and outlines are a few feet apart there, and the map can't
+    tell which line is the wall and which bounds the yard.
+    """
     rules, kind = facts.rules, facts.home_type
+    corner_rear = _corner_remainder_is_rear(facts)
     if "rear" in touching:
         return _yard_row(facts, "rear", NOT_CHECKED, explanation=MAPPING_ERROR)
-    if facts.lines.is_corner:
+    if facts.lines.is_corner and not corner_rear:
         return _yard_row(facts, "rear", NOT_CHECKED, explanation=CORNER_NO_REAR)
+    if gap is None and corner_rear:
+        return _yard_row(facts, "rear", NOT_CHECKED,
+                         explanation=corner_no_rear_yard_explanation(rules.label))
+    if corner_rear and not shared and facts.attached_neighbors is not None:
+        return _yard_row(facts, "rear", NOT_CHECKED, gap,
+                         explanation=corner_wall_not_found_explanation(rules.label))
     if gap is None:
         if "rear" in shared:
             return _yard_row(facts, "rear", NOT_REQUIRED, explanation=SHARED_WALL)
@@ -997,6 +1073,10 @@ def _rear_row(facts, record, gap, shared, touching, parts):
     row = _yard_row(facts, "rear", FAILS if fails else PASSES, shown, required,
                     detail=detail, explanation=explanation)
     _explain_yard_height(row, rear_yard, shown, len(part_gaps) > 1)
+    if corner_rear:
+        row.explanation = " ".join(filter(None, [
+            corner_rear_yard_explanation(rules.label),
+            row.explanation or margin_explanation(row)]))
     return row
 
 

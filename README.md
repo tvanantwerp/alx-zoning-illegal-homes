@@ -74,7 +74,12 @@ CG, CD, CDX, OC, OCM, OCH, W-1, CRMU, KR) and in planned districts:
   low wing, a taller main block) at that part's own height and distance
   from the lot line, with each part's height measured the same way as in
   the height check below: a flat roof at its top, a gable or hip roof
-  halfway up.
+  halfway up. A corner lot has no rear yard: both street sides are fronts
+  and the rest are sides. The exception is a townhouse on a corner in the
+  RM zone, where the yard left over must meet the rear yard rule (at least
+  16 ft, and 1 ft for every 2 ft of height, counting half of an alley
+  behind toward the second part). The map measures it to every lot line
+  away from both streets that isn't along a shared wall.
 - **Floor space** compared with lot size. In the KR and OCH zones the limit
   is looser within 1,000 ft of a Metro station.
 - **Height**, measured as the ordinance does: to the top of a flat roof, but
@@ -264,6 +269,15 @@ Other details that matter:
   when most of them stand back. The map shows that line in the pop-up but
   doesn't judge it: one exact line is more than the map's measurements can
   test, and the map's idea of a block's side ends at any alley.
+- On an RM corner townhouse lot, the map counts a lot line as a shared wall
+  only where the home and its neighbor both come within 3 ft of it. When a
+  home is attached to its neighbor but no lot line runs along their wall
+  (the lot lines and outlines are a few feet apart), the yard left over
+  isn't judged, and neither is it when every lot line away from the
+  streets is a shared wall. A home a few feet in from a lot line beside a
+  neighbor still counts that strip as part of the yard left over, as the
+  ordinance's words say, so it fails; some of those strips may really be
+  a shared wall drawn off its line.
 - The extra street setbacks along Duke Street, King Street and four other
   streets (section 7-1006) aren't checked yet.
 - Roads, driveways and parking lots come from the city's planimetric map,

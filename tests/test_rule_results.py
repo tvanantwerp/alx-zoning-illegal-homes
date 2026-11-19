@@ -170,6 +170,97 @@ def test_corner_lot_has_no_rear_yard_row_checked():
     assert "corner lot" in rows(f)["yard:rear"].explanation
 
 
+# An RM townhouse lot at the corner of Main St (south) and Side St (west),
+# sharing its east wall with the next townhouse in the row. The lot runs
+# 60 ft back from Main St.
+RM_CORNER_LOT = box(0, 0, 40, 60)
+RM_CORNER_EAST = box(40, 0, 120, 60)
+RM_CORNER_BEHIND = box(0, 60, 120, 160)
+
+
+def rm_corner(depth, behind=True, **fields):
+    """Check a townhouse `depth` ft deep from Main St, on the RM corner lot.
+
+    The next townhouse east is just as deep.
+    """
+    neighbors = unary_union([RM_CORNER_EAST, RM_CORNER_BEHIND] if behind else [RM_CORNER_EAST])
+    return check(RM_CORNER_LOT, box(0.5, 0.5, 40, depth), "RM", home_type="townhouse",
+                 neighbors=neighbors, streets=[SIDE_STREET], attached=box(40, 0, 60, depth),
+                 **fields)
+
+
+def test_rm_corner_townhouse_judges_the_leftover_yard_as_its_rear():
+    kinds, f = rm_corner(50)
+    assert f.measurements["position"] == "corner"
+    rear = rows(f)["yard:rear"]
+    assert rear.status == FAILS and rear.required == 16
+    assert rear.measured == pytest.approx(10)
+    assert "corner lot" in rear.explanation and "rear yard rule" in rear.explanation
+    assert any(r.kind == "yards" and r.text.startswith("Rear yard") for r in f.reasons)
+    assert rows(rm_corner(40)[1])["yard:rear"].status == PASSES
+
+
+def test_rm_corner_townhouse_skips_the_shared_wall_line_past_the_home():
+    # The east lot line carries the shared wall for the home's first 40 ft,
+    # then runs on 20 ft past the back of the home. The home's corner is
+    # right beside that stretch, but the yard is measured to the back line.
+    rear = rows(rm_corner(40)[1])["yard:rear"]
+    assert rear.measured == pytest.approx(20)
+
+
+def test_rm_corner_townhouse_side_rows_point_to_the_rear_row():
+    r = rows(rm_corner(40)[1])
+    sides = {r["yard:left"].status, r["yard:right"].status}
+    assert sides == {NOT_REQUIRED, NOT_CHECKED}
+    unchecked = next(r[k] for k in ("yard:left", "yard:right") if r[k].status == NOT_CHECKED)
+    assert "judged together as the rear yard" in unchecked.explanation
+
+
+def test_rm_corner_townhouse_with_a_tall_home_needs_a_deeper_yard():
+    # Three stories under a 40 ft peak measure about 36 ft, which needs 18 ft
+    # under the 1:2 setback ratio; 15 ft is too little.
+    rear = rows(rm_corner(45, height=40, stories=3)[1])["yard:rear"]
+    assert rear.status == FAILS and rear.required == pytest.approx(18)
+    assert "setback ratio of 1:2" in rear.explanation
+
+
+def test_rm_corner_townhouse_counts_half_an_alley_toward_the_setback_ratio():
+    # 14 ft to the back line clears the 16 ft minimum (with the margin) but
+    # not the 18 ft the home's height needs, unless half the alley behind counts.
+    assert rows(rm_corner(46, height=40, stories=3)[1])["yard:rear"].status == FAILS
+    rear = rows(rm_corner(46, behind=False, height=40, stories=3)[1])["yard:rear"]
+    assert rear.status == PASSES and "alley" in rear.detail
+
+
+def test_rm_corner_townhouse_walled_in_at_the_back_is_not_judged():
+    # Homes share the east wall and the back wall, so no yard is left over.
+    _, f = check(RM_CORNER_LOT, box(0.5, 0.5, 40, 60), "RM", home_type="townhouse",
+                 neighbors=unary_union([RM_CORNER_EAST, RM_CORNER_BEHIND]),
+                 streets=[SIDE_STREET],
+                 attached=unary_union([box(40, 0, 60, 60), box(0, 60, 40, 80)]))
+    rear = rows(f)["yard:rear"]
+    assert rear.status == NOT_CHECKED and "no yard left over" in rear.explanation
+
+
+def test_rm_corner_townhouse_with_its_wall_off_the_lot_line_is_not_judged():
+    # The next home east is attached, but the map draws this home 4 ft in
+    # from the east lot line, so no line carries the shared wall.
+    _, f = check(RM_CORNER_LOT, box(0.5, 0.5, 36, 40), "RM", home_type="townhouse",
+                 neighbors=unary_union([RM_CORNER_EAST, RM_CORNER_BEHIND]),
+                 streets=[SIDE_STREET], attached=box(37, 0, 60, 40))
+    rear = rows(f)["yard:rear"]
+    assert rear.status == NOT_CHECKED and "no lot line runs along the wall" in rear.explanation
+    assert not any(r.text.startswith("Rear yard") for r in f.reasons)
+
+
+def test_rm_corner_house_still_has_no_rear_yard():
+    _, f = check(RM_CORNER_LOT, box(5, 0.5, 35, 50), "RM",
+                 neighbors=unary_union([RM_CORNER_EAST, RM_CORNER_BEHIND]),
+                 streets=[SIDE_STREET])
+    assert rows(f)["yard:rear"].status == NOT_CHECKED
+    assert "no rear yard to check" in rows(f)["yard:rear"].explanation
+
+
 def test_front_yard_without_neighbors_is_not_checked_in_contextual_zone():
     row = yard_rows("roomy")["yard:front"]
     assert row.status == NOT_CHECKED and row.measured == pytest.approx(35)

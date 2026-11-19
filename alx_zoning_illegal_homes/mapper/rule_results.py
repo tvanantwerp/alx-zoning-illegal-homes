@@ -637,3 +637,35 @@ def under_special_approval(results: list[RuleResult],
                 f"{district.plan_summary}"))
         out.append(row)
     return out
+
+
+def corner_rear_yard_explanation(zone_label: str) -> str:
+    """Explain why a corner townhouse lot's leftover yard is judged as a rear yard."""
+    return (f"On a corner lot both street sides count as front yards. On a townhouse lot "
+            f"at the end of a row, the {zone_label} asks that the yard left over meet its "
+            "rear yard rule, so every lot line away from both streets, apart from walls "
+            "shared with a neighbor, is measured here as the rear yard.")
+
+
+def corner_no_rear_yard_explanation(zone_label: str) -> str:
+    """Explain a corner townhouse lot where every lot line away from the streets is a shared wall."""
+    return (f"{corner_rear_yard_explanation(zone_label)} Here every lot line away from "
+            "both streets runs along a wall shared with a neighbor, so the map finds no "
+            "yard left over to measure. A wall shared at the back of a lot is unusual "
+            "enough that it may be a mapping error, so this wasn't judged.")
+
+
+def corner_side_as_rear_explanation(zone_label: str) -> str:
+    """Explain the side yard rows of a corner townhouse lot, whose leftover yard is judged as the rear."""
+    return (f"On a corner townhouse lot in the {zone_label}, the lot lines away from both "
+            "streets are judged together as the rear yard (see that row), not counted "
+            "as side yards.")
+
+
+def corner_wall_not_found_explanation(zone_label: str) -> str:
+    """Explain a corner townhouse lot whose shared wall the map can't place on a lot line."""
+    return (f"{corner_rear_yard_explanation(zone_label)} This home is attached to the next "
+            "home in its row, but in the city's map no lot line runs along the wall they "
+            "share: the lot lines and building outlines are a few feet apart. The map "
+            "can't tell which line is the shared wall and which bounds the yard left "
+            "over, so this wasn't judged.")
