@@ -52,6 +52,23 @@ CG, CD, CDX, OC, OCM, OCH, W-1, CRMU, KR) and in planned districts:
   the 45 ft many of these zones give townhouses. The section's title also
   names CRMU-M, but its text leaves CRMU-M out, so the map doesn't apply it
   there. Apartment buildings get no such excuse.
+- **Front yards.** In most zones (R-20 through R-2-5, RA, RB outside the
+  historic districts, the commercial and office zones, and houses and
+  townhouses in the CRMU zones and W-1) a home's front yard must fall within
+  the range of its neighbors' front yards: the ordinance's "contextual block
+  face", which its drawings show as the lots on either side that face the
+  same street and the lots straight across the street from them. Once the
+  shallowest of those is deeper than the zone's cap (40 ft in R-20, 35 ft in
+  R-12, 30 ft in R-8, 20 ft elsewhere), the cap is enough. The map checks
+  that a home stands back at least as far as its closest neighbor (or the
+  cap), with the same 2.5 ft of slack as other yards; the home itself isn't
+  counted. A corner or through lot is judged on each street against the
+  neighbors along that street. A home with no neighbors on its street isn't
+  judged. RS (20 ft) and RT (4 ft) have fixed front yards. RC, RCX, RD and
+  KR require none, nor do apartment buildings in W-1 and the CRMU zones.
+  RB homes in the historic districts belong at the front lot line unless the
+  board of architectural review approves another line: a home at the line
+  passes, and one set back isn't judged.
 - **Side and rear yards**, both the fixed minimum and the deeper yard taller
   buildings need. The deeper yard is judged for each part of a home (a
   low wing, a taller main block) at that part's own height and distance
@@ -229,12 +246,22 @@ Other details that matter:
   reach into a yard. It applies to every home, even ones with little or no
   overhang. A home drawn touching or crossing a
   lot line is assumed to be a mapping error and its yards are skipped.
-- Front yards are mostly not checked. In most zones the rule depends on the
-  neighbors' front yards, which an existing home meets almost by definition.
-  RC, RCX, RD and KR require no front yard at all, nor does W-1 for
-  apartment buildings, though the extra
-  street setbacks along Duke Street, King Street and four other streets
-  (section 7-1006) aren't checked yet.
+- Front yards set by the neighbors are measured from building outlines
+  traced from roofs, so a porch roof or overhang counts as part of the
+  building, for a home and its neighbors alike. A home with a deep porch
+  next to homes without one can look closer to the street than it is. The
+  rule also says a home may stand no further back than its neighbors, which
+  the map doesn't check. Corner lots get judged on both streets, as the
+  ordinance asks, and fail more often than other lots, mostly along the
+  side street. Where the street map changes a street's name partway along a
+  lot, the lot is treated as a corner lot.
+- The RM and CD zones put a home's front wall at the front lot line, or in
+  line with the average of the other buildings on the same side of the block
+  when most of them stand back. The map shows that line in the pop-up but
+  doesn't judge it: one exact line is more than the map's measurements can
+  test, and the map's idea of a block's side ends at any alley.
+- The extra street setbacks along Duke Street, King Street and four other
+  streets (section 7-1006) aren't checked yet.
 - Roads, driveways and parking lots come from the city's planimetric map,
   traced from aerial photos. Patios, small parking pads and paving missing
   from that map still count as open space, so open space can look bigger

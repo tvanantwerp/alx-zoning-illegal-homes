@@ -14,8 +14,8 @@ from shapely.geometry import LineString
 from shapely.ops import nearest_points, substring, unary_union
 
 from .heights import MIN_PART_AREA, BuildingHeight, RoofHeight, building_height
-from .lot_lines import (LotLines, StreetCenterline, largest_polygon, lot_width,
-                        lot_width_line)
+from .lot_lines import (LotLines, StreetCenterline, front_for_yard, largest_polygon,
+                        lot_width, lot_width_line)
 from .rule_results import (
     CORNER_NO_REAR, CROSSES_LOT_LINE, FAILS, MAPPING_ERROR, NO_FLOOR_AREA, NO_HEIGHT,
     NO_OUTLINES, NO_REAR_FOUND, NO_RULE, NO_SIDE_LINE, NO_STREET, NOT_CHECKED, NOT_REQUIRED,
@@ -27,6 +27,9 @@ from .rule_results import (
     height_explanation, height_map_explanation, height_near_street_explanation,
     height_near_street_waived_explanation, height_winner_explanation,
     margin_explanation, no_front_yard_explanation, no_height_limit_explanation,
+    block_average_front_yard_explanation,
+    contextual_front_yard_explanation, contextual_front_yard_reason,
+    historic_front_yard_explanation, no_block_face_explanation,
     no_rule_explanation, zone_height_source_explanation,
     older_lot_explanation, older_lot_limit_explanation,
     older_rules_explanation, open_space_about, side_count_explanation,
@@ -130,6 +133,12 @@ class LotFacts:
     parking: object = None
     # The height district map's rule for the area the lot is in, or None.
     height_map: HeightMapLimit | None = None
+    # The neighbors along each street the lot faces, keyed by street name,
+    # each a list of `FrontSetback`s: the contextual block face (lots beside
+    # and across the street), and every other building on the same side of
+    # the block. Filled in only for zones whose front yard rule uses them.
+    contextual_block_face: dict = field(default_factory=dict)
+    block_side: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -688,7 +697,7 @@ def _check_yards(facts, findings, width):
                 "not checked."
             )
 
-        _keep_worst(rows, _front_row(facts, record, gaps["front"]))
+        _keep_worst(rows, _front_row(facts, record, gaps["front"], home))
         for row in _side_rows(facts, record, gaps, shared, touching, parts, width):
             _keep_worst(rows, row)
         _keep_worst(rows, _rear_row(facts, record, gaps.get("rear"), shared,
@@ -699,15 +708,24 @@ def _check_yards(facts, findings, width):
         findings.reasons.append(Reason("yards", text))
 
 
-def _front_row(facts, record, gap):
-    """Judge the front yard, where the zone sets a fixed one."""
+def _front_row(facts, record, gap, home):
+    """Judge the front yard by whichever rule the zone sets for it.
+
+    `gap` is the home's distance to the closest street the lot faces.
+    """
     rules = facts.rules
     if facts.home_type in rules.no_front_yard_for:
         return _yard_row(facts, "front", NOT_REQUIRED, gap,
                          explanation=no_front_yard_explanation(rules))
+    if rules.contextual_front_yard is not None:
+        return _contextual_front_row(facts, record, gap, home)
+    if rules.front_yard_by_block_average:
+        return _block_average_front_row(facts, home)
+    if rules.front_at_lot_line_unless_approved:
+        return _historic_front_row(facts, gap)
     if not rules.front_yard:
-        return _yard_row(facts, "front", NOT_CHECKED, gap, explanation=(
-            front_yard_explanation(rules, facts.in_historic_district)))
+        return _yard_row(facts, "front", NOT_CHECKED, gap,
+                         explanation=front_yard_explanation(rules))
     fails = gap.gap + DISTANCE_MARGIN < rules.front_yard
     if fails:
         record("front", rules.front_yard - gap.gap,
@@ -715,6 +733,128 @@ def _front_row(facts, record, gap):
                f"{_feet(gap.gap)}, but {_feet(rules.front_yard)} is required.")
     return _yard_row(facts, "front", FAILS if fails else PASSES, gap,
                      rules.front_yard, detail="needs")
+
+
+@dataclass
+class StreetFront:
+    """A home's front yard along one street the lot faces, and the neighbors it is compared with."""
+
+    label: str
+    gap: YardGap
+    neighbors: list
+
+
+def _street_fronts(facts, home, neighbors_by_street) -> list[StreetFront]:
+    """The home's gap to each street the lot faces, paired with the neighbors along that street.
+
+    `neighbors_by_street` holds lists of `FrontSetback`s keyed by street name.
+    """
+    lines = facts.lines
+    found = []
+    for street in lines.fronts:
+        front = front_for_yard(lines, street)
+        center = lines.centerlines.get(street)
+        gap = YardGap(front.distance(home.shape), False, _nearest_line(home, front),
+                      list(front.geoms))
+        found.append(StreetFront(center.label if center else street.title(), gap,
+                                 neighbors_by_street.get(street) or []))
+    return found
+
+
+def _contextual_front_row(facts, record, closest, home):
+    """Judge the front yard against the neighbors along the same street.
+
+    Most zones ask that the front yard "be between the range established by
+    the front yards within the contextual block face": the neighboring lots
+    with buildings beside the lot and across the street (see
+    `block_faces.py`). Once the shallowest of those is deeper than the zone's
+    cap, the cap is enough. So the home must stand back at least as far as
+    the closest neighbor, or the cap, whichever is less.
+
+    The lot's own home isn't counted in the range. The ordinance defines the
+    block face as the "abutting property", and its cap clause, the one place
+    that counts the lot's own front yard, comes out the same either way for
+    a home too close to the street.
+
+    Each street a corner or through lot faces is judged against its own
+    neighbors; the street where the home comes closest to failing sets the
+    row. Streets with no neighbors to compare with are left out.
+    """
+    rules = facts.rules
+    cap = rules.contextual_front_yard
+    fronts = _street_fronts(facts, home, facts.contextual_block_face)
+    judged = [front for front in fronts if front.neighbors]
+    alone = [front.label for front in fronts if not front.neighbors]
+    if not judged:
+        return _yard_row(facts, "front", NOT_CHECKED, closest,
+                         explanation=no_block_face_explanation(rules.label, alone))
+
+    def needs(front):
+        return min(min(n.distance for n in front.neighbors), cap)
+
+    worst = min(judged, key=lambda front: front.gap.gap - needs(front))
+    required = needs(worst)
+    distances = [n.distance for n in worst.neighbors]
+    homes_only = all(n.is_home for n in worst.neighbors)
+    fails = worst.gap.gap + DISTANCE_MARGIN < required
+    if fails:
+        record("front", required - worst.gap.gap, contextual_front_yard_reason(
+            worst.label, worst.gap.gap, distances, homes_only, rules.label, cap))
+    row = _yard_row(facts, "front", FAILS if fails else PASSES, worst.gap, required,
+                    detail="needs")
+    row.explanation = " ".join(filter(None, [
+        contextual_front_yard_explanation(worst.label, worst.gap.gap, distances, homes_only,
+                                          rules.label, cap, len(judged) > 1, alone),
+        margin_explanation(row)]))
+    return row
+
+
+def _block_average_front_row(facts, home):
+    """Measure the front yard in the RM and CD zones, which line homes up with their block.
+
+    The front wall sits at the front lot line, "unless a majority of the
+    existing buildings with frontage on the same side of the block ... have
+    a greater setback, in which case the front building line shall be the
+    average distance of the existing buildings from the front lot line."
+    With no other buildings on that side of the block, it sits at the lot
+    line. A building measured within the yard margin of its lot line counts
+    as at the line, since outlines include roof overhangs.
+
+    The rule sets one exact line, so a home a few feet off the block's
+    average breaks it. On real data about a third of RM street fronts miss
+    it by more than the yard margin, which says more about how exact the
+    map's measurements are than about the homes. So the row shows the
+    home's setback and the line the block sets, but isn't judged. On a
+    corner lot (both streets count, the RM zone says) the street where the
+    home is furthest off its line is shown.
+    """
+    found = []
+    for front in _street_fronts(facts, home, facts.block_side):
+        others = [n.distance for n in front.neighbors]
+        set_back = sum(distance > DISTANCE_MARGIN for distance in others)
+        target = sum(others) / len(others) if set_back * 2 > len(others) else 0.0
+        found.append((front, target, set_back))
+    front, target, set_back = max(found, key=lambda each: abs(each[0].gap.gap - each[1]))
+    row = _yard_row(facts, "front", NOT_CHECKED, front.gap, detail="should be about",
+                    limit="max" if front.gap.gap > target else "min")
+    row.required = target
+    row.explanation = block_average_front_yard_explanation(
+        front.label, front.gap.gap, target, len(front.neighbors), set_back, facts.rules.label)
+    return row
+
+
+def _historic_front_row(facts, gap):
+    """Judge the front yard of an RB home in the historic districts.
+
+    There the front wall sits at the front lot line, or on another line the
+    board of architectural review approves as fitting the district. A home
+    at the line passes. One set back from it may have that approval, which
+    the map has no record of, so it isn't judged.
+    """
+    at_line = gap.gap <= DISTANCE_MARGIN
+    return _yard_row(facts, "front", PASSES if at_line else NOT_CHECKED, gap,
+                     explanation=historic_front_yard_explanation(
+                         facts.rules.label, gap.gap, at_line))
 
 
 def _side_rows(facts, record, gaps, shared, touching, parts, width):

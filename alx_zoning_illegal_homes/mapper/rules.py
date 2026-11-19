@@ -140,6 +140,19 @@ class ZoneRules:
     rear_yard: Yard | dict | None = None
     # Fixed front yard. None where the rule depends on neighboring homes.
     front_yard: float | None = None
+    # Where the front yard is set by the "contextual block face" (the
+    # neighboring buildings along the same street, see block_faces.py): the
+    # most it can ask. The front yard must fall within the range of the
+    # neighbors' front yards, but once the shallowest of them is deeper than
+    # this, a home needs only this much.
+    contextual_front_yard: float | None = None
+    # The RM and CD zones' rule: the front wall sits at the front lot line,
+    # unless most other buildings on the same side of the block stand
+    # further back, and then at their average distance from it.
+    front_yard_by_block_average: bool = False
+    # The RB zone's rule in the historic districts: the front wall sits at the
+    # front lot line, or on another line the board of architectural review approves.
+    front_at_lot_line_unless_approved: bool = False
     # Home types the zone asks no front yard of at all, apart from the extra
     # setbacks along a few named streets (section 7-1006).
     no_front_yard_for: frozenset = frozenset()
@@ -197,7 +210,7 @@ class ZoneRules:
 
 
 def _low_density(name, area, corner_area, width, corner_width, frontage,
-                 measured_at, yard, side_share, far, curved=None, semi=None):
+                 measured_at, yard, side_share, far, front, curved=None, semi=None):
     """Build rules for the five house zones (R-20 through R-2-5).
 
     These zones allow a detached house, a two-home building, or a building
@@ -205,6 +218,7 @@ def _low_density(name, area, corner_area, width, corner_width, frontage,
     in R-2-5 where each half of a twin house may have its own smaller lot.
     `semi` holds R-2-5's own numbers for twin houses, keyed like the tables;
     the other four zones, which pass none, keep a twin house whole on one lot.
+    `front` is the most front yard the neighboring homes can ask for.
     """
     types = ("single", "semi", "two_unit", "multi")
     semi = semi or {}
@@ -221,6 +235,7 @@ def _low_density(name, area, corner_area, width, corner_width, frontage,
         frontage={t: frontage for t in types} | semi.get("frontage", {}),
         curved_frontage={t: curved for t in types} if curved else {},
         width_measured_at=measured_at,
+        contextual_front_yard=front,
         side_yard={t: Yard(yard, side_share) for t in types},
         split_twin_lots_allowed=bool(semi),
         rear_yard=Yard(yard, 1.0),
@@ -238,13 +253,13 @@ _TOWNHOUSE_WIDTHS = {
 
 ZONES = {
     "R-20": _low_density("R-20", 20000, 20000, 100, 120, 75, 40, 12, 1 / 2,
-                         0.25, curved=55),
+                         0.25, 40, curved=55),
     "R-12": _low_density("R-12", 12000, 12000, 80, 95, 60, 35, 10, 1 / 2,
-                         0.30, curved=45),
-    "R-8": _low_density("R-8", 8000, 9000, 65, 80, 40, 30, 8, 1 / 2, 0.35),
-    "R-5": _low_density("R-5", 5000, 6500, 50, 65, 40, 20, 7, 1 / 3, 0.45),
+                         0.30, 35, curved=45),
+    "R-8": _low_density("R-8", 8000, 9000, 65, 80, 40, 30, 8, 1 / 2, 0.35, 30),
+    "R-5": _low_density("R-5", 5000, 6500, 50, 65, 40, 20, 7, 1 / 3, 0.45, 20),
     "R-2-5": _low_density(
-        "R-2-5", 5000, 6500, 50, 65, 40, 20, 7, 1 / 3, 0.45,
+        "R-2-5", 5000, 6500, 50, 65, 40, 20, 7, 1 / 3, 0.45, 20,
         semi={
             "area": {"semi": 2500},
             "corner_area": {"semi": 3250},
@@ -265,6 +280,7 @@ ZONES = {
         frontage={"single": 50, "semi": 25, "two_unit": 50, "multi": 50,
                   "townhouse": 18},
         width_measured_at=20,
+        contextual_front_yard=20,
         side_yard={
             "single": Yard(7, 1 / 3),
             "semi": Yard(7, 1 / 3),
@@ -289,6 +305,7 @@ ZONES = {
         corner_lot_width={"townhouse": 38},
         frontage={"single": 50, "semi": 25, "two_unit": 50, "townhouse": 18},
         width_measured_at=20,
+        contextual_front_yard=20,
         side_yard={
             "single": Yard(8, 1 / 3),
             "semi": Yard(8, 1 / 3),
@@ -363,6 +380,7 @@ ZONES = {
         lot_area={"single": 1452, "semi": 1452, "two_unit": 2904, "townhouse": 1452},
         lot_width={"single": 25, "semi": 25, "two_unit": 25, "townhouse": 18},
         frontage={"single": 25, "semi": 25, "two_unit": 50, "townhouse": 18},
+        front_yard_by_block_average=True,
         side_yards_by_lot_width=True,
         rear_yard=Yard(16, 1 / 2),
         max_floor_area_ratio=1.50,
@@ -435,6 +453,7 @@ def _commercial(name, townhouse_area, far, height, historic_far=False,
         "frontage": {"single": 50, "semi": 25, "two_unit": 50, "multi": 50,
                      "townhouse": 18},
         "width_measured_at": 20,
+        "contextual_front_yard": 20,
         "side_yard": {
             "single": Yard(8, 1 / 3),
             "semi": Yard(8, 1 / 3),
@@ -503,6 +522,7 @@ ZONES |= {
         # A twin needs 25 ft of frontage for each of its homes.
         frontage={"single": 25, "semi": 25, "two_unit": 50, "townhouse": 18,
                   "multi": 50},
+        front_yard_by_block_average=True,
         side_yard={kind: Yard(5) for kind in HOUSE_LIKE} | {"multi": Yard(25, 1 / 3)},
         rear_yard={kind: Yard(16, 1 / 2) for kind in HOUSE_LIKE}
         | {"multi": Yard(25, 1.0)},
@@ -521,6 +541,7 @@ ZONES |= {
         # Section 5-506(A) asks no front yard of any building, but 5-512
         # gives houses and townhouses one set by the neighboring homes.
         no_front_yard_for=frozenset({"multi"}),
+        contextual_front_yard=20,
         lot_area={"single": 5000, "semi": 2500, "two_unit": 5000, "townhouse": 1452},
         lot_width={"single": 50, "semi": 25, "two_unit": 50, "townhouse": 18,
                    "multi": 50},
@@ -548,6 +569,10 @@ _MIXED_USE_HOUSES = {
     "lot_width": {"single": 50, "semi": 25, "two_unit": 50},
     "frontage": {"single": 50, "semi": 25, "two_unit": 50},
     "width_measured_at": 20,
+    "contextual_front_yard": 20,
+    # The front yard rule (sections 5-111, 5-211, 5-311 and 5-404) is for
+    # houses and townhouses only.
+    "no_front_yard_for": frozenset({"multi"}),
     "side_yard": {kind: Yard(8, 1 / 3) for kind in ("single", "semi", "two_unit")},
     "rear_yard": {kind: Yard(8, 1.0) for kind in ("single", "semi", "two_unit")},
     "no_side_yard_below_width": 25,
@@ -888,6 +913,7 @@ RB_HISTORIC = ZoneRules(
     corner_lot_width=ZONES["RB"].corner_lot_width,
     frontage=ZONES["RB"].frontage,
     width_measured_at=0,
+    front_at_lot_line_unless_approved=True,
     side_yards_by_lot_width=True,
     rear_yard=Yard(8, 1.0),
     max_floor_area_ratio=1.50,

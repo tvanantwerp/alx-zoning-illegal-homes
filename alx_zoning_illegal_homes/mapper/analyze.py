@@ -9,6 +9,7 @@ import shapely.ops
 from shapely.ops import unary_union
 
 from . import loader
+from .block_faces import BlockFaces
 from .places import near_a_station, near_eisenhower_avenue, station_points
 from .checks import Home, LotFacts, check_lot
 from .lot_lines import MAX_DIVIDED_GAP, MAX_STREET_DISTANCE, Street, classify
@@ -484,6 +485,38 @@ def _floor_area(part):
     return None
 
 
+def _main_buildings(placed) -> dict:
+    """Each lot's main buildings as (shape, is_home) pairs, keyed by lot id.
+
+    Homes, and other buildings big enough to be more than a shed, garage or
+    bus shelter. These are the buildings a neighbor's front yard is measured to.
+    """
+    main = placed[placed["is_home"] | (
+        ~placed["BTYPE"].isin(list(loader.ACCESSORY_TYPES))
+        & (placed["footprint"] >= loader.MIN_HOME_FOOTPRINT))]
+    return {lot_id: list(zip(group.geometry.values, group["is_home"].values))
+            for lot_id, group in main.groupby("lot_id")}
+
+
+def _add_neighbors(facts: LotFacts, lot_id: int, block_faces: BlockFaces,
+                   fallback_rules) -> LotFacts:
+    """Fill in the neighbors along the street that the lot's front yard rule compares with.
+
+    Looked up only where the lot's rules, or the ordinary zone of its planned
+    district, call for them.
+    """
+    every_rules = [facts.rules] + ([fallback_rules] if fallback_rules is not None else [])
+    fronts = facts.lines.fronts
+    changes = {}
+    if any(rules.contextual_front_yard is not None for rules in every_rules):
+        changes["contextual_block_face"] = {
+            street: block_faces.contextual(lot_id, street) for street in fronts}
+    if any(rules.front_yard_by_block_average for rules in every_rules):
+        changes["block_side"] = {
+            street: block_faces.block_side(lot_id, street) for street in fronts}
+    return replace(facts, **changes) if changes else facts
+
+
 def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
     """Return one row per lot with its status and the reasons it fails.
 
@@ -545,7 +578,34 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
     paving_shapes, paving_is_parking = paving.geometry.values, paving["is_parking"].values
     paving_tree = shapely.STRtree(paving_shapes)
 
-    records = []
+    # Lots without a home often have no address, which arrives as NaN.
+    address_streets = [name if isinstance(name, str) else None
+                       for name in lots["address_street"]]
+    known_lines = {}
+
+    def lines_for(lot_id):
+        """Sort a lot's outline into street fronts and other edges, once per lot."""
+        if lot_id not in known_lines:
+            shape = lot_shapes[lot_id]
+            nearby = lot_tree.query(shape.buffer(3.0), predicate="intersects")
+            neighbors = [
+                lot_shapes[i] for i in nearby
+                # Skip the lot itself and any larger lot drawn on top of it.
+                if i != lot_id
+                and lot_shapes[i].intersection(shape).area < 0.5 * shape.area
+            ]
+            neighbor_shape = unary_union(neighbors) if neighbors else None
+            # Reaching past the distance a front can be from its street also
+            # takes in the far side of a divided road, to find its middle.
+            near_streets = street_tree.query(
+                shape.buffer(MAX_STREET_DISTANCE + MAX_DIVIDED_GAP), predicate="intersects")
+            known_lines[lot_id] = classify(
+                shape, neighbor_shape, [street_list[i] for i in near_streets],
+                address_streets[lot_id],
+            )
+        return known_lines[lot_id]
+
+    records, waiting = [], []
     for lot_id, lot in lots.iterrows():
         record = {
             "address": lot["address"],
@@ -601,22 +661,7 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
             district, rules, fallback_rules = planned
 
         shape = lot.geometry
-        nearby = lot_tree.query(shape.buffer(3.0), predicate="intersects")
-        neighbors = [
-            lot_shapes[i] for i in nearby
-            # Skip the lot itself and any larger lot drawn on top of it.
-            if i != lot_id
-            and lot_shapes[i].intersection(shape).area < 0.5 * shape.area
-        ]
-        neighbor_shape = unary_union(neighbors) if neighbors else None
-        # Reaching past the distance a front can be from its street also
-        # takes in the far side of a divided road, to find its middle.
-        near_streets = street_tree.query(
-            shape.buffer(MAX_STREET_DISTANCE + MAX_DIVIDED_GAP), predicate="intersects")
-        lines = classify(
-            shape, neighbor_shape, [street_list[i] for i in near_streets],
-            lot["address_street"],
-        )
+        lines = lines_for(lot_id)
 
         touching = home_tree.query(home_union.buffer(ATTACHED_GAP),
                                    predicate="intersects")
@@ -662,6 +707,14 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
             paved=paved,
             parking=parking,
         )
+        waiting.append((lot_id, lot, record, facts, district, fallback_rules))
+
+    # Front yards in most zones depend on the neighbors' buildings, so every
+    # lot's edges are sorted out above before any lot is checked.
+    block_faces = BlockFaces(lot_shapes, lines_for, _main_buildings(placed), lot_tree)
+    for lot_id, lot, record, facts, district, fallback_rules in waiting:
+        facts = _add_neighbors(facts, lot_id, block_faces, fallback_rules)
+        label, home_type = lot["zoning_label"], facts.home_type
         findings = check_lot(facts)
         if lot["land_use"] == TWIN_LAND_USE and home_type in ("two_unit", "single"):
             findings.notes.append(
@@ -692,15 +745,15 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
                 "rules, so they are not judged."
                 + (f" City case file: {project}." if project else "")))
         record.update({
-            "zone": label.strip() if district else rules.name,
+            "zone": label.strip() if district else facts.rules.name,
             "status": "illegal" if findings.reasons else "ok",
             "reasons": [reason.text for reason in findings.reasons],
             "kinds": sorted({reason.kind for reason in findings.reasons}),
             "notes": findings.notes,
             "rule_results": findings.results,
             "lot_area": round(facts.area),
-            "homes": units,
-            "historic": is_historic,
+            "homes": facts.units,
+            "historic": facts.in_historic_district,
             **{key: (round(value, 2) if isinstance(value, float) else value)
                for key, value in findings.measurements.items()
                if value is not None},

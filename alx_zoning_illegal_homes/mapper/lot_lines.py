@@ -40,6 +40,9 @@ MAX_FACING_ANGLE_COS = np.cos(np.radians(50))
 SMOOTH_TURN_COS = np.cos(np.radians(40))
 MIN_FRONT_LENGTH = 8.0
 CORNER_GAP = 30.0
+# Where a corner lot's front lot line turns onto the other street, pieces
+# turning more than this from the street's main direction are the corner.
+CORNER_TURN_DEGREES = 30.0
 # On a divided road, centerlines of the same street up to this much farther
 # from the lot than the nearest one still belong to the near side.
 NEAR_SIDE_SLACK = 10.0
@@ -317,12 +320,39 @@ def classify(lot, neighbors, streets, address_street=None) -> LotLines:
     return result
 
 
-def _facing(pieces: list[Piece]):
-    """The land straight out from a lot's edge along one street, as far as a street is looked for.
+def street_pieces(lines: LotLines, street: str) -> list[Piece]:
+    """The pieces of a lot's outline along one street."""
+    return [piece for piece in lines.pieces if piece.kind == "street" and piece.street == street]
 
-    It reaches far enough to take in the far side of a divided road.
+
+def front_for_yard(lines: LotLines, street: str):
+    """The front lot line along one street, without the bend where it turns onto another.
+
+    On a corner lot the lot line usually rounds or cuts across the corner.
+    The shortest line from a home to that bit runs diagonally, so it comes out
+    shallower than the yard straight out to either street. Pieces near
+    another street's front that turn more than `CORNER_TURN_DEGREES` away
+    from this street's main direction are left out. A lot with only one
+    street front keeps it whole, curves and all.
     """
-    reach = MAX_STREET_DISTANCE + MAX_DIVIDED_GAP
+    others = [front for name, front in lines.fronts.items() if name != street]
+    if not others:
+        return lines.fronts[street]
+    pieces = street_pieces(lines, street)
+    near_corner = [min(piece.line.distance(other) for other in others) <= CORNER_GAP
+                   for piece in pieces]
+    # The street's direction comes from the pieces away from the corner,
+    # so a long rounded corner doesn't tilt it.
+    steady = [piece for piece, near in zip(pieces, near_corner) if not near] or pieces
+    points = np.array([c for piece in steady for c in piece.line.coords])
+    main = np.linalg.svd(points - points.mean(axis=0), full_matrices=False)[2][0]
+    keep = [piece.line for piece, near in zip(pieces, near_corner)
+            if not near or abs(piece.direction @ main) >= np.cos(np.radians(CORNER_TURN_DEGREES))]
+    return MultiLineString(keep) if keep else lines.fronts[street]
+
+
+def facing_band(pieces: list[Piece], reach: float):
+    """The land straight out from these pieces of a lot's edge, `reach` feet deep."""
     return unary_union([
         Polygon([piece.line.coords[0], piece.line.coords[-1],
                  np.array(piece.line.coords[-1]) + piece.outward * reach,
@@ -388,6 +418,14 @@ def _join_carriageway_pieces(same: list[Street]) -> list[Street]:
     return [street for street in same if not street.divided] + [
         street._replace(line=linemerge(parts) if len(parts) > 1 else parts[0])
         for street, parts in joined.values()]
+
+
+def _facing(pieces: list[Piece]):
+    """The land straight out from a lot's edge along one street, as far as a street is looked for.
+
+    It reaches far enough to take in the far side of a divided road.
+    """
+    return facing_band(pieces, MAX_STREET_DISTANCE + MAX_DIVIDED_GAP)
 
 
 def _centerline(name: str, front, pieces: list[Piece],

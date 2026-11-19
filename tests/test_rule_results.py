@@ -170,10 +170,10 @@ def test_corner_lot_has_no_rear_yard_row_checked():
     assert "corner lot" in rows(f)["yard:rear"].explanation
 
 
-def test_front_yard_not_checked_in_contextual_zone():
+def test_front_yard_without_neighbors_is_not_checked_in_contextual_zone():
     row = yard_rows("roomy")["yard:front"]
     assert row.status == NOT_CHECKED and row.measured == pytest.approx(35)
-    assert "neighboring homes" in row.explanation
+    assert "neighbors along the same street" in row.explanation
 
 
 def test_narrow_rm_lot_needs_no_side_yards():

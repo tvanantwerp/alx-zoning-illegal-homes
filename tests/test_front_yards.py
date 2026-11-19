@@ -1,0 +1,178 @@
+"""Front yards set by the neighbors along the street, and the helper that finds them."""
+from dataclasses import replace
+
+import pytest
+from shapely.geometry import LineString, Polygon, box
+
+from shapely.ops import unary_union
+
+from alx_zoning_illegal_homes.mapper.block_faces import BlockFaces, FrontSetback
+from alx_zoning_illegal_homes.mapper.checks import Home, LotFacts, check_lot
+from alx_zoning_illegal_homes.mapper.lot_lines import classify, front_for_yard
+from alx_zoning_illegal_homes.mapper.rule_results import (
+    FAILS, NOT_CHECKED, NOT_REQUIRED, PASSES)
+from alx_zoning_illegal_homes.mapper.rules import RB_HISTORIC, ZONES
+
+from .helpers import MAIN, between_neighbors
+
+# A block like the ordinance's drawing of a contextual block face: a row of
+# 40 ft lots on each side of Main St, which runs east-west along y = 0.
+# Lots 0-4 are on the north side (fronts at y = 30), lots 5-9 on the south.
+MAIN_ST = ("MAIN", LineString([(-100, 0), (300, 0)]))
+NORTH = [box(x, 30, x + 40, 130) for x in range(0, 200, 40)]
+SOUTH = [box(x, -130, x + 40, -30) for x in range(0, 200, 40)]
+LOTS = NORTH + SOUTH
+
+
+def _block_faces(setbacks):
+    """Lots along Main St, each with a house set back the given distance (None for no house)."""
+    def lines_for(lot_id):
+        others = [lot for i, lot in enumerate(LOTS) if i != lot_id]
+        return classify(LOTS[lot_id], unary_union(others), [MAIN_ST], "MAIN")
+
+    buildings = {}
+    for lot_id, setback in enumerate(setbacks):
+        if setback is None:
+            continue
+        x0, y0, x1, y1 = LOTS[lot_id].bounds
+        if lot_id < 5:
+            house = box(x0 + 8, y0 + setback, x1 - 8, y0 + setback + 30)
+        else:
+            house = box(x0 + 8, y1 - setback - 30, x1 - 8, y1 - setback)
+        buildings[lot_id] = [(house, True)]
+    return BlockFaces(LOTS, lines_for, buildings)
+
+
+def test_block_face_is_the_lots_beside_and_across_the_street():
+    faces = _block_faces([20] * 10)
+    found = faces.contextual(2, "MAIN")
+    assert sorted(s.lot_id for s in found if not s.across) == [1, 3]
+    assert sorted(s.lot_id for s in found if s.across) == [6, 7, 8]
+    assert all(s.distance == pytest.approx(20) for s in found)
+
+
+def test_block_face_leaves_out_lots_without_buildings():
+    setbacks = [20] * 10
+    setbacks[1] = None
+    found = _block_faces(setbacks).contextual(2, "MAIN")
+    assert 1 not in {s.lot_id for s in found}
+
+
+def test_block_side_runs_along_the_whole_side_of_the_street():
+    setbacks = [20] * 10
+    setbacks[3] = None   # an empty lot still carries the block along
+    side = _block_faces(setbacks).block_side(0, "MAIN")
+    assert sorted(s.lot_id for s in side) == [1, 2, 4]
+
+
+LOT = box(0, 0, 60, 120)
+
+
+def _with_block_face(zone, home, setbacks, field="contextual_block_face", rules=None,
+                     home_type="single", historic=False):
+    """Check a home on LOT, with neighbors along Main St set back these distances.
+
+    `field` names the LotFacts field the neighbors go in.
+    """
+    neighbors = [FrontSetback(100 + i, "MAIN", d, LineString([(0, 0), (0, d)]))
+                 for i, d in enumerate(setbacks)]
+    facts = LotFacts(
+        shape=LOT, area=LOT.area, rules=rules if rules is not None else ZONES[zone],
+        home_type=home_type, homes=[Home(shape=home, height=20, floor_area=1000)],
+        lines=classify(LOT, between_neighbors(LOT), [MAIN], "MAIN"),
+        all_buildings=[home], in_historic_district=historic,
+        **{field: {"MAIN": neighbors}})
+    findings = check_lot(facts)
+    return {r.rule: r for r in findings.results}["yard:front"], findings
+
+
+def test_home_closer_than_every_neighbor_fails():
+    row, findings = _with_block_face("R-8", box(10, 12, 50, 50), [20, 28])
+    assert row.status == FAILS
+    assert row.measured == pytest.approx(12) and row.required == pytest.approx(20)
+    assert row.explanation.startswith(
+        "Set back about 12.0 ft from Main; the neighboring homes there are set back 20 to 28 ft.")
+    assert any(r.text.startswith("Too close to Main: set back about 12.0 ft")
+               for r in findings.reasons)
+
+
+def test_home_within_the_neighbors_range_passes():
+    row, _ = _with_block_face("RA", box(10, 22, 50, 60), [20, 28])
+    assert row.status == PASSES and row.required == pytest.approx(20)
+
+
+def test_home_set_back_further_than_its_neighbors_passes():
+    row, _ = _with_block_face("R-8", box(10, 40, 50, 80), [20, 28])
+    assert row.status == PASSES
+
+
+def test_a_little_short_of_the_neighbors_passes_on_the_margin():
+    row, findings = _with_block_face("R-5", box(10, 18.5, 50, 60), [20, 25])
+    assert row.status == PASSES and not findings.reasons
+
+
+def test_deep_neighbors_ask_no_more_than_the_zones_cap():
+    # R-8's neighbors can ask at most 30 ft.
+    row, _ = _with_block_face("R-8", box(10, 31, 50, 70), [45, 50])
+    assert row.status == PASSES and row.required == 30
+    row, findings = _with_block_face("R-8", box(10, 20, 50, 60), [45, 50])
+    assert row.status == FAILS and row.required == 30
+    assert any("asks for at least 30 ft" in r.text for r in findings.reasons)
+
+
+def test_no_neighbors_leaves_the_front_yard_unchecked():
+    row, findings = _with_block_face("R-8", box(10, 5, 50, 50), [])
+    assert row.status == NOT_CHECKED and "nothing to compare" in row.explanation
+    assert not [r for r in findings.reasons if r.kind == "yards"]
+
+
+@pytest.mark.parametrize("zone", ["CL", "OCH", "W-1", "CRMU/L", "CRMU/X"])
+def test_commercial_and_mixed_use_houses_use_their_neighbors(zone):
+    row, _ = _with_block_face(zone, box(10, 5, 50, 50), [20, 28])
+    assert row.status == FAILS and row.required == 20
+
+
+def test_mixed_use_apartments_need_no_front_yard():
+    row, _ = _with_block_face("CRMU/L", box(10, 5, 50, 50), [20, 28], home_type="multi")
+    assert row.status == NOT_REQUIRED
+
+
+def test_rm_front_yard_shows_the_lot_line_where_the_block_is_at_it():
+    row, findings = _with_block_face("RM", box(10, 10, 50, 50), [0.5, 1, 8],
+                                     field="block_side", home_type="townhouse")
+    assert row.status == NOT_CHECKED and row.required == 0
+    assert "only 1 of the 3 other buildings" in row.explanation
+    assert not [r for r in findings.reasons if r.kind == "yards"]
+
+
+def test_rm_front_yard_shows_the_average_of_a_block_that_stands_back():
+    row, _ = _with_block_face("RM", box(10, 1, 50, 50), [8, 10, 12], field="block_side",
+                              home_type="townhouse")
+    assert row.status == NOT_CHECKED and row.required == pytest.approx(10)
+    assert "on average they stand about 10.0 ft back" in row.explanation
+
+
+def test_rb_in_the_historic_districts_passes_at_the_lot_line_and_is_unjudged_behind_it():
+    row, _ = _with_block_face("RB", box(10, 1, 50, 50), [], rules=RB_HISTORIC, historic=True)
+    assert row.status == PASSES
+    row, _ = _with_block_face("RB", box(10, 15, 50, 50), [], rules=RB_HISTORIC, historic=True)
+    assert row.status == NOT_CHECKED and "board of architectural review" in row.explanation
+
+
+def test_planned_district_rules_leave_the_front_yard_unchecked():
+    plan = replace(ZONES["R-8"], contextual_front_yard=None, name="Some approved plan")
+    row, _ = _with_block_face("R-8", box(10, 5, 50, 50), [20, 28], rules=plan)
+    assert row.status == NOT_CHECKED
+
+
+def test_corner_yard_leaves_out_the_cut_corner():
+    # A corner lot with a wide corner cut off at 45 degrees where Main St meets Side St.
+    lot = Polygon([(0, 0), (35, 0), (60, 25), (60, 100), (0, 100)])
+    side = ("SIDE", LineString([(85, -100), (85, 300)]))
+    lines = classify(lot, None, [MAIN, side], "MAIN")
+    assert set(lines.fronts) == {"MAIN", "SIDE"}
+    home = box(10, 15, 45, 70)
+    # Straight out to either street the yard is 15 ft; to the cut corner it is far less.
+    assert min(home.distance(front) for front in lines.fronts.values()) < 5
+    for street in ("MAIN", "SIDE"):
+        assert home.distance(front_for_yard(lines, street)) == pytest.approx(15)

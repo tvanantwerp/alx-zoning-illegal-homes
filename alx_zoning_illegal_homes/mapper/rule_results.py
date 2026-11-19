@@ -450,19 +450,119 @@ def no_front_yard_explanation(rules: ZoneRules) -> str:
     return text
 
 
-def front_yard_explanation(rules: ZoneRules, in_historic_district: bool) -> str:
+def front_yard_explanation(rules: ZoneRules) -> str:
     """Why the front yard isn't checked in this lot's zone."""
-    label = rules.label
-    if rules.name == "RM" or (rules.name == "RB" and in_historic_district):
-        return (f"In the {label}, a home's front wall is meant to sit right at the "
-                "front lot line, unless most homes on the block are set back further. "
-                "Then it must line up with their average. The map doesn't measure the "
-                "neighbors' homes yet, so this rule isn't checked.")
-    if rules.name.startswith("R"):
-        return (f"In the {label}, the front yard must fall within the range of front "
-                "yards of the neighboring homes that share this street frontage. The "
-                "map doesn't measure the neighbors' homes yet, so this rule isn't checked.")
-    return f"The map doesn't check front yards in the {label}."
+    return f"The map doesn't check front yards in the {rules.label}."
+
+
+FRONT_MEASURED = (
+    "Each building is measured from its closest part to its front lot line. Building "
+    "outlines are traced from roofs, so a porch roof or overhang counts as part of the "
+    "building, for this home and its neighbors alike.")
+
+
+def _neighbors_set_back(distances: list[float], homes_only: bool) -> str:
+    """Say how far the neighbors along a street stand back: "the neighboring homes there are set back 20 to 28 ft"."""
+    what = "home" if homes_only else "building"
+    low, high = format_feet(min(distances)), format_feet(max(distances))
+    if len(distances) == 1:
+        return f"the neighboring {what} there is set back {low}"
+    if low == high:
+        return f"the {len(distances)} neighboring {what}s there are all set back about {low}"
+    return f"the neighboring {what}s there are set back {low.removesuffix(' ft')} to {high}"
+
+
+def contextual_front_yard_reason(street: str, gap: float, distances: list[float],
+                                 homes_only: bool, zone_label: str, cap: float) -> str:
+    """The reason a home stands too close to the street for its neighbors."""
+    text = (f"Too close to {street}: set back about {format_feet(gap)}, but "
+            f"{_neighbors_set_back(distances, homes_only)}")
+    if min(distances) > cap:
+        return f"{text}, and the {zone_label} asks for at least {format_feet(cap)}."
+    return f"{text}."
+
+
+def contextual_front_yard_explanation(street: str, gap: float, distances: list[float],
+                                      homes_only: bool, zone_label: str, cap: float,
+                                      several: bool, alone: list[str]) -> str:
+    """Explain a front yard judged against the neighbors along the same street.
+
+    `street` is the street that set the row, `gap` this home's setback from it
+    and `distances` its neighbors'. `several` is True when more than one of the
+    lot's streets had neighbors to compare with, and `alone` names any it faces
+    with none.
+    """
+    parts = [
+        f"Set back about {format_feet(gap)} from {street}; "
+        f"{_neighbors_set_back(distances, homes_only)}.",
+        f"In the {zone_label}, a home's front yard must fall within the range of the "
+        "front yards of its neighbors along the same street: the lots on either side "
+        "and the lots across the street that have buildings on them. Once the "
+        f"shallowest of those is deeper than {format_feet(cap)}, {format_feet(cap)} is "
+        "enough. This home itself isn't counted in the range.",
+    ]
+    if several:
+        parts.append("Each street this lot faces is judged against its own neighbors; "
+                     "this is the one where the home comes closest to the line.")
+    if alone:
+        parts.append(f"No neighbors share its frontage on {' and '.join(alone)}, so that "
+                     "side wasn't judged.")
+    parts.append(FRONT_MEASURED)
+    parts.append("The map checks only that the home stands back far enough, not that it "
+                 "stands no further back than its neighbors.")
+    return " ".join(parts)
+
+
+def no_block_face_explanation(zone_label: str, streets: list[str]) -> str:
+    """Say why a front yard set by the neighbors couldn't be judged: there are none."""
+    along = f" on {' or '.join(streets)}" if streets else ""
+    return (f"In the {zone_label}, a home's front yard must fall within the range of the "
+            "front yards of its neighbors along the same street. The map found no lots "
+            f"with buildings beside this one or across the street that share its "
+            f"frontage{along}, so there is nothing to compare it with.")
+
+
+def block_average_front_yard_explanation(street: str, gap: float, target: float,
+                                         others: int, set_back: int, zone_label: str) -> str:
+    """Explain the RM and CD zones' front yard, which the map measures but doesn't judge.
+
+    `others` counts the other buildings found on the same side of the block
+    and `set_back` how many of them stand back from the lot line.
+    """
+    parts = [
+        f"Set back about {format_feet(gap)} from {street}.",
+        f"In the {zone_label}, a home's front wall sits at the front lot line, unless most "
+        "other buildings on the same side of the block stand further back. Then it lines "
+        "up with their average distance from the lot line.",
+    ]
+    if not others:
+        parts.append("The map found no other buildings on this side of the block, so the "
+                     "home belongs at the lot line.")
+    elif target > 0:
+        parts.append(f"Here {set_back} of the {others} other buildings on this side of the "
+                     "block stand back from the lot line, and on average they stand about "
+                     f"{format_feet(target)} back.")
+    else:
+        parts.append(f"Here only {set_back} of the {others} other buildings on this side "
+                     "of the block stand back from the lot line, so the home belongs at it.")
+    parts.append(
+        "The map doesn't judge this rule. It sets one exact line, so a home a few feet off "
+        "the block's average breaks it, and the map's measurements aren't that exact: "
+        f"{FRONT_MEASURED[0].lower()}{FRONT_MEASURED[1:]} The map also takes the side of the "
+        "block to be the run of lots along the street that touch one another, so an alley "
+        "through the block ends it early.")
+    return " ".join(parts)
+
+
+def historic_front_yard_explanation(zone_label: str, gap: float, at_line: bool) -> str:
+    """Explain the RB zone's front yard in the historic districts."""
+    rule = (f"In the Old and Historic Alexandria and Parker-Gray districts, the {zone_label} "
+            "puts a home's front wall at the front lot line, or on another line the board "
+            "of architectural review approves as fitting the district.")
+    if at_line:
+        return f"{rule} This home stands at the lot line."
+    return (f"{rule} This home is set back about {format_feet(gap)}. The map has no record "
+            "of the board's approvals, so it can't judge this.")
 
 
 def split_twin_reason(zone_label: str) -> str:
