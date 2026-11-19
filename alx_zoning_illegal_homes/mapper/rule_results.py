@@ -139,7 +139,9 @@ def format_feet(value: float) -> str:
 
 def no_rule_explanation(zone_label: str, home_type_name: str, what: str) -> str:
     """Say that the zone's rules set no limit of this kind for this kind of home."""
-    return f"The map's rules for the {zone_label} include no {what} for a {home_type_name}."
+    article = "an" if home_type_name[0] in "aeiou" else "a"
+    return (f"The map's rules for the {zone_label} include no {what} for "
+            f"{article} {home_type_name}.")
 
 
 def open_space_about(zone_note: str, home_type: str) -> str:

@@ -65,7 +65,8 @@ CG, CD, CDX, OC, OCM, OCH, W-1, CRMU, KR) and in planned districts:
   counted. A corner or through lot is judged on each street against the
   neighbors along that street. A home with no neighbors on its street isn't
   judged. RS (20 ft) and RT (4 ft) have fixed front yards. RC, RCX, RD and
-  KR require none, nor do apartment buildings in W-1 and the CRMU zones.
+  KR require none, nor do apartment buildings in W-1 and the CRMU zones,
+  or townhouses in CRMU-X.
   RB homes in the historic districts belong at the front lot line unless the
   board of architectural review approves another line: a home at the line
   passes, and one set back isn't judged.
@@ -125,7 +126,9 @@ CG, CD, CDX, OC, OCM, OCH, W-1, CRMU, KR) and in planned districts:
   300 sq ft. It also lets a lot keep the open space it had on June 24, 1992
   if that was less, and lets a lot that already fell short then count strips
   narrower than 8 ft. The map can't know any of that, so an older RM home
-  may be fine as it stands. The RD zone lets half the land used for parking count,
+  may be fine as it stands. CD asks for 35% of every home lot, with the same
+  1992 allowance for houses, twin houses and townhouses, so an older one
+  there may be fine too. The RD zone lets half the land used for parking count,
   up to 90% of the open space it requires. Building coverage (the RT zone's
   rule) counts buildings only.
 - **Home type**, e.g. townhouses in a zone that allows only houses. A few
@@ -316,6 +319,15 @@ Other details that matter:
   count, with the planning director's approval, which the map can't see, so
   an apartment building may have more open space than it shows.
 - Parking rules are not checked.
+- Some rules are left out on purpose; `rules.py` says why beside each one.
+  Across zones: threshold height (how high the front door sits), homes per
+  acre across a whole development, and anything a special permit or the
+  planning commission could loosen. In single zones: the RB zone's 1,980
+  sq ft of land per apartment for its older apartment buildings, the RT
+  zone's rules for a townhouse row as a whole, the KR zone's 150 sq ft of
+  open space per home (balconies and roofs count), the extra floor space
+  for shops in W-1, CRMU-M and CRMU-H, and the deep setback from Washington
+  Street for RC lots along the parkway.
 - Floor space comes from the city's assessment records, which seem to count
   only finished living space. The ordinance counts all space under a roof,
   finished or not, attached garages included, so a home's real floor space

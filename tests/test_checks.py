@@ -251,9 +251,11 @@ def test_zone_labels_from_the_parcel_layer():
     assert normalize_zone(None) is None
 
 
-def test_historic_district_loosens_rb_floor_area():
+def test_historic_district_loosens_rb_floor_area_for_houses_only():
     assert rules_for("RB", False).max_floor_area_ratio == 0.75
-    assert rules_for("RB", True).max_floor_area_ratio == 1.50
+    historic = rules_for("RB", True)
+    assert historic.floor_area_ratio_for("townhouse", historic=True) == 1.50
+    assert historic.floor_area_ratio_for("multi", historic=True) == 0.75
 
 
 def test_king_street_retail_zone_allows_only_apartments():

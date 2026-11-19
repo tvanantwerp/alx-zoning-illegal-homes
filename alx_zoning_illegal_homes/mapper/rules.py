@@ -17,6 +17,27 @@ side, sharing a wall) and a duplex (one home above the other). Where the
 two get different street frontage, a whole two-unit house on one lot uses
 the twin's: the map finds these houses as two attached outlines side by
 side, which a stacked duplex would not show.
+
+Every zone below was compared with its section of the ordinance. Rules the
+map could measure are here; these kinds are left out on purpose, in every
+zone that has them:
+
+- Threshold height (how high the front door sits above the ground). The
+  map has no data on it.
+- Gross density, homes per acre across a whole development. It is
+  measured over a site plan's land, streets and common areas included,
+  which the parcel map can't rebuild. Each zone's lot size per home asks
+  about the same of a single lot.
+- Anything the ordinance lets a special permit, the planning commission or
+  the board of architectural review loosen, such as smaller townhouse lots
+  or narrower lots on a curved street. The map holds every home to the
+  limit that applies without that approval.
+- Rules for shops, offices and other non-home uses, and site plan rules
+  for a whole new development (parking, landscaping, building form).
+- The extra setbacks along six named streets (section 7-1006), not yet
+  checked.
+
+Rules left out of only one zone are noted beside that zone.
 """
 from dataclasses import dataclass, field, replace
 
@@ -334,6 +355,10 @@ ZONES = {
                     "multi": 45},
         min_open_space=0.35,
     ),
+    # The zone asks 1,980 sq ft of land for each home, apartments included.
+    # Apartments here are allowed only as older ones (see
+    # _RB_OLDER_APARTMENTS), and the map has no rule for land per apartment
+    # yet, so their lot size isn't checked.
     "RB": ZoneRules(
         name="RB",
         allowed=frozenset(HOUSE_LIKE),
@@ -360,6 +385,11 @@ ZONES = {
                     "multi": 45},
         min_open_space=0.35,
     ),
+    # In RCX and RC, developments whose site plans were approved before July
+    # 6, 1966 keep an older open space rule: 300 sq ft per home or 37.5% of
+    # the lot, whichever is more (sections 3-807(C) and 3-907(C)). The map
+    # has no site plan dates and judges each building as if built new, so
+    # it uses today's 35%.
     "RCX": ZoneRules(
         name="RCX",
         allowed=frozenset({"townhouse", "multi"}),
@@ -377,6 +407,9 @@ ZONES = {
         max_height={"townhouse": 50, "multi": 50},
         min_open_space=0.35,
     ),
+    # RC lots along Washington Street south of the Capital Beltway must stand
+    # well back from the street (section 3-908). Only one home lot, 1250 S
+    # Washington Street, sits there, so the rule is left to its pop-up note.
     "RC": ZoneRules(
         name="RC",
         allowed=frozenset({"townhouse", "multi"}),
@@ -394,6 +427,8 @@ ZONES = {
         max_height={"townhouse": 150, "multi": 150},
         min_open_space=0.35,
     ),
+    # The zone also caps homes at 100 an acre. None of its few home lots
+    # comes near that, so it isn't checked.
     "RD": ZoneRules(
         name="RD",
         allowed=frozenset({"multi"}),
@@ -453,6 +488,12 @@ ZONES = {
         min_open_space=0.35,
         **_TOWNHOUSE_WIDTHS,
     ),
+    # The RT zone also sets rules for each row of townhouses as a whole
+    # (sections 3-1305 and 3-1306): inside lots at least 24 ft wide on
+    # average, front walls at least 6 ft back on average, no more than three
+    # homes sharing one front line or roof line, and 1,000 sq ft more land
+    # per home in yards or shared open space. Those are judged across a row
+    # and its common land, so only each lot's own minimums are checked.
     "RT": ZoneRules(
         name="RT",
         allowed=frozenset({"townhouse"}),
@@ -570,8 +611,17 @@ ZONES |= {
         max_floor_area_ratio={kind: 1.50 for kind in HOUSE_LIKE} | {"multi": 1.25},
         max_height={kind: 35 for kind in HOUSE_LIKE} | {"multi": 50},
         pitched_roof_height={kind: 45 for kind in HOUSE_LIKE},
+        # Houses, twins and townhouses may instead keep the open space they
+        # had on June 24, 1992 if that was less (section 4-506(A)(2)(e)).
+        # As in the RM zone, that can't help a new building on an empty lot,
+        # so only the note mentions it.
         min_open_space=0.35,
-        open_space_applies_to=frozenset({"multi"}),
+        open_space_note=(
+            "The CD zone requires 35% of each home lot to be open, usable space. "
+            "A house, twin house or townhouse may instead keep the open space its "
+            "lot had on June 24, 1992, if that was less, so an older home may be "
+            "fine as it stands. The map judges whether these buildings could be "
+            "built new."),
     ),
     # Waterfront mixed-use zone (sections 5-505, 5-506 and 5-512). Its height
     # is the height district map's (section 5-507).
@@ -610,8 +660,8 @@ _MIXED_USE_HOUSES = {
     "frontage": {"single": 50, "semi": 25, "two_unit": 50},
     "width_measured_at": 20,
     "contextual_front_yard": 20,
-    # The front yard rule (sections 5-111, 5-211, 5-311 and 5-404) is for
-    # houses and townhouses only.
+    # The front yard rule (sections 5-111, 5-211 and 5-311) is for houses and
+    # townhouses only; CRMU-X's (section 5-404) is for houses alone.
     "no_front_yard_for": frozenset({"multi"}),
     "side_yard": {kind: Yard(8, 1 / 3) for kind in ("single", "semi", "two_unit")},
     "rear_yard": {kind: Yard(8, 1.0) for kind in ("single", "semi", "two_unit")},
@@ -624,6 +674,11 @@ _MIXED_USE_HOUSES = {
 # and open space. Height comes from a small area plan (section 5-106 and its
 # matches), which the map doesn't have; only the height district map's
 # limit is checked.
+#
+# CRMU-M, CRMU-H and W-1 also allow an extra 0.25 of floor area for shops,
+# which the floor space limits here leave out. The city's floor space
+# figure can't be split between homes and shops, and only one apartment
+# building with shops (in CRMU-H) falls between the two limits.
 for _name in ("CRMU/L", "CRMU/M", "CRMU/H"):
     ZONES[_name] = ZoneRules(
         name=_name.replace("/", "-"),
@@ -639,13 +694,16 @@ for _name in ("CRMU/L", "CRMU/M", "CRMU/H"):
     )
 
 ZONES |= {
-    # Without a special permit CRMU-X allows only houses and townhouses.
+    # Without a special permit CRMU-X allows only houses and townhouses. Its
+    # open space rule covers only apartments, which need that permit.
     "CRMU/X": ZoneRules(
         name="CRMU-X",
         allowed=frozenset(HOUSE_LIKE),
         max_floor_area_ratio=1.50,
         height_set_by="the Old Town North Small Area Plan",
         **(_MIXED_USE_HOUSES | {
+            # Section 5-404 gives townhouses side and rear yards but no front yard.
+            "no_front_yard_for": frozenset({"multi", "townhouse"}),
             "lot_area": _MIXED_USE_HOUSES["lot_area"] | {"townhouse": 1452},
             "lot_width": _MIXED_USE_HOUSES["lot_width"] | {"townhouse": 18},
             "frontage": _MIXED_USE_HOUSES["frontage"] | {"townhouse": 18},
@@ -658,7 +716,10 @@ ZONES |= {
     # King Street retail zone (section 6-700). Homes are allowed only as
     # apartments above or behind the shops, with no lot or yard rules. These
     # are the limits west of South Peyton and Harvard Streets; see
-    # king_street_retail_rules() for the rest of the zone.
+    # king_street_retail_rules() for the rest of the zone. The zone's open
+    # space rule, 150 sq ft per home, may be met on balconies, terraces and
+    # roofs, which the map can't see, so it isn't checked. Its rear
+    # setback for new buildings next to homes is a site plan rule.
     "KR": ZoneRules(
         name="KR", allowed=frozenset({"multi"}), no_front_yard_for=ALL_TYPES,
         max_floor_area_ratio=2.0,
@@ -732,6 +793,11 @@ class PlannedDistrict:
       are not set by rule; the approved site plan drawings fix them.
     - Without it: an ordinary zone's rules, sometimes with a changed floor
       area or height limit. These are the "fallback" fields.
+
+    Districts missing from the table below have no homes in the city's
+    parcel data: 6 and 12 (whose fallback, the NR zone, isn't in ZONES
+    either) hold only shops and offices, and the parcel data gives the rest
+    of the ordinance's table no lots at all.
     """
 
     name: str
@@ -961,7 +1027,9 @@ RB_HISTORIC = ZoneRules(
     front_at_lot_line_unless_approved=True,
     side_yards_by_lot_width=True,
     rear_yard=Yard(8, 1.0),
-    max_floor_area_ratio=1.50,
+    # The looser limit is for houses, twins and townhouses only; older
+    # apartment buildings keep the zone's usual 0.75.
+    max_floor_area_ratio={kind: 1.50 for kind in HOUSE_LIKE} | {"multi": 0.75},
     max_height={kind: 45 for kind in ALL_TYPES},
     min_open_space=0.35,
     long_townhouse_rows=ZONES["RB"].long_townhouse_rows,

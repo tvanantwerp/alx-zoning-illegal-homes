@@ -44,6 +44,7 @@ def test_zone_without_lot_size_rule_says_no_rule():
     _, findings = check(lot, box(20, 35, 60, 75), "CRMU/L", home_type="multi")
     row = rows(findings)["lot_area"]
     assert row.status == NO_RULE and "minimum lot size" in row.explanation
+    assert "for an apartment or condo building." in row.explanation
 
 
 def test_no_street_leaves_frontage_and_width_unchecked():
@@ -398,6 +399,16 @@ def test_rm_open_space_is_checked_for_every_home_type(home_type):
     # The 5 ft strips beside the home are too narrow to count.
     assert row.measured == pytest.approx((30 * 20 + 30 * 40) / 3000)
     assert "June 24, 1992" in row.about and "driveway" in row.about
+
+
+@pytest.mark.parametrize("home_type", ["single", "townhouse", "multi"])
+def test_cd_open_space_is_checked_for_every_home_type(home_type):
+    lot = box(0, 0, 18, 100)
+    reasons, f = check(lot, box(0, 10, 18, 90), "CD", home_type=home_type,
+                       neighbors=between_neighbors(lot))
+    row = rows(f)["open_space"]
+    assert "open_space" in reasons and row.status == FAILS
+    assert row.required == pytest.approx(0.35) and "June 24, 1992" in row.about
 
 
 def test_rm_lot_mostly_covered_fails_open_space():

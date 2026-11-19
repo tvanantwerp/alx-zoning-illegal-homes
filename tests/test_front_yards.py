@@ -171,6 +171,13 @@ def test_mixed_use_apartments_need_no_front_yard():
     assert row.status == NOT_REQUIRED
 
 
+def test_crmu_x_townhouses_need_no_front_yard():
+    row, _ = _with_block_face("CRMU/X", box(10, 5, 50, 50), [20, 28], home_type="townhouse")
+    assert row.status == NOT_REQUIRED
+    row, _ = _with_block_face("CRMU/L", box(10, 5, 50, 50), [20, 28], home_type="townhouse")
+    assert row.status == FAILS
+
+
 def test_rm_front_yard_shows_the_lot_line_where_the_block_is_at_it():
     row, findings = _with_block_face("RM", box(10, 10, 50, 50), [0.5, 1, 8],
                                      field="block_side", home_type="townhouse")
