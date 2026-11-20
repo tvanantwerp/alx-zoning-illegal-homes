@@ -88,23 +88,25 @@ class BlockFaces:
 
         None when the lot doesn't face that street or has no main building.
         """
-        key = (lot_id, street)
-        if key not in self._setbacks:
-            self._setbacks[key] = self._measure(lot_id, street)
-        return self._setbacks[key]
+        return min(self._building_setbacks(lot_id, street), key=lambda s: s.distance,
+                   default=None)
 
-    def _measure(self, lot_id, street):
+    def _building_setbacks(self, lot_id, street):
+        key = (lot_id, street)
+        if key in self._setbacks:
+            return self._setbacks[key]
         lines = self._lines_for(lot_id)
-        buildings = self._buildings.get(lot_id)
-        if lines is None or street not in lines.fronts or not buildings:
-            return None
-        front = front_for_yard(lines, street)
-        distance, shape, is_home = min(
-            ((shape.distance(front), shape, is_home) for shape, is_home in buildings),
-            key=lambda found: found[0])
-        on_building, on_line = nearest_points(shape, front)
-        return FrontSetback(lot_id, street, distance, LineString([on_building, on_line]),
-                            is_home)
+        buildings = self._buildings.get(lot_id, [])
+        setbacks = []
+        if lines and street in lines.fronts:
+            front = front_for_yard(lines, street)
+            for shape, is_home in buildings:
+                gap = LineString(nearest_points(shape, front))
+                if any(other is not shape and gap.crosses(other) for other, _ in buildings):
+                    continue
+                setbacks.append(FrontSetback(lot_id, street, gap.length, gap, is_home))
+        self._setbacks[key] = setbacks
+        return setbacks
 
     def beside(self, lot_id: int, street: str) -> list[int]:
         """The lots touching this one that face the same street right alongside it.
@@ -150,35 +152,30 @@ class BlockFaces:
         if lines is None or street not in lines.fronts:
             return []
         beside = self.beside(lot_id, street)
-        pieces = street_pieces(lines, street)
-        for other in beside:
-            pieces += street_pieces(self._lines_for(other), street)
-        front = lines.fronts[street]
-        center = lines.centerlines[street]
-        to_center = front.distance(center.near)
-        if center.far is not None:
-            to_center = (to_center + front.distance(center.far)) / 2
-        reach = min(2 * to_center + ACROSS_PAST_CENTER, 2 * MAX_STREET_DISTANCE)
-        band = facing_band(pieces, reach)
-        shapely.prepare(band)
-        found = []
+        found = set()
         skip = {lot_id, *beside}
-        for other in self._tree.query(band, predicate="intersects"):
-            other = int(other)
-            if other in skip:
-                continue
-            other_lines = self._lines_for(other)
-            other_front = other_lines.fronts.get(street) if other_lines is not None else None
-            if other_front is None:
-                continue
-            facing = other_front.intersection(band)
-            if facing.length < ACROSS_MIN_OVERLAP:
-                continue
-            # Only a lot on the far side of the street's middle is across it.
-            crossing = LineString([front.centroid, facing.centroid])
-            if crossing.intersects(center.near):
-                found.append(other)
-        return found
+        for source in [lot_id, *beside]:
+            source_lines = self._lines_for(source)
+            front = source_lines.fronts[street]
+            center = source_lines.centerlines[street]
+            to_center = front.distance(center.near)
+            if center.far is not None:
+                to_center = (to_center + front.distance(center.far)) / 2
+            reach = min(2 * to_center + ACROSS_PAST_CENTER, 2 * MAX_STREET_DISTANCE)
+            band = facing_band(street_pieces(source_lines, street), reach)
+            for other in self._tree.query(band, predicate="intersects"):
+                other = int(other)
+                if other in skip or other in found:
+                    continue
+                other_lines = self._lines_for(other)
+                other_front = other_lines.fronts.get(street) if other_lines else None
+                if other_front is None:
+                    continue
+                facing = other_front.intersection(band)
+                if facing.length >= ACROSS_MIN_OVERLAP and LineString(
+                        [front.centroid, facing.centroid]).intersects(center.near):
+                    found.add(other)
+        return sorted(found)
 
     def contextual(self, lot_id: int, street: str) -> list[FrontSetback]:
         """The lot's contextual block face along one street, with each neighbor's setback.
@@ -216,5 +213,5 @@ class BlockFaces:
             for member in chain:
                 self._block_sides[(member, street)] = chain
         chain = self._block_sides[key]
-        found = (self.front_setback(other, street) for other in sorted(chain) if other != lot_id)
-        return [setback for setback in found if setback is not None]
+        return [setback for other in sorted(chain) if other != lot_id
+                for setback in self._building_setbacks(other, street)]

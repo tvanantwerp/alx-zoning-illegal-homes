@@ -793,6 +793,11 @@ def _contextual_front_row(facts, record, closest, home):
         return min(min(n.distance for n in front.neighbors), cap)
 
     worst = min(judged, key=lambda front: front.gap.gap - needs(front))
+    too_deep = [front for front in judged
+                if front.gap.gap > max(n.distance for n in front.neighbors) + DISTANCE_MARGIN
+                and min(n.distance for n in front.neighbors) <= cap]
+    if worst.gap.gap + DISTANCE_MARGIN >= needs(worst) and too_deep:
+        worst = too_deep[0]
     required = needs(worst)
     distances = [n.distance for n in worst.neighbors]
     homes_only = all(n.is_home for n in worst.neighbors)
@@ -802,7 +807,10 @@ def _contextual_front_row(facts, record, closest, home):
             worst.label, worst.gap.gap, distances, homes_only, rules.label, cap))
     row = _yard_row(facts, "front", FAILS if fails else PASSES, worst.gap, required,
                     detail="needs")
+    if not fails and (too_deep or alone):
+        row.status = NOT_CHECKED
     row.explanation = " ".join(filter(None, [
+        "The setback exceeds the measured range. Its upper bound is unverified." if too_deep and not fails else None,
         contextual_front_yard_explanation(worst.label, worst.gap.gap, distances, homes_only,
                                           rules.label, cap, len(judged) > 1, alone),
         margin_explanation(row)]))

@@ -101,9 +101,9 @@ def test_home_within_the_neighbors_range_passes():
     assert row.status == PASSES and row.required == pytest.approx(20)
 
 
-def test_home_set_back_further_than_its_neighbors_passes():
+def test_home_set_back_further_than_its_neighbors_is_unverified():
     row, _ = _with_block_face("R-8", box(10, 40, 50, 80), [20, 28])
-    assert row.status == PASSES
+    assert row.status == NOT_CHECKED
 
 
 def test_a_little_short_of_the_neighbors_passes_on_the_margin():
