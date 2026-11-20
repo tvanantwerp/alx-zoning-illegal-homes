@@ -188,6 +188,17 @@ def test_crossing_outline_leaves_yards_unchecked():
     assert "crosses the lot line" in r["yard:left"].explanation
 
 
+def test_no_street_leaves_an_exempt_front_yard_exempt():
+    lot, home = YARD_LOT, box(20, 5, 60, 65)
+    facts = LotFacts(shape=lot, area=lot.area, rules=ZONES["RD"], home_type="multi",
+                     homes=[Home(shape=home, height=20, floor_area=1000)],
+                     lines=classify(lot, None, [], None), all_buildings=[home])
+    findings = check_lot(facts)
+    assert rows(findings)["yard:front"].status == NOT_REQUIRED
+    assert "yard:nearest" not in rows(findings)
+    assert all(r.kind != "yards" for r in findings.reasons)
+
+
 def test_no_street_leaves_yards_unchecked_but_measures_the_nearest_line():
     lot = YARD_LOT
     facts = LotFacts(shape=lot, area=lot.area, rules=ZONES["R-8"], home_type="single",
