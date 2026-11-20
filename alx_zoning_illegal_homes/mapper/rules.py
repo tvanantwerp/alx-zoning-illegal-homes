@@ -651,7 +651,7 @@ def route_1_properties_fallback(on_reed_avenue: bool,
     return "OC", {}
 
 
-# Half the width of a one-acre square, the CRMU-H part of district 15.
+# Approximate the one-acre corner from the street intersection; the boundary plat is unavailable.
 FIRST_AND_FAYETTE_RADIUS = 250.0
 
 

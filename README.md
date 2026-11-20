@@ -96,7 +96,8 @@ those boundaries are approximated:
 - Duke Street / Carlyle: a looser floor space limit within 1,000 ft of the
   King Street Metro station.
 - Braddock Gateway: CRMU-H on one acre at First and Fayette Streets, OCM(50)
-  on the rest.
+  on the rest. The map approximates the corner parcel using a 250 ft radius
+  from the street intersection.
 
 Metro station locations aren't in the city's data, so `places.py` lists them.
 
