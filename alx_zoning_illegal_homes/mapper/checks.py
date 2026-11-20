@@ -1336,9 +1336,16 @@ def _check_height(facts, findings, older_lot=False):
     roof_rule = None
     if higher and usual and not older_lot:
         fails_usual = height > usual + HEIGHT_MARGIN and limit > usual
-        roof_rule = pitched_roof_height_explanation(
-            rules.label, usual, higher, estimate.shape == FLAT,
-            height if fails_usual else None)
+        whole_roof = next(found.shape for home, found in known if home is tallest)
+        if whole_roof == "unknown":
+            roof_rule = (f"The roof shape is unknown. The height limit is {_feet(usual)}, "
+                         f"or {_feet(higher)} for a qualifying pitched roof.")
+            if fails_usual and row.status == PASSES:
+                row.status = NOT_CHECKED
+        else:
+            roof_rule = pitched_roof_height_explanation(
+                rules.label, usual, higher, whole_roof == FLAT,
+                height if fails_usual else None)
     row.explanation = " ".join(filter(None, [
         note,
         "Some building heights are unknown." if missing_height else None,

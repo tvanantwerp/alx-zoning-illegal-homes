@@ -388,8 +388,8 @@ ZONES = {
         side_yards_by_lot_width=True,
         rear_yard=Yard(16, 1 / 2),
         max_floor_area_ratio=1.50,
-        max_height={kind: 35 for kind in HOUSE_LIKE},
-        pitched_roof_height={kind: 45 for kind in HOUSE_LIKE},
+        max_height={kind: 35 for kind in ALL_TYPES},
+        pitched_roof_height={kind: 45 for kind in ALL_TYPES},
         # The zone also lets a lot keep the open space it had on June 24,
         # 1992 if that was less. That says nothing about building on an
         # empty lot today, so only the note mentions it.
