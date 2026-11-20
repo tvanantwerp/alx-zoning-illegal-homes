@@ -208,6 +208,15 @@ def test_rm_corner_townhouse_skips_the_shared_wall_line_past_the_home():
     assert rear.measured == pytest.approx(20)
 
 
+def test_rm_corner_recess_beside_a_partial_shared_wall():
+    home = box(0.5, 0.5, 40, 27).union(box(0.5, 27, 35, 34))
+    _, findings = check(RM_CORNER_LOT, home, "RM", home_type="townhouse",
+                        neighbors=unary_union([RM_CORNER_EAST, RM_CORNER_BEHIND]),
+                        streets=[SIDE_STREET], attached=box(40, 0, 60, 27))
+    rear = rows(findings)["yard:rear"]
+    assert rear.status == FAILS and rear.measured == pytest.approx(5)
+
+
 def test_rm_corner_townhouse_side_rows_point_to_the_rear_row():
     r = rows(rm_corner(40)[1])
     sides = {r["yard:left"].status, r["yard:right"].status}

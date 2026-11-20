@@ -236,7 +236,7 @@ def _wall_runs(line, outline):
     return runs
 
 
-def _shared_line(line, shape, neighbor):
+def _shared_line(line, shape, neighbor, min_run=4):
     """Return the runs of lot line alongside both outlines for at least four feet."""
     if neighbor is None or line.distance(shape) >= SHARED_WALL_GAP or line.distance(
             neighbor) >= SHARED_WALL_GAP:
@@ -246,7 +246,7 @@ def _shared_line(line, shape, neighbor):
     for start, end in _wall_runs(line, shape):
         for other_start, other_end in other_runs:
             lo, hi = max(start, other_start), min(end, other_end)
-            if hi - lo >= 4:
+            if hi - lo >= min_run:
                 shared.append(substring(line, lo, hi))
     return unary_union(shared)
 
@@ -519,6 +519,7 @@ class YardGap:
     # The roof of the part of the home this gap is measured from, whose
     # height as the ordinance measures it sets the setback ratio's depth.
     roof: RoofHeight | None = None
+    facing_only: bool = False
 
     @property
     def height(self) -> float:
@@ -532,6 +533,18 @@ def _nearest_line(home, line) -> LineString:
     return LineString([on_home, on_line])
 
 
+def _facing_gap(shape, line):
+    """Measure only the wall facing the interior of this stretch of boundary."""
+    if line.length <= 0.02:
+        return None
+    interior = substring(line, 0.01, line.length - 0.01)
+    reach = max(shape.length, shape.distance(line) + shape.length)
+    facing = shape.intersection(interior.buffer(reach, cap_style="flat"))
+    if facing.area <= 0:
+        return None
+    return LineString(nearest_points(facing, line))
+
+
 def _part_gaps(gap: YardGap, parts: list[RoofHeight]) -> list[YardGap]:
     """The same side's gap, measured again from each part of the home.
 
@@ -543,6 +556,14 @@ def _part_gaps(gap: YardGap, parts: list[RoofHeight]) -> list[YardGap]:
     """
     measured = []
     for roof in parts:
+        if gap.facing_only:
+            facing = [(_facing_gap(roof.outline, line), is_open)
+                      for line, is_open in zip(gap.lines, gap.lines_open)]
+            choices = [(g.length, g, is_open) for g, is_open in facing if g is not None]
+            if choices:
+                distance, segment, is_open = min(choices, key=lambda entry: entry[0])
+                measured.append(YardGap(distance, is_open, segment, gap.lines, gap.lines_open, roof))
+            continue
         distance, line, is_open = min(
             ((line.distance(roof.outline), line, is_open)
              for line, is_open in zip(gap.lines, gap.lines_open)),
@@ -605,12 +626,27 @@ def _yard_gaps(facts, home) -> tuple[dict, dict]:
         else:
             runs_along_front = abs(piece.direction @ along) > np.cos(np.radians(45))
             behind_home = (piece.midpoint - front_anchor) @ inward > rear_starts
-            on_shared_wall = not _shared_line(
-                piece.line, home.shape, facts.attached_neighbors).is_empty
-            if remainder_is_rear and not on_shared_wall:
-                if not _faces(piece, outline) or _behind_neighbor(facts, home, piece):
-                    continue
-                key = "rear"
+            wall = _shared_line(piece.line, home.shape, facts.attached_neighbors,
+                                min_run=0.01 if remainder_is_rear else 4)
+            on_shared_wall = not wall.is_empty
+            if remainder_is_rear:
+                if on_shared_wall:
+                    key = _side_of(facts, piece.midpoint, home)
+                    shared_wall.setdefault(key, []).append(wall)
+                for line in shapely.get_parts(piece.line.difference(wall)):
+                    nearest = _facing_gap(home.shape, line)
+                    if nearest is None or _behind_neighbor(facts, nearest):
+                        continue
+                    is_open = piece.kind == "open"
+                    if "rear" not in gaps:
+                        gaps["rear"] = YardGap(nearest.length, is_open, nearest, [], [],
+                                              facing_only=True)
+                    entry = gaps["rear"]
+                    entry.lines.append(line)
+                    entry.lines_open.append(is_open)
+                    if nearest.length < entry.gap:
+                        entry.gap, entry.on_open, entry.nearest = nearest.length, is_open, nearest
+                continue
             elif has_rear and runs_along_front and behind_home:
                 if on_shared_wall:
                     shared_wall.setdefault("rear", []).append(piece.line)
@@ -636,19 +672,7 @@ def _yard_gaps(facts, home) -> tuple[dict, dict]:
     return gaps, shared_wall
 
 
-def _faces(piece, outline, overlap=1.0) -> bool:
-    """Whether a lot line piece lies straight across from part of the home.
-
-    True when the home and the piece overlap by more than `overlap` feet
-    measured along the piece.
-    """
-    along = piece.direction
-    ends = np.asarray(piece.line.coords)[:, :2] @ along
-    spread = outline @ along
-    return min(ends.max(), spread.max()) - max(ends.min(), spread.min()) > overlap
-
-
-def _behind_neighbor(facts, home, piece) -> bool:
+def _behind_neighbor(facts, gap) -> bool:
     """Whether a home attached to this one fills the gap between it and a lot line piece.
 
     A yard is open ground between a building and its lot line. When the
@@ -658,7 +682,6 @@ def _behind_neighbor(facts, home, piece) -> bool:
     """
     if facts.attached_neighbors is None:
         return False
-    gap = _nearest_line(home, piece.line)
     return gap.intersection(facts.attached_neighbors).length > 0.5 * gap.length
 
 
@@ -734,7 +757,13 @@ def _check_yards(facts, findings, width):
             _keep_worst(rows, _yard_row(facts, role, NOT_CHECKED,
                                         explanation=CROSSES_LOT_LINE))
 
+    lot_neighbors = facts.attached_neighbors
     for home in homes:
+        if _corner_remainder_is_rear(facts) and lot_neighbors is not None:
+            touching_homes = [n for n in shapely.get_parts(lot_neighbors)
+                              if home.shape.distance(n) <= 1.5]
+            facts = replace(facts, attached_neighbors=unary_union(touching_homes)
+                            if touching_homes else None)
         gaps, shared = _yard_gaps(facts, home)
         estimate = _home_height(facts, home)
         parts = estimate.parts if estimate is not None else []
