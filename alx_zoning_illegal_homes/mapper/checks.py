@@ -687,9 +687,16 @@ def _check_yards_without_front(facts, findings, homes):
     the two fixed minimums and skip homes that share a wall. The four usual
     yard rows are left unchecked; the nearest lot line gets a row of its own.
     """
-    findings.results += [_yard_row(facts, role, NOT_CHECKED, explanation=NO_STREET)
-                         for role in YARD_ROLES]
     rules, kind = facts.rules, facts.home_type
+    exempt = kind in rules.no_front_yard_for
+    for role in YARD_ROLES:
+        if role == "front" and exempt:
+            findings.results.append(_yard_row(facts, role, NOT_REQUIRED,
+                                              explanation=no_front_yard_explanation(rules)))
+        else:
+            findings.results.append(_yard_row(facts, role, NOT_CHECKED, explanation=NO_STREET))
+    if exempt:
+        return  # The closest edge could be the exempt front.
     if not homes or facts.attached_neighbors is not None or rules.side_yards_by_lot_width:
         return
     minimums = [yard.minimum for yard in
