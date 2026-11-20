@@ -192,8 +192,11 @@ def explain_margin(results: list[RuleResult]) -> None:
             row.explanation = margin_explanation(row)
 
 
-def height_explanation(peak: float, height: float, why: str) -> str:
+def height_explanation(estimate) -> str:
     """Give a home's roof peak and its height as the zoning rules measure it, and how it was guessed."""
+    peak, height, why = estimate.peak, estimate.height, estimate.why
+    if estimate.shape == "unknown":
+        return f"Estimated height: {format_feet(height)}. {why}"
     if height < peak:
         numbers = (f"Roof peak about {format_feet(peak)}; measured the ordinance's way, "
                    f"about {format_feet(height)}.")

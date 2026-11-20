@@ -61,7 +61,7 @@ FLAT, PITCHED, UNKNOWN = "flat", "pitched", "unknown"
 class RoofHeight:
     """One roof's peak and its height as the ordinance measures it, in feet.
 
-    `shape` is "flat" or "pitched". `why` is a plain-language sentence
+    `shape` is "flat", "pitched", or "unknown" for a stories-only estimate. `why` is a plain-language sentence
     saying how the shape and eaves were guessed. `eaves` is the estimated
     height of the eaves, or None when it wasn't estimated (a flat roof
     with no story count). `outline` is the part of the building under

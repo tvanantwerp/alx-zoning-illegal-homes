@@ -927,7 +927,7 @@ def _check_height(facts, findings):
             f"Too tall: {measured}, but the {facts.rules.label} allows {_feet(limit)}.",
         ))
     row.explanation = " ".join(filter(None, [
-        height_explanation(estimate.peak, height, estimate.why), margin_explanation(row)]))
+        height_explanation(estimate), margin_explanation(row)]))
 
 
 def _polygons(shape):
