@@ -52,6 +52,22 @@ def test_rows_meeting_at_a_corner_stay_apart():
     assert {row.homes for row in rows.values()} == {5}
 
 
+def test_small_corner_overlap_does_not_merge_rows():
+    first = row_of(5)
+    second = [(5 + i, 5 + i, box(98.3 + i * 20, 38.3, 118.3 + i * 20, 78.3))
+              for i in range(5)]
+    rows = rows_for(first + second, [ROW] * 10)
+    assert {row.homes for row in rows.values()} == {5}
+
+
+def test_overlength_row_takes_precedence_on_a_lot_in_two_rows():
+    short = row_of(10, width=18)
+    long = [(10 + i, (0 if i == 0 else 9 + i), box(i * 26, 100, (i + 1) * 26, 140))
+            for i in range(9)]
+    row = rows_for(short + long, [ROW] * 18)[0]
+    assert row.homes == 9 and row.length == pytest.approx(234)
+
+
 def test_home_drawn_across_two_lots_counts_once_per_lot():
     # Each outline is drawn 8 ft off its lot lines, so it is cut into two pieces.
     parts = []

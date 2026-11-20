@@ -362,7 +362,7 @@ def _home_sites(parts: pd.DataFrame, lots: gpd.GeoDataFrame) -> dict:
 
     Some condo townhouses are recorded as a unit parcel plus a second parcel
     beside it, each holding part of the same building. Lots holding pieces of
-    exactly the same buildings, at least one of them a condo, are one site.
+    the same buildings are one site only with matching condo addresses.
     Lots beside each other in an ordinary row hold different sets, since each
     home's outline is cut along its own lot lines. Returns each lot id's
     site, keyed by lot id.
@@ -396,7 +396,7 @@ def _townhouse_rows(home_parts: gpd.GeoDataFrame, lots: gpd.GeoDataFrame) -> dic
     still joins the homes on either side of it.
 
     Returns a TownhouseRow for each lot with homes, keyed by lot id. Where a
-    lot's homes stand in several rows, it gets the one with the most homes.
+    lot's homes stand in several rows, prioritize a row too long for a permit.
     """
     parts = home_parts[["building_id", "lot_id", "geometry"]].reset_index(drop=True)
     shapes = parts.geometry.values
