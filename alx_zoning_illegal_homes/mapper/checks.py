@@ -905,8 +905,11 @@ def open_and_usable_area(facts: LotFacts, covered) -> tuple[float, float]:
         open_land = shapely.difference(open_land, _polygons(facts.paved),
                                        grid_size=OVERLAY_GRID)
     open_land = _polygons(open_land)
-    opened = (open_land.buffer(-MIN_OPEN_WIDTH / 2, join_style="mitre")
-              .buffer(MIN_OPEN_WIDTH / 2, join_style="mitre"))
+    # Leave a sliver for a strip exactly eight feet wide. At this grid
+    # precision the next narrower representable strip still disappears.
+    radius = (MIN_OPEN_WIDTH - OVERLAY_GRID / 2) / 2
+    opened = (open_land.buffer(-radius, join_style="mitre")
+              .buffer(radius, join_style="mitre"))
     usable = shapely.intersection(opened, open_land, grid_size=OVERLAY_GRID)
     credit = 0.0
     if rules.parking_counted_as_open and facts.parking is not None:

@@ -317,6 +317,14 @@ def test_strips_narrower_than_8_ft_are_not_open_space():
     assert row.measured == pytest.approx((40 * 60 + 13 * 40) / 4000)
 
 
+@pytest.mark.parametrize("width, counted", [(7.99, 0), (8, 320), (8.01, 320.4)])
+def test_eight_foot_open_strip(width, counted):
+    lot = box(0, 0, 20, 40)
+    home = box(0, 0, 20 - width, 40)
+    row = rows(check_lot(open_space_facts("RM", "single", lot, home)))["open_space"]
+    assert row.measured * lot.area == pytest.approx(counted)
+
+
 def test_driveways_and_parking_are_not_open_space():
     lot = box(0, 0, 40, 100)
     home = box(10, 30, 30, 70)

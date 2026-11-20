@@ -36,7 +36,12 @@ def _get_page(url: str, params: dict, attempts: int = 5) -> list:
         try:
             response = requests.get(url, params=params, timeout=120)
             response.raise_for_status()
-            return response.json().get("features", [])
+            page = response.json()
+            if (not isinstance(page, dict) or "error" in page
+                    or page.get("type") != "FeatureCollection"
+                    or not isinstance(page.get("features"), list)):
+                raise ValueError("ArcGIS returned an invalid GeoJSON feature collection")
+            return page["features"]
         except (requests.RequestException, ValueError):
             if attempt == attempts - 1:
                 raise
