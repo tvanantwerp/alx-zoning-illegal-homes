@@ -427,7 +427,7 @@ ZONES |= {
     "UT": ZoneRules(name="UT (utility)", allowed=frozenset()),
 }
 
-def king_street_retail_rules(east_of_peyton_and_harvard: bool) -> ZoneRules:
+def king_street_retail_rules(east_of_peyton_and_harvard: bool, residential_only=False) -> ZoneRules:
     """The KR zone's rules for a lot on one side or the other of its dividing line.
 
     The zone sets separate floor area limits for homes and for shops and
@@ -445,6 +445,9 @@ def king_street_retail_rules(east_of_peyton_and_harvard: bool) -> ZoneRules:
     rules = ZONES["KR"]
     if not east_of_peyton_and_harvard:
         return rules
+    if residential_only:
+        return replace(rules, max_floor_area_ratio=1.25, max_height={"multi": 50},
+                       floor_area_note="City records identify residential use throughout this lot.")
     return replace(rules, max_floor_area_ratio=1.5, max_height={"multi": 50})
 
 

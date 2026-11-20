@@ -189,7 +189,7 @@ def _place_buildings(lots, buildings, pairs):
         rows, columns=["building_id", "lot_id", "geometry", "share"],
         geometry="geometry", crs=lots.crs)
     details = buildings.set_index("building_id")[
-        ["is_home", "BTYPE", "BSIZE", "BUNITS", "STORIES", "YEARBLT", "height",
+        ["is_home", "BUSE", "BTYPE", "BSIZE", "BUNITS", "STORIES", "YEARBLT", "height",
          "footprint", "sections"]]
     return placed.join(details, on="building_id")
 
@@ -419,7 +419,9 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
         if zone is not None:
             rules = rules_for(zone, is_historic)
             if zone == "KR" and kr_is_east is not None:
-                rules = king_street_retail_rules(kr_is_east(lot_points.loc[lot_id]))
+                rules = king_street_retail_rules(
+                    kr_is_east(lot_points.loc[lot_id]),
+                    residential_only=on_lot["BUSE"].eq("Residential").fillna(False).all())
         else:
             sub_zone = None
             if isinstance(label, str) and label.strip().upper() == "CDD#10":
