@@ -130,6 +130,12 @@ def test_outbuilding_floor_space_takes_one_story_unless_tall_enough_for_more():
     assert _outbuilding(0, pd.Series({**tall, "sections": []})).floor_area == pytest.approx(160)
 
 
+def test_low_section_alone_does_not_confirm_two_outbuilding_stories():
+    part = pd.Series({"STORIES": 2, "footprint": 200, "share": 1, "BTYPE": "Garage or shed",
+                      "height": float("nan"), "sections": [(box(0, 0, 2, 5), 11)]})
+    assert _outbuilding(0, part).floor_area == pytest.approx(160)
+
+
 def test_shared_garage_apportions_floor_area_to_both_lots():
     lots = [box(0, 0, 50, 50), box(50, 0, 100, 50)]
     placed = place(lots, [box(30, 10, 70, 30)], is_home=False)
