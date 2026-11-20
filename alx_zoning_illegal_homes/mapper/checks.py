@@ -1266,10 +1266,7 @@ def _check_height_near_street(facts, findings):
             f"Too tall this close to the street: {which} about {_feet(worst.distance)} from "
             f"the center of {label}; at most {_feet(worst.allowed)} is allowed there.",
         ))
-    missing_height = (len(known) < len(facts.homes) or any(
-        not home.height and not home.stories and
-        home.shape.difference(unary_union([p.outline for p in estimate.parts])).area >= 5
-        for home, estimate in known))
+    missing_height = _missing_home_height(facts, known)
     if row.status == PASSES and (unplaced or missing_height):
         row.status = NOT_CHECKED
     row.explanation = " ".join(filter(None, [
