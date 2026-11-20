@@ -265,13 +265,12 @@ def test_rm_open_space_is_checked_for_every_home_type(home_type):
     assert "June 24, 1992" in row.about and "Driveways" in row.about
 
 
-def test_rm_lot_mostly_covered_fails_open_space():
+def test_rm_lot_mostly_covered_depends_on_historic_open_space():
     lot = box(0, 0, 18, 100)
     reasons, f = check(lot, box(0, 10, 18, 90), "RM", home_type="townhouse",
                        neighbors=between_neighbors(lot))
-    assert "open_space" in reasons
-    assert rows(f)["open_space"].status == FAILS
-    assert any("35% must be left open" in r.text for r in f.reasons)
+    assert "open_space" not in reasons
+    assert rows(f)["open_space"].status == NOT_CHECKED
 
 
 def test_small_rm_lot_needs_at_least_300_sq_ft_open():

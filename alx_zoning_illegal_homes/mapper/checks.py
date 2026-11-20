@@ -114,6 +114,7 @@ class LotFacts:
     year_built: int | None = None
     # Whether the lot lies within 1,000 ft of Eisenhower Avenue's centerline.
     near_eisenhower_avenue: bool = False
+    open_area_1992: float | None = None  # Square feet on June 24, 1992.
 
 
 @dataclass
@@ -889,7 +890,10 @@ def _check_open_space(facts, findings):
     too_much = bool(rules.max_coverage) and share > rules.max_coverage + COVERAGE_MARGIN
     # A floor in sq ft is turned into a share of this lot, so one number and
     # one margin cover both parts of the rule.
-    need_open = max(rules.min_open_space or 0.0,
+    target = rules.min_open_space or 0.0
+    if rules.historic_open_space and facts.open_area_1992 is not None:
+        target = min(target, facts.open_area_1992 / facts.shape.area)
+    need_open = max(target,
                     rules.min_open_space_area / facts.shape.area)
     too_little = (not too_much and need_open > 0
                   and 1 - share < need_open - COVERAGE_MARGIN)
@@ -904,6 +908,11 @@ def _check_open_space(facts, findings):
     row.status = FAILS if (too_much or too_little) else PASSES
     row.buildings = list(range(len(facts.all_buildings)))
     findings.results.append(row)
+    if (too_little and rules.historic_open_space and facts.open_area_1992 is None
+            and row.measured + COVERAGE_MARGIN >= rules.min_open_space_area / facts.shape.area):
+        row.status = NOT_CHECKED
+        row.explanation = "The required open space depends on the unknown June 24, 1992 amount."
+        return
     if too_much:
         findings.reasons.append(Reason(
             "open_space",
