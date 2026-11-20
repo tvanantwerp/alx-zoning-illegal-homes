@@ -245,26 +245,6 @@ def _check_width_and_frontage(facts, findings, position):
         detail=(f"measured {_feet(measured_at)} back" if measured_at > 0
                 else "measured at the street"))
     findings.results += [frontage_row, width_row]
-    if lines.frontage is None:
-        frontage_row.explanation = width_row.explanation = NO_STREET
-        findings.notes.append(
-            "Could not find a public street next to this lot, so its width "
-            "and street frontage were not checked."
-        )
-        return None
-    width = lot_width(facts.shape, lines, measured_at)
-    findings.measurements["frontage"] = lines.frontage
-    findings.measurements["width"] = width
-    frontage_row.shapes["line"] = lines.front_line
-    width_line = (lot_width_line(facts.shape, lines, measured_at) if measured_at > 0
-                  else lines.front_line)
-    if width_line is not None:
-        width_row.shapes["line"] = width_line
-    # Several homes on one shared lot have no lot lines of their own.
-    if kind == "townhouse" and facts.units > 1:
-        frontage_row.explanation = width_row.explanation = SHARED_LOT
-        return width
-
     if position == "corner":
         need_width = rules.corner_lot_width.get(kind, rules.lot_width.get(kind))
     elif position == "end":
@@ -281,6 +261,34 @@ def _check_width_and_frontage(facts, findings, position):
     if lines.front_is_curved and kind in rules.curved_frontage:
         need_frontage = rules.curved_frontage[kind]
 
+    if not need_frontage:
+        frontage_row.status = NO_RULE
+        frontage_row.explanation = no_rule_explanation(
+            rules.label, HOME_TYPE_NAMES[kind], "minimum street frontage")
+    if lines.frontage is None:
+        width_row.explanation = NO_STREET
+        if need_frontage:
+            frontage_row.explanation = NO_STREET
+        findings.notes.append(
+            "Could not find a public street next to this lot, so its width "
+            "and street frontage were not checked."
+        )
+        return None
+    width = lot_width(facts.shape, lines, measured_at)
+    findings.measurements["frontage"] = lines.frontage
+    findings.measurements["width"] = width
+    frontage_row.shapes["line"] = lines.front_line
+    width_line = (lot_width_line(facts.shape, lines, measured_at) if measured_at > 0
+                  else lines.front_line)
+    if width_line is not None:
+        width_row.shapes["line"] = width_line
+    # Several homes on one shared lot have no lot lines of their own.
+    if kind == "townhouse" and facts.units > 1:
+        width_row.explanation = SHARED_LOT
+        if need_frontage:
+            frontage_row.explanation = SHARED_LOT
+        return width
+
     street = lines.primary_street
     frontage_row.about = frontage_about(street, rules.label, need_frontage, measured_at)
     if need_width:
@@ -295,10 +303,6 @@ def _check_width_and_frontage(facts, findings, position):
             rules.label, HOME_TYPE_NAMES[kind], "minimum lot width")
     if need_frontage:
         frontage_row.status, frontage_row.required = PASSES, need_frontage
-    else:
-        frontage_row.status = NO_RULE
-        frontage_row.explanation = no_rule_explanation(
-            rules.label, HOME_TYPE_NAMES[kind], "minimum street frontage")
 
     if need_width and width is not None and width < need_width * (1 - WIDTH_MARGIN):
         width_row.status = FAILS

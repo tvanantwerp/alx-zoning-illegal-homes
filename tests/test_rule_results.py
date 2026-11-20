@@ -199,6 +199,17 @@ def test_no_street_leaves_an_exempt_front_yard_exempt():
     assert all(r.kind != "yards" for r in findings.reasons)
 
 
+def test_rt_townhouse_without_a_street_has_no_frontage_rule():
+    lot = YARD_LOT
+    home = box(10, 15, 45, 55)
+    facts = LotFacts(shape=lot, area=lot.area, rules=ZONES["RT"], home_type="townhouse",
+                     homes=[Home(shape=home, height=20, floor_area=1000)],
+                     lines=classify(lot, None, [], None), all_buildings=[home])
+    result = rows(check_lot(facts))
+    assert result["frontage"].status == NO_RULE
+    assert result["width"].status == NOT_CHECKED
+
+
 def test_no_street_leaves_yards_unchecked_but_measures_the_nearest_line():
     lot = YARD_LOT
     facts = LotFacts(shape=lot, area=lot.area, rules=ZONES["R-8"], home_type="single",
