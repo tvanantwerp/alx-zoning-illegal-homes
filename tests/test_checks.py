@@ -483,6 +483,12 @@ TWIN_HALF = box(0, 30, 18, 70)
 OTHER_HALF = box(-18, 30, 0, 70)
 
 
+def test_point_contact_is_not_a_split_twin_wall():
+    _, findings = check(TWIN_HALF_LOT, box(2, 15, 30, 55), "R-5", home_type="semi",
+                        neighbors=between_neighbors(TWIN_HALF_LOT), attached=box(30, 55, 55, 88))
+    assert all("lot line through the building" not in r.text for r in findings.reasons)
+
+
 def _twin_half(zone, home_type="semi"):
     return check(TWIN_HALF_LOT, TWIN_HALF, zone, home_type=home_type,
                  neighbors=between_neighbors(TWIN_HALF_LOT), attached=OTHER_HALF)
