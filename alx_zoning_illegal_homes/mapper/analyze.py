@@ -423,7 +423,8 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
             if zone == "KR" and kr_is_east is not None:
                 rules = king_street_retail_rules(
                     kr_is_east(lot_points.loc[lot_id]),
-                    residential_only=on_lot["BUSE"].eq("Residential").fillna(False).all())
+                    residential_only=on_lot["BUSE"].eq("Residential").fillna(False).all(),
+                    near_station=near_a_station(lot.geometry, stations))
         else:
             sub_zone = None
             if isinstance(label, str) and label.strip().upper() == "CDD#10":

@@ -41,6 +41,6 @@ def near_a_station(shape, stations: dict, names=None) -> bool:
 
     `names` limits the test to some stations, as when a rule names one.
     """
-    chosen = names or stations
+    chosen = stations if names is None else names
     return any(shape.distance(stations[name]) <= NEAR_STATION + STATION_MARGIN
                for name in chosen)
