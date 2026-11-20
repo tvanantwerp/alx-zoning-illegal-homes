@@ -406,7 +406,9 @@ def height_near_street_explanation(roof: RoofHeight, distance: float, allowed: f
     whose = "The part of the home closest to its limit" if several else "This home"
     text = (f"{whose} is about {format_feet(distance)} from the center of {label}, so it "
             f"may be up to about {format_feet(allowed)} tall there.")
-    if roof.shape == FLAT:
+    if roof.shape == UNKNOWN:
+        numbers = f"Its estimated height is {format_feet(roof.height)}."
+    elif roof.shape == FLAT:
         numbers = (f"It is about {format_feet(roof.height)} to the top of its roof, "
                    "treated as a flat roof.")
     else:
