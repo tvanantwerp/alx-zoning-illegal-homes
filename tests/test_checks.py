@@ -8,6 +8,30 @@ from alx_zoning_illegal_homes.mapper.rules import normalize_zone, rules_for
 from .helpers import between_neighbors, check
 
 
+@pytest.mark.parametrize("width,corner", [(25, False), (40, True)])
+def test_crmu_side_yard_exempts_exact_width_and_corner_end_lots(width, corner):
+    from shapely.geometry import LineString
+    lot = box(0, 0, width, 100)
+    home = box(3, 20, width, 60)
+    east = box(width, 0, width + 60, 100)
+    side = [("SIDE", LineString([(-25, -100), (-25, 150)]))] if corner else []
+    _, findings = check(lot, home, "CRMU/L", home_type="townhouse",
+                        neighbors=east if corner else between_neighbors(lot),
+                        attached=box(width, 20, width + 20, 60), streets=side)
+    assert findings.measurements["position"] == ("corner" if corner else "end")
+    assert all(row.status == "not_required" for row in findings.results
+               if row.rule in ("yard:left", "yard:right"))
+
+
+def test_w1_tapered_house_lot_width_is_measured_inland():
+    from shapely.geometry import Polygon
+    lot = Polygon([(0, 0), (52, 0), (46, 20), (46, 150), (6, 150), (6, 20)])
+    _, findings = check(lot, box(10, 20, 40, 80), "W-1", neighbors=between_neighbors(lot))
+    rows = {row.rule: row for row in findings.results}
+    assert rows["frontage"].measured >= 52
+    assert rows["width"].measured == pytest.approx(40)
+
+
 def test_roomy_house_passes_everything():
     lot = box(0, 0, 80, 120)  # 9,600 sq ft in R-8
     kinds, _ = check(lot, box(20, 35, 60, 75), "R-8",

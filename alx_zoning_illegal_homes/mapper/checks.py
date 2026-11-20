@@ -238,7 +238,7 @@ def _check_width_and_frontage(facts, findings, position):
     """Check lot width and street frontage. Returns the measured width."""
     rules, kind, lines = facts.rules, facts.home_type, facts.lines
     measured_at = rules.width_measured_at
-    if rules.name == "W-1" and kind in {"single", "semi", "two_unit", "duplex"}:
+    if rules.name == "W-1" and kind in {"single", "semi", "two_unit"}:
         measured_at = 20  # Front building line proxy, as in CRMU.
     frontage_row = RuleResult("frontage", "Street frontage", NOT_CHECKED,
                               unit="ft", measured=lines.frontage)
@@ -591,16 +591,16 @@ def _side_row(facts, record, key, gap, shared, touching, parts, width):
     """A side yard row where the zone sets a side yard depth."""
     rules, kind = facts.rules, facts.home_type
     role = _side_name(facts, key)
-    if key in touching:
-        return _yard_row(facts, role, NOT_CHECKED, explanation=MAPPING_ERROR)
-    if key in shared:
-        return _yard_row(facts, role, NOT_REQUIRED, explanation=SHARED_WALL)
     if rules.name in {"CRMU-L", "CRMU-M", "CRMU-H"} and kind == "townhouse":
         explanation = "Only interior end lots wider than 25 ft require a townhouse side yard."
         if _position(facts) != "end" or (width is not None and width <= 25):
             return _yard_row(facts, role, NOT_REQUIRED, gap, explanation=explanation)
         if width is None:
             return _yard_row(facts, role, NOT_CHECKED, gap, explanation=explanation)
+    if key in touching:
+        return _yard_row(facts, role, NOT_CHECKED, explanation=MAPPING_ERROR)
+    if key in shared:
+        return _yard_row(facts, role, NOT_REQUIRED, explanation=SHARED_WALL)
     if width is not None and width < rules.no_side_yard_below_width:
         return _yard_row(facts, role, NOT_REQUIRED, gap, explanation=(
             f"Lots narrower than {_feet(rules.no_side_yard_below_width)} need "
