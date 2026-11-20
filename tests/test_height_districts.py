@@ -2,7 +2,7 @@
 import pytest
 from shapely.geometry import LineString, box
 
-from alx_zoning_illegal_homes.mapper.rules import HEIGHT_MAP_LIMITS, height_map_limit
+from alx_zoning_illegal_homes.mapper.rules import HEIGHT_MAP_LIMITS, ZONES, height_map_limit
 
 from .helpers import between_neighbors, check
 
@@ -125,3 +125,17 @@ def test_footprint_and_abingdon_amendment():
     areas.loc[0, "limit_text"] = "unrecognized"
     with pytest.raises(ValueError):
         _height_map_areas(homes.iloc[:1], areas)
+
+
+def test_height_sections_on_a_district_boundary_use_their_own_caps():
+    from alx_zoning_illegal_homes.mapper.checks import Home, LotFacts, check_lot
+    from alx_zoning_illegal_homes.mapper.lot_lines import classify
+    west, east = box(30, 40, 50, 100), box(50, 40, 70, 100)
+    home = Home(shape=west.union(east), height=70, sections=[(west, 40), (east, 70)],
+                height_areas=[(west, height_map_limit("HD4", "45'")),
+                              (east, height_map_limit("HD4", "77'"))], floor_area=2000)
+    facts = LotFacts(shape=LOT, area=LOT.area, rules=ZONES["RC"],
+        home_type="multi", homes=[home], lines=classify(LOT, None, [], None),
+        all_buildings=[home.shape])
+    row = next(r for r in check_lot(facts).results if r.rule == "height")
+    assert row.status == "passes" and row.required == 45 and row.measured == 40
