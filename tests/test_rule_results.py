@@ -403,6 +403,19 @@ def test_height_unknown_is_not_checked():
     assert row.status == NOT_CHECKED and "3D building data" in row.explanation
 
 
+@pytest.mark.parametrize(("section_size", "peak", "expected"), [
+    (10, 20, NOT_CHECKED), (10, 50, FAILS), (50, 20, PASSES),
+])
+def test_whole_home_height_from_roof_sections(section_size, peak, expected):
+    home = box(20, 20, 70, 70)
+    section = box(20, 20, 20 + section_size, 20 + section_size)
+    _, findings = check(BIG_LOT, home, "R-8", height=None, sections=[(section, peak)])
+    row = rows(findings)["height"]
+    assert row.status == expected
+    if expected == NOT_CHECKED:
+        assert "unknown" in row.explanation
+
+
 def test_no_floor_space_limit_says_no_rule():
     rules = replace(ZONES["R-8"], max_floor_area_ratio=None)
     _, f = check(BIG_LOT, box(20, 35, 60, 75), "R-8", rules=rules)

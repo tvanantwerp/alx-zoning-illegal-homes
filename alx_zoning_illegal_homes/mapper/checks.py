@@ -13,7 +13,7 @@ import shapely
 from shapely.geometry import LineString
 from shapely.ops import nearest_points, substring, unary_union
 
-from .heights import BuildingHeight, RoofHeight, building_height
+from .heights import MIN_PART_AREA, BuildingHeight, RoofHeight, building_height
 from .lot_lines import LotLines, largest_polygon, lot_width, lot_width_line
 from .rule_results import (
     CORNER_NO_REAR, CROSSES_LOT_LINE, FAILS, MAPPING_ERROR, NO_FLOOR_AREA, NO_HEIGHT,
@@ -930,6 +930,14 @@ def home_heights(facts: LotFacts) -> list[tuple[Home, BuildingHeight]]:
     return [(home, estimate) for home, estimate in found if estimate is not None]
 
 
+def _missing_home_height(facts: LotFacts, known: list[tuple[Home, BuildingHeight]]) -> bool:
+    """Whether a home or a measurable part of its footprint lacks a height."""
+    return len(known) < len(facts.homes) or any(
+        not home.height and not home.stories and
+        home.shape.difference(unary_union([part.outline for part in estimate.parts])).area >= MIN_PART_AREA
+        for home, estimate in known)
+
+
 def _check_height(facts, findings):
     kind = facts.home_type
     limit = facts.rules.max_height.get(kind)
@@ -948,6 +956,9 @@ def _check_height(facts, findings):
     height = estimate.height
     findings.measurements["height"] = height
     row.status, row.measured, row.required = PASSES, height, limit
+    missing_height = _missing_home_height(facts, known)
+    if missing_height:
+        row.status = NOT_CHECKED
     row.buildings = [i for i, outline in enumerate(facts.all_buildings)
                      if outline.equals(tallest.shape)][:1]
     shrunk = height < estimate.peak
@@ -962,6 +973,7 @@ def _check_height(facts, findings):
             f"Too tall: {measured}, but the {facts.rules.label} allows {_feet(limit)}.",
         ))
     row.explanation = " ".join(filter(None, [
+        "Some building heights are unknown." if missing_height else None,
         height_explanation(estimate), margin_explanation(row)]))
 
 
