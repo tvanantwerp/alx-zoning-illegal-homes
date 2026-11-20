@@ -162,6 +162,17 @@ def test_king_street_retail_zone_allows_only_apartments():
     assert "home_type" not in kinds
 
 
+@pytest.mark.parametrize("ratio", [1.61, 1.48])
+def test_eastern_kr_residential_records_use_the_residential_far(ratio):
+    from alx_zoning_illegal_homes.mapper.rules import king_street_retail_rules
+    lot = box(0, 0, 40, 100)
+    for residential, expected in [(True, True), (False, False)]:
+        rules = king_street_retail_rules(True, residential_only=residential)
+        kinds, _ = check(lot, box(0, 0, 40, 80), "KR", home_type="multi", rules=rules,
+                         floor_area=lot.area * ratio)
+        assert ("floor_area" in kinds) == expected
+
+
 def test_king_street_retail_floor_space_is_stricter_east_of_peyton():
     from alx_zoning_illegal_homes.mapper.rules import king_street_retail_rules
     lot = box(0, 0, 40, 100)  # 4,000 sq ft

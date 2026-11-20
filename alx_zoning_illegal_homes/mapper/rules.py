@@ -433,7 +433,8 @@ def king_street_retail_rules(east_of_peyton_and_harvard: bool, residential_only=
     The zone sets separate floor area limits for homes and for shops and
     offices (section 6-705(C)). The city's floor space figure covers the whole
     building, shops below included, so it can't be split between the two.
-    The building is judged against the looser of the two limits:
+    Residential-only records use the residential limit. Mixed or ambiguous
+    records use the looser of the two limits:
 
     - East of South Peyton Street (south side of King Street) and Harvard
       Street (north side): 1.25 for homes and 1.5 for shops, so 1.5. Height
