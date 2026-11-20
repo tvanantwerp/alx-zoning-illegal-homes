@@ -14,6 +14,7 @@ def place(lot_shapes, building_shapes):
     buildings = gpd.GeoDataFrame({
         "building_id": range(len(building_shapes)),
         "is_home": True,
+        "BUSE": "Residential",
         "BTYPE": "Duplex",
         "BSIZE": 1000.0,
         "BUNITS": 1.0,

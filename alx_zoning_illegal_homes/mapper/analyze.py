@@ -168,7 +168,9 @@ def _join_small_pieces(counted, small):
     `counted` maps lot id to that lot's counted piece, and `small` lists the
     other pieces. Returns `counted` with the strips joined in.
     """
-    counted, small = dict(counted), [part for part in small if not part.is_empty]
+    counted = dict(counted)
+    small = [polygon for piece in small for polygon in shapely.get_parts(piece)
+             if not polygon.is_empty]
     # Joining a strip can bring another strip into reach, so repeat until
     # nothing more joins.
     while counted and small:
