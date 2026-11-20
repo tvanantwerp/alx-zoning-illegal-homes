@@ -592,6 +592,15 @@ def test_older_undersized_lot_may_hold_a_house():
     assert any("may still hold a house" in note for note in findings.notes)
 
 
+def test_marginal_older_lot_fails_only_above_both_floor_space_caps():
+    lot, home = box(0, 0, 50, 39), box(10, 10, 40, 30)
+    for floor_area, status in [(2400, "not_checked"), (3500, "fails")]:
+        kinds, findings = check(lot, home, "RB", floor_area=floor_area)
+        assert _rows(findings)["lot_area"].status == "passes"
+        assert _rows(findings)["floor_area"].status == status
+        assert ("floor_area" in kinds) == (status == "fails")
+
+
 def test_older_lot_floor_space_is_capped_at_one_and_a_half():
     lot = box(0, 0, 30, 60)  # 1,800 sq ft
     home = box(8, 20, 22, 45)
