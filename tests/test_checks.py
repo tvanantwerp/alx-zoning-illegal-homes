@@ -134,6 +134,14 @@ def test_townhouse_is_not_allowed_in_a_house_zone():
     assert "home_type" in kinds
 
 
+def test_historical_rc_bulk_limits_do_not_generate_current_far_failures():
+    lot, home = box(0, 0, 100, 100), box(10, 10, 90, 90)
+    kinds, findings = check(lot, home, "RC", year_built=1980, floor_area=15000)
+    row = next(r for r in findings.results if r.rule == "floor_area")
+    assert row.status == "not_checked" and row.required is None
+    assert "floor_area" not in kinds
+
+
 def _home_type_row(findings):
     return next(row for row in findings.results if row.rule == "home_type")
 
