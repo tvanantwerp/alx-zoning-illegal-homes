@@ -280,7 +280,7 @@ def _home_type(lot, homes, row_size, alone=False):
     one-home lots the number of attached neighbors has the final say.
 
     A lot labeled as half of a twin needs a closer look when its homes
-    attach to no home on another lot. If it holds two or more attached
+    attach to no home on another lot. If it holds exactly two attached
     home outlines, both halves stand on this one lot: a whole two-unit
     house. If it holds a single outline drawn as a detached house, and
     `alone` says no other home stands within LONE_HOUSE_GAP, it is judged
@@ -295,7 +295,7 @@ def _home_type(lot, homes, row_size, alone=False):
                 return "townhouse"
             if row_size == 2:
                 return "semi"
-            if land_use == TWIN_LAND_USE and len(homes) >= 2 and _has_attached_homes(
+            if land_use == TWIN_LAND_USE and len(homes) == 2 and _has_attached_homes(
                     homes.geometry.values):
                 return "two_unit"
             if (land_use == TWIN_LAND_USE and alone and len(homes) == 1
@@ -593,7 +593,7 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
 
         paved, parking = _paving_on(shape, paving_tree, paving_shapes, paving_is_parking)
 
-        units = 1
+        units = len(homes)
         if home_type == "multi":
             recorded_units = (homes["BUNITS"].fillna(0) * homes["share"]).sum()
             units = int(max(lot["condo_units"], round(recorded_units), 1))

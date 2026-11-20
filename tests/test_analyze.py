@@ -86,6 +86,11 @@ def test_both_halves_of_a_twin_on_one_lot_make_a_two_unit_house():
     assert _home_type(_lot(TWIN), _homes(*HALVES), row_size=1) == "two_unit"
 
 
+def test_three_outlines_do_not_make_a_whole_twin():
+    homes = _homes(*HALVES, box(40, 0, 60, 40))
+    assert _home_type(_lot(TWIN), homes, row_size=1) == "semi"
+
+
 def test_twin_half_attached_to_its_neighbor_stays_a_half():
     assert _home_type(_lot(TWIN), _homes(HALVES[0]), row_size=2) == "semi"
 
