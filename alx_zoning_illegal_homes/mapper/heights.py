@@ -54,7 +54,7 @@ MAX_ROOF_RISE = 15.0
 # of its peak.
 PITCHED_SHARE = 0.85
 
-FLAT, PITCHED = "flat", "pitched"
+FLAT, PITCHED, UNKNOWN = "flat", "pitched", "unknown"
 
 
 @dataclass
@@ -211,10 +211,17 @@ def building_height(home, apartment: bool = False) -> BuildingHeight | None:
     similar small piece the home's height already leaves out, so it is
     lowered to that height. Returns None when the home's height is unknown.
     """
-    if not home.height:
+    if not home.height and not home.stories:
         return None
-    parts = roof_parts(home.shape, home.sections, home.height)
-    return BuildingHeight([
-        roof_height(min(part_height, home.height), home.stories, apartment, shape,
-                    building_peak=home.height)
-        for shape, part_height in parts])
+    estimated = []
+    for shape, peak in roof_parts(home.shape, home.sections, home.height or 0):
+        if peak > 0:
+            peak = min(peak, home.height) if home.height else peak
+            estimated.append(roof_height(peak, home.stories, apartment, shape,
+                                         building_peak=home.height))
+        elif home.stories:
+            height = home.stories * STORY_HEIGHT
+            estimated.append(RoofHeight(height, height, UNKNOWN,
+                                        "Height is estimated from the recorded stories. "
+                                        "The roof height and shape are unknown.", outline=shape))
+    return BuildingHeight(estimated) if estimated else None

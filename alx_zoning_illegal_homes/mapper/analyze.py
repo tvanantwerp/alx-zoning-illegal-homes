@@ -477,8 +477,6 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
 
     buildings["BSIZE"] = buildings["BSIZE"].fillna(0)
     buildings["STORIES"] = buildings["STORIES"].fillna(0)
-    buildings["height"] = buildings["height"].fillna(
-        buildings["STORIES"].where(buildings["STORIES"] > 0) * 10)
 
     lots = _fold_units_into_their_lots(lots)
     pairs = _match_buildings_to_lots(lots, buildings)
