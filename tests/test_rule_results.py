@@ -217,6 +217,19 @@ def test_rm_corner_recess_beside_a_partial_shared_wall():
     assert rear.status == FAILS and rear.measured == pytest.approx(5)
 
 
+def test_rm_corner_attachment_belongs_to_the_individual_home():
+    first, second = box(20, 1, 40, 20), box(2, 32, 18, 52)
+    neighbor = box(40, 1, 60, 20)
+    facts = LotFacts(shape=RM_CORNER_LOT, area=RM_CORNER_LOT.area,
+                     rules=ZONES["RM"], home_type="townhouse",
+                     homes=[Home(shape=s, height=20, floor_area=400) for s in (first, second)],
+                     lines=classify(RM_CORNER_LOT, unary_union([RM_CORNER_EAST, RM_CORNER_BEHIND]),
+                                    [("MAIN", LineString([(-300, -25), (500, -25)])), SIDE_STREET], "MAIN"),
+                     attached_neighbors=neighbor, all_buildings=[first, second])
+    rear = rows(check_lot(facts))["yard:rear"]
+    assert rear.status == FAILS and rear.measured == pytest.approx(8)
+
+
 def test_rm_corner_townhouse_side_rows_point_to_the_rear_row():
     r = rows(rm_corner(40)[1])
     sides = {r["yard:left"].status, r["yard:right"].status}
