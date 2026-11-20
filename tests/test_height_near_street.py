@@ -143,3 +143,39 @@ def test_only_the_stretch_of_street_the_lot_faces_counts():
     lot_lines = classify(LOT, neighbors, [bent], "MAIN")
     distance, _ = lot_lines.centerlines["MAIN"].measure(box(10, 5, 90, 140))
     assert distance == pytest.approx(30)
+
+
+def test_split_divided_carriageways_keep_the_same_limit():
+    near = [(-200, -20), (0, -20), (50, -40), (200, -40)]
+    far = [(x, y - 40) for x, y in near]
+    home = box(50, 5, 60, 45)
+    def result(lines):
+        facts = _facts([Street("MAIN", LineString(line), True) for line in lines], height=125)
+        facts.homes[0].shape = home
+        facts.all_buildings = [home]
+        return _row(check_lot(facts))
+    whole = result([near, far])
+    split = result([near[:3], near[2:], far[:3], far[2:]])
+    assert split.required == pytest.approx(whole.required)
+    assert split.status == whole.status == PASSES
+
+
+def test_passing_known_height_does_not_cover_a_second_unmeasured_home():
+    facts = _facts([NEAR_SIDE, FAR_SIDE], height=50)
+    facts.homes.append(Home(shape=box(10, 80, 50, 100), floor_area=500))
+    facts.all_buildings.append(facts.homes[-1].shape)
+    row = _row(check_lot(facts))
+    assert row.status == NOT_CHECKED and row.measured == 50
+
+
+def test_private_riddle_walk_segments_are_excluded(monkeypatch):
+    import geopandas as gpd
+    from alx_zoning_illegal_homes.mapper import loader
+    source = gpd.GeoDataFrame({
+        "STREET_NAM": ["RIDDLE", "RIDDLE"], "FULL_NAME": ["RIDDLE WALK", "RIDDLE RD"],
+        "V_LOCALID": ["5151000000911", "public-segment"],
+        "MTFCC": [next(iter(loader.STREET_KINDS))] * 2,
+        "DIVIDED": ["NO"] * 2, "SEG_TYPE": ["OTHER CENTERLINE"] * 2,
+    }, geometry=[NEAR_SIDE.line, FAR_SIDE.line])
+    monkeypatch.setattr(loader, "load_layer", lambda _: source)
+    assert list(loader.load_streets().geometry) == [FAR_SIDE.line]
