@@ -170,6 +170,9 @@ def load_streets() -> gpd.GeoDataFrame:
     streets = streets[
         streets["MTFCC"].isin(list(STREET_KINDS))
         & (streets["SEG_TYPE"] == "OTHER CENTERLINE")
+        # Riddle Walk is private in the city street index (2026, p. 2).
+        & ~streets["V_LOCALID"].astype(str).isin(
+            {"5151000000911", "5151000002965", "5151000002969"})
     ].copy()
     streets["name"] = streets["STREET_NAM"].fillna(streets["FULL_NAME"]).fillna("?")
     streets["divided"] = streets["DIVIDED"].fillna("").str.upper() == "YES"

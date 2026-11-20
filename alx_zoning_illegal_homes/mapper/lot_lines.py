@@ -342,6 +342,12 @@ def _centerline(name: str, front, pieces: list[Piece],
     more than `MAX_DIVIDED_GAP` beyond, are its far side.
     """
     same = [street for street in streets if street.name == name]
+    divided = [street for street in same if street.divided]
+    if divided:
+        # Join contiguous carriageway sections before clipping to this frontage.
+        joined = shapely.line_merge(unary_union([s.line for s in divided]))
+        same = [s for s in same if not s.divided] + [
+            divided[0]._replace(line=line) for line in shapely.get_parts(joined)]
     facing = _facing(pieces)
     ahead = [street._replace(line=street.line.intersection(facing)) for street in same]
     same = [street for street in ahead if not street.line.is_empty] or same
