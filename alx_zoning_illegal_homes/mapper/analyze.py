@@ -293,6 +293,27 @@ def _union_groups(count: int, left, right) -> np.ndarray:
     return np.array([find(i) for i in range(count)])
 
 
+def _wall_segments(shape):
+    for polygon in shapely.get_parts(shape.simplify(0.1)):
+        coords = np.asarray(polygon.exterior.coords)[:, :2]
+        for start, end in zip(coords, coords[1:]):
+            length = np.linalg.norm(end - start)
+            if length >= MIN_SHARED_WALL:
+                yield (end - start) / length, shapely.LineString([start, end])
+
+
+def _parallel_wall(a, b):
+    other = list(_wall_segments(b))
+    for direction, wall in _wall_segments(a):
+        band = wall.buffer(WALL_GAP, cap_style="flat")
+        for facing, segment in other:
+            if abs(direction @ facing) < 0.97:
+                continue
+            if segment.intersection(band).length >= MIN_SHARED_WALL:
+                return True
+    return False
+
+
 def _shared_walls(home_shapes) -> tuple[np.ndarray, np.ndarray]:
     """Pairs of home outlines that share a wall: they run together for at least MIN_SHARED_WALL."""
     left, right = shapely.STRtree(home_shapes).query(home_shapes, predicate="dwithin",
@@ -304,7 +325,7 @@ def _shared_walls(home_shapes) -> tuple[np.ndarray, np.ndarray]:
     along = np.minimum(
         shapely.length(shapely.intersection(shapely.boundary(a), shapely.buffer(b, WALL_GAP))),
         shapely.length(shapely.intersection(shapely.boundary(b), shapely.buffer(a, WALL_GAP))))
-    keep = along >= MIN_SHARED_WALL
+    keep = [i for i in np.flatnonzero(along >= MIN_SHARED_WALL) if _parallel_wall(a[i], b[i])]
     return left[keep], right[keep]
 
 
@@ -347,14 +368,15 @@ def _home_sites(parts: pd.DataFrame, lots: gpd.GeoDataFrame) -> dict:
     site, keyed by lot id.
     """
     held = parts.groupby("lot_id")["building_id"].agg(frozenset)
-    condo = lots.loc[held.index, "condo_units"].values > 0
-    sites = {}
-    for buildings, group in pd.Series(held.index, index=held.values).groupby(level=0):
-        lot_ids = list(group.values)
-        if len(lot_ids) > 1 and condo[held.index.get_indexer(lot_ids)].any():
-            sites |= {lot_id: lot_ids[0] for lot_id in lot_ids}
-        else:
-            sites |= {lot_id: lot_id for lot_id in lot_ids}
+    sites = {lot_id: lot_id for lot_id in held.index}
+    matching = {}
+    for lot_id, buildings in held.items():
+        lot = lots.loc[lot_id]
+        address = lot.get("address")
+        if lot.condo_units > 0 and isinstance(address, str) and address.strip():
+            # Matching outlines alone can describe a whole row of freehold lots.
+            key = (buildings, address.strip().upper())
+            sites[lot_id] = matching.setdefault(key, lot_id)
     return sites
 
 
@@ -399,9 +421,9 @@ def _townhouse_rows(home_parts: gpd.GeoDataFrame, lots: gpd.GeoDataFrame) -> dic
                 homes += 1
         length = _long_side(unary_union(group.geometry.values))
         for lot_id in lot_ids:
-            if lot_id in rows and rows[lot_id].homes >= homes:
-                continue
             row = TownhouseRow(homes=max(homes, 1), length=length)
+            if lot_id in rows and rows[lot_id].severity >= row.severity:
+                continue
             if homes > MAX_TOWNHOUSES_IN_ROW:
                 row.outlines, row.all_outlined = _row_outlines(group, lot_id)
             rows[lot_id] = row

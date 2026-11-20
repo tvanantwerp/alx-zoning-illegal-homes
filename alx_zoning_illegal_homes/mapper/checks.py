@@ -124,6 +124,15 @@ class TownhouseRow:
     outlines: list = field(default_factory=list)
     all_outlined: bool = True
 
+    @property
+    def exceeds_permit_length(self):
+        return self.length > MAX_TOWNHOUSE_ROW_LENGTH + 2 * DISTANCE_MARGIN
+
+    @property
+    def severity(self):
+        return (self.homes > MAX_TOWNHOUSES_IN_ROW and self.exceeds_permit_length,
+                self.homes, self.length)
+
 
 @dataclass
 class LotFacts:
@@ -393,7 +402,7 @@ def _check_row_length(facts, findings):
     if row.homes <= MAX_TOWNHOUSES_IN_ROW:
         return
     permit = rules.long_townhouse_rows == "permit"
-    too_long = row.length > MAX_TOWNHOUSE_ROW_LENGTH + 2 * DISTANCE_MARGIN
+    too_long = row.exceeds_permit_length
     result.status = FAILS
     result.explanation = long_row_explanation(rules.label, row.homes, row.length,
                                               permit, too_long)

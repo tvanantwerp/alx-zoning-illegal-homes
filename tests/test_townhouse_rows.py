@@ -15,7 +15,7 @@ from .helpers import MAIN, check
 ROW = "ROW (TOWNHOUSE)"
 
 
-def rows_for(parts, lot_uses, condo_units=None):
+def rows_for(parts, lot_uses, condo_units=None, addresses=None):
     """Run the row finder on made-up home pieces.
 
     `parts` holds (building id, lot id, outline) triples; `lot_uses` gives
@@ -23,6 +23,7 @@ def rows_for(parts, lot_uses, condo_units=None):
     """
     lots = gpd.GeoDataFrame({
         "land_use": lot_uses,
+        "address": addresses or [None] * len(lot_uses),
         "condo_units": condo_units or [0] * len(lot_uses),
     }, geometry=[box(0, 0, 1, 1)] * len(lot_uses))
     home_parts = gpd.GeoDataFrame(
@@ -175,5 +176,12 @@ def test_home_recorded_as_two_condo_parcels_counts_once():
     for i in range(9):
         parts += [(i, i, box(i * 20, 0, (i + 1) * 20, 20)),
                   (i, 9 + i, box(i * 20, 20, (i + 1) * 20, 40))]
-    rows = rows_for(parts, ["CONDO (TOWNHOUSE)"] * 18, condo_units=[1] * 18)
+    rows = rows_for(parts, ["CONDO (TOWNHOUSE)"] * 18, condo_units=[1] * 18,
+                    addresses=[f"{i} Main St" for i in range(9)] * 2)
     assert rows[0].homes == 9
+
+
+def test_single_outline_does_not_merge_freehold_lots_with_a_condo():
+    parts = [(0, i, shape) for _, i, shape in row_of(9)]
+    rows = rows_for(parts, [ROW] * 9, condo_units=[1] + [0] * 8)
+    assert {row.homes for row in rows.values()} == {9}
