@@ -6,7 +6,7 @@ traced from roofs, eaves included), so each check leaves a margin and only
 reports a problem when the home misses the rule by more than that margin.
 """
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 import shapely
@@ -84,6 +84,7 @@ class Home:
     # Whether city building records mark shops on the ground floor, or None
     # when they don't say.
     ground_floor_retail: bool | None = None
+    height_areas: list = field(default_factory=list)  # (intersection or whole outline, map rule)
 
 
 @dataclass
@@ -1105,28 +1106,43 @@ def _check_height(facts, findings, older_lot=False):
     note = older_lot_limit_explanation(
         rules.label, f"a height of up to {_feet(OLDER_LOTS.height)}",
         f"limit of {_feet(usual)}" if usual else None) if older_lot else None
-    on_map = facts.height_map is not None and facts.height_map.height is not None
-    if not (older_lot or usual or on_map):
+    mapped = any(home.height_areas for home in facts.homes) or (
+        facts.height_map is not None and facts.height_map.height is not None)
+    missing_plan = bool(rules.height_set_by and "height district" not in rules.height_set_by
+                        and not older_lot and not usual)
+    if not (older_lot or usual or mapped):
+        row.status = NOT_CHECKED if missing_plan else NO_RULE
         row.explanation = no_height_limit_explanation(rules, HOME_TYPE_NAMES[kind])
         return
+    candidates = []
     known = home_heights(facts)
-    if not known:
+    for home, estimate in known:
+        # Check the whole building against its zone, then each mapped portion
+        # against both limits. A roof section only counts where it overlaps.
+        regions = home.height_areas or [(None, facts.height_map)]
+        if home.height_areas and all(shape is not None for shape, _ in regions):
+            regions = [*regions, (None, None)]
+        for shape, area in regions:
+            relevant = (estimate.parts if shape is None else
+                        [p for p in estimate.parts if p.outline.intersection(shape).area > 0])
+            limits = _height_limits(replace(facts, height_map=area), home, older_lot)
+            if relevant and limits:
+                candidates.append((home, BuildingHeight(relevant), limits, area))
+    if not candidates:
         row.status, row.explanation = NOT_CHECKED, NO_HEIGHT
         if note:
             _add_older_lot_note(row, note)
         return
-    tallest, estimate, limits = max(
-        ((home, estimate, _height_limits(facts, home, older_lot)) for home, estimate in known),
-        key=lambda found: (found[1].height - min(l.feet for l in found[2]),
-                                  found[1].height))
+    tallest, estimate, limits, area = max(
+        candidates, key=lambda found: (found[1].height - min(l.feet for l in found[2]),
+                                       found[1].height, found[3] is not None))
+    on_map = area is not None and area.height is not None
     # On a tie the earlier limit (the zone's) is named as the one that sets it.
     deciding = min(limits, key=lambda limit: limit.feet)
     height, limit = estimate.height, deciding.feet
     findings.measurements["height"] = height
     row.status, row.measured, row.required = PASSES, height, limit
     missing_height = _missing_home_height(facts, known)
-    if missing_height:
-        row.status = NOT_CHECKED
     row.buildings = [i for i, outline in enumerate(facts.all_buildings)
                      if outline.equals(tallest.shape)][:1]
     shrunk = height < estimate.peak
@@ -1137,13 +1153,15 @@ def _check_height(facts, findings, older_lot=False):
         measured = (f"about {_feet(height)} measured the ordinance's way (roof peak about "
                     f"{_feet(estimate.peak)})" if shrunk else f"about {_feet(height)}")
         findings.reasons.append(Reason("height", f"Too tall: {measured}, but {deciding.allows}."))
+    if row.status == PASSES and (missing_plan or missing_height):
+        row.status = NOT_CHECKED
     others = [(other.source, other.feet) for other in limits if other is not deciding]
     row.explanation = " ".join(filter(None, [
         note,
         "Some building heights are unknown." if missing_height else None,
         zone_height_source_explanation(rules) if on_map and not usual else None,
         height_winner_explanation(deciding.source, limit, others),
-        height_map_explanation(facts.height_map, facts.lines.fronts) if on_map else None,
+        height_map_explanation(area, facts.lines.fronts) if on_map else None,
         height_explanation(estimate),
         margin_explanation(row)]))
 

@@ -58,10 +58,10 @@ def test_zone_whose_height_is_the_maps_is_now_checked():
 
 def test_zone_whose_height_comes_from_a_plan_says_so():
     _, row, _ = _height("CDX", height_map_limit("HD4", "66'"), 40)
-    assert row.status == "passes" and row.required == 66
+    assert row.status == "not_checked" and row.required == 66
     assert "Old Town North Small Area Plan, which the map doesn't have" in row.explanation
     _, row, _ = _height("CDX", height_map_limit("HD6", "By Zone"), 40)
-    assert row.status == "no_rule"
+    assert row.status == "not_checked"
     assert "height district map sets no limit here" in row.explanation
 
 
@@ -111,3 +111,17 @@ def test_older_lot_limit_gives_way_to_a_lower_map_limit():
     row = next(r for r in findings.results if r.rule == "height")
     assert row.required == 30 and "rule for older lots" in row.explanation
     assert "lower than the limit for older lots (35 ft)" in row.explanation
+
+
+def test_footprint_and_abingdon_amendment():
+    import geopandas as gpd
+    from alx_zoning_illegal_homes.mapper.analyze import _height_map_areas, _home_height_areas
+    areas = gpd.GeoDataFrame({"district": ["HD4", "HD4"], "limit_text": ["50'", "45'"]},
+                             geometry=[box(0, 0, 80, 100), box(80, 0, 100, 100)])
+    homes = gpd.GeoSeries([box(85, 20, 95, 80), box(10, 10, 40, 40)])
+    found = _height_map_areas(homes, areas)
+    assert found[0][0][1].height == 45
+    assert _home_height_areas("1201 E ABINGDON DR", found[1])[0][1].height == 65
+    areas.loc[0, "limit_text"] = "unrecognized"
+    with pytest.raises(ValueError):
+        _height_map_areas(homes.iloc[:1], areas)

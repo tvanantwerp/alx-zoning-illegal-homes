@@ -963,6 +963,7 @@ HEIGHT_DISTRICT_NAMES = {
 # where each comes from, rather than read from that text as the map runs.
 HEIGHT_MAP_LIMITS = {
     "By Zone": HeightMapLimit(),
+    "65'": HeightMapLimit(height=65),
     "30'": HeightMapLimit(height=30),
     "45'": HeightMapLimit(height=45),
     "50'": HeightMapLimit(height=50),

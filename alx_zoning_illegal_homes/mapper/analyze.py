@@ -436,18 +436,30 @@ def _paving_on(shape, tree, paving_shapes, is_parking):
             parking if parking is not None and parking.area > 0 else None)
 
 
-def _height_map_areas(lot_points, areas) -> pd.Series:
-    """The height district map's rule for each lot, by the area holding a point inside it.
+def _height_map_areas(footprints, areas):
+    """Index each numbered district intersecting a home, keeping boundary cuts."""
+    labels = zip(areas["district"], areas["limit_text"])
+    rules = {key: height_map_limit(*key) for key in set(labels)}
+    by_home = {}
+    for i, j in zip(*areas.sindex.query(footprints, predicate="intersects")):
+        area = areas.iloc[j]
+        rule = rules[area.district, area.limit_text]
+        if rule.height is None:
+            continue
+        outline = footprints.iloc[i]
+        covered = None if area.geometry.covers(outline) else outline.intersection(area.geometry)
+        if covered is None or covered.area > 0:
+            by_home.setdefault(footprints.index[i], []).append((covered, rule))
+    return by_home
 
-    Lots outside every area get None.
-    """
-    points = gpd.GeoDataFrame(geometry=lot_points, crs=areas.crs)
-    found = gpd.sjoin(points, areas, predicate="within")
-    found = found[~found.index.duplicated()]
-    rules = {(code, text): height_map_limit(code, text)
-             for code, text in set(zip(found["district"], found["limit_text"]))}
-    return pd.Series([rules[key] for key in zip(found["district"], found["limit_text"])],
-                     index=found.index, dtype=object).reindex(lot_points.index)
+
+def _home_height_areas(address, mapped):
+    # Ordinance 5526 amended the 50 ft area for this site only.
+    # https://alexandriava.gov/sites/default/files/2024-05/ordinance5526.pdf
+    if address == "1201 E ABINGDON DR":
+        return [(shape, height_map_limit("HD4", "65'") if rule == height_map_limit("HD4", "50'")
+                 else rule) for shape, rule in mapped]
+    return mapped
 
 
 def _lot_area(lot):
@@ -492,6 +504,8 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
     buildings["BSIZE"] = buildings["BSIZE"].fillna(0)
     buildings["STORIES"] = buildings["STORIES"].fillna(0)
 
+    amended = lots["address"].eq("1201 E ABINGDON DR")
+    lots.loc[amended & lots["zoning_label"].eq("OCM(50)"), "zoning_label"] = "CRMU/X"
     lots = _fold_units_into_their_lots(lots)
     pairs = _match_buildings_to_lots(lots, buildings)
     lots = _merge_lots_under_one_home(lots, pairs)
@@ -509,7 +523,7 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
     parts_by_lot = dict(tuple(placed.groupby("lot_id")))
     lot_points = lots.geometry.representative_point()
     in_historic = lot_points.within(historic)
-    height_map = _height_map_areas(lot_points, loader.load_height_districts())
+    height_map = _height_map_areas(home_parts.geometry, loader.load_height_districts())
     lot_lon_lat = lot_points.to_crs("EPSG:4326")
     route_1 = _street(streets, "RICHMOND")
     kr_is_east = _king_street_divide(streets)
@@ -623,6 +637,7 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
             homes=[
                 Home(
                     shape=part.geometry,
+                    height_areas=_home_height_areas(lot["address"], height_map.get(index, [])),
                     height=part["height"] if pd.notna(part["height"]) else None,
                     floor_area=_floor_area(part),
                     sections=part["sections"],
@@ -630,7 +645,7 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
                     ground_floor_retail=(bool(part["ground_floor_retail"])
                                          if pd.notna(part["ground_floor_retail"]) else None),
                 )
-                for _, part in homes.iterrows()
+                for index, part in homes.iterrows()
             ],
             lines=lines,
             units=units,
@@ -642,7 +657,6 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
             near_eisenhower_avenue=near_eisenhower_avenue(shape, places["eisenhower"]),
             paved=paved,
             parking=parking,
-            height_map=height_map.loc[lot_id] if pd.notna(height_map.loc[lot_id]) else None,
         )
         findings = check_lot(facts)
         if lot["land_use"] == TWIN_LAND_USE and home_type in ("two_unit", "single"):
