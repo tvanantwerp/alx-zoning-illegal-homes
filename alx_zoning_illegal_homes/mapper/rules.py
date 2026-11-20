@@ -477,7 +477,8 @@ ZONES = {
             "the open space it had on June 24, 1992, if that was less, and a lot "
             "that already fell short then may count strips narrower than 8 ft, so "
             "an older home may be fine as it stands. The map judges whether these "
-            "buildings could be built new."),
+            "buildings could be built new. Where a lot provides at least two "
+            "parking spaces, one may count as open space."),
     ),
     "RS": ZoneRules(
         name="RS",
