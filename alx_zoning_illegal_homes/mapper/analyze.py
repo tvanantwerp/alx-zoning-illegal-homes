@@ -236,8 +236,7 @@ def _place_buildings(lots, buildings, pairs):
         group = group.sort_values(["overlap", "lot_area"], ascending=[False, True])
         best = group.iloc[0]
         whole = shapes.loc[building_id]
-        if (not best["is_home"]
-                or best["overlap"] >= WHOLE_BUILDING_SHARE * best["footprint"]):
+        if best["overlap"] >= WHOLE_BUILDING_SHARE * best["footprint"]:
             rows.append((building_id, best["lot_id"], whole, 1.0))
             continue
         remaining = whole
@@ -246,6 +245,10 @@ def _place_buildings(lots, buildings, pairs):
             lot = lot_shapes.loc[pair["lot_id"]]
             part = _polygons_only(remaining.intersection(lot))
             remaining = remaining.difference(lot)
+            if not best["is_home"]:
+                if part.area > 0:
+                    rows.append((building_id, pair["lot_id"], part, part.area / best["footprint"]))
+                continue
             big_enough = part.area >= MIN_PART_AREA and (
                 part.area >= MIN_PART_OF_BUILDING * pair["footprint"]
                 or part.area >= MIN_PART_OF_LOT * pair["lot_area"])
@@ -666,12 +669,14 @@ def _outbuilding(index: int, part) -> Outbuilding:
     as two stories, and the few recorded floor space figures are mostly just
     the outline's area, now and then several times it.
     """
-    tall = len(part["sections"]) > 0 and part["height"] >= TWO_STORY_OUTBUILDING
+    tall = (bool(part["sections"]) and pd.notna(part["height"])
+            and part["height"] >= TWO_STORY_OUTBUILDING)
     stories = part["STORIES"] if tall and part["STORIES"] > 1 else 1
     return Outbuilding(
         index=index,
         floor_area=float(part["footprint"] * part["share"] * stories * OUTLINE_FLOOR_SHARE),
-        label=OUTBUILDING_LABELS.get(part["BTYPE"], "outbuilding"))
+        label=("commercial building" if part.get("BUSE") == "Commercial"
+               else OUTBUILDING_LABELS.get(part["BTYPE"], "outbuilding")))
 
 
 def _main_buildings(placed) -> dict:

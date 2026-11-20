@@ -8,13 +8,13 @@ from alx_zoning_illegal_homes.mapper.analyze import (
     _home_type, _match_buildings_to_lots, _outbuilding, _place_buildings, _row_sizes)
 
 
-def place(lot_shapes, building_shapes):
+def place(lot_shapes, building_shapes, is_home=True):
     """Place made-up home buildings on made-up lots, as the analysis does."""
     lots = gpd.GeoDataFrame({"owner": [None] * len(lot_shapes)},
                             geometry=list(lot_shapes))
     buildings = gpd.GeoDataFrame({
         "building_id": range(len(building_shapes)),
-        "is_home": True,
+        "is_home": is_home,
         "BUSE": "Residential",
         "BTYPE": "Duplex",
         "BSIZE": 1000.0,
@@ -128,3 +128,10 @@ def test_outbuilding_floor_space_takes_one_story_unless_tall_enough_for_more():
     assert _outbuilding(0, tall).label == "outbuilding"
     # No 3D data: the height is only a guess from the stories, so one story.
     assert _outbuilding(0, pd.Series({**tall, "sections": []})).floor_area == pytest.approx(160)
+
+
+def test_shared_garage_apportions_floor_area_to_both_lots():
+    lots = [box(0, 0, 50, 50), box(50, 0, 100, 50)]
+    placed = place(lots, [box(30, 10, 70, 30)], is_home=False)
+    assert list(placed.lot_id) == [0, 1]
+    assert [_outbuilding(0, part).floor_area for _, part in placed.iterrows()] == [320, 320]

@@ -794,8 +794,8 @@ def outbuildings_explanation(zone_label: str, outbuildings: list[tuple[str, floa
     """
     one = len(outbuildings) == 1
     found = (f"In the {zone_label}, floor space takes in every building on the lot, garages "
-             f"and sheds included, apart from the first {allowance:,.0f} sq ft of them on a "
-             f"lot this size. Other than homes, the map found {_outbuilding_list(outbuildings)} "
+             f"and sheds included. On a lot this size, up to {allowance:,.0f} sq ft in qualifying "
+             f"garages and sheds is excluded. Other than homes, the map found {_outbuilding_list(outbuildings)} "
              "on this lot. ")
     measured = (f"{'Its' if one else 'Their'} floor space is estimated from "
                 f"{'its outline' if one else 'their outlines'}, less a fifth for eaves, as "

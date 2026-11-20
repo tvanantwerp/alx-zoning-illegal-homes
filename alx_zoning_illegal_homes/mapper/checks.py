@@ -1367,7 +1367,10 @@ def _check_floor_area(facts, findings, older_lot=False):
         return
     outbuildings = _counted_outbuildings(facts)
     allowance = outbuilding_allowance(facts.area)
-    added = max(0.0, sum(building.floor_area for building in outbuildings) - allowance)
+    total = sum(building.floor_area for building in outbuildings)
+    accessory = sum(building.floor_area for building in outbuildings
+                    if building.label == "garage or shed")
+    added = total - min(accessory, allowance)
     floor_area = sum(home.floor_area for home in facts.homes) + added
     ratio = floor_area / facts.area
     findings.measurements["floor_area_ratio"] = ratio

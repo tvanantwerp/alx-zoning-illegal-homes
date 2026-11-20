@@ -792,3 +792,13 @@ def test_garages_are_left_out_where_the_zone_does_not_count_them():
 def test_house_floor_space_row_says_city_records_may_run_low():
     _, findings = _house_with_garage(100)
     assert "finished living space" in _rows(findings)["floor_area"].about
+
+
+def test_shop_counts_in_full_alongside_an_exempt_shed():
+    from alx_zoning_illegal_homes.mapper.checks import Outbuilding
+    lot = box(0, 0, 80, 120)
+    shapes = [box(20, 35, 60, 75), box(5, 85, 25, 105), box(55, 90, 65, 100)]
+    _, findings = check(lot, shapes[0], "R-8", all_buildings=shapes, floor_area=3000,
+                        outbuildings=[Outbuilding(1, 400, "commercial building"),
+                                      Outbuilding(2, 100, "garage or shed")])
+    assert _rows(findings)["floor_area"].measured == 3400
