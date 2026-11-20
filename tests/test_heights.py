@@ -73,5 +73,12 @@ def test_small_tower_above_the_home_height_is_lowered_to_it():
     assert estimate.peak == 26
 
 
+def test_measured_section_survives_missing_overall_height_and_stories():
+    section = box(0, 0, 8, 10)
+    estimate = building_height(Home(shape=box(0, 0, 50, 50), sections=[(section, 32)]))
+    assert estimate.peak == 32
+    assert estimate.tallest.outline.equals(section)
+
+
 def test_home_without_a_height_has_no_estimate():
     assert building_height(Home(shape=box(0, 0, 10, 10))) is None

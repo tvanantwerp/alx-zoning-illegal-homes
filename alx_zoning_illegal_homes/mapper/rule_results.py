@@ -6,7 +6,7 @@ reason, so the table and the reasons never disagree.
 """
 from dataclasses import dataclass, field, replace
 
-from .heights import FLAT, RoofHeight
+from .heights import FLAT, UNKNOWN, RoofHeight
 from .rules import OlderHomeAllowance, PlannedDistrict, ZoneRules
 
 FAILS, PASSES, NOT_CHECKED, NO_RULE, NOT_REQUIRED = (
@@ -219,7 +219,9 @@ def yard_height_explanation(per_foot_of_height: float, roof: RoofHeight, several
     if several:
         text += ", judged for each part of the home at its own height and distance"
     whose = "The part of the home that sets this yard" if several else "This home"
-    if roof.shape == FLAT:
+    if roof.shape == UNKNOWN:
+        numbers = f"{whose} is estimated at {format_feet(roof.height)} from its stories."
+    elif roof.shape == FLAT:
         numbers = (f"{whose} is about {format_feet(roof.height)} to the top of its roof, "
                    "treated as a flat roof.")
     else:

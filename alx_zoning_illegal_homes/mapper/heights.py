@@ -211,8 +211,6 @@ def building_height(home, apartment: bool = False) -> BuildingHeight | None:
     similar small piece the home's height already leaves out, so it is
     lowered to that height. Returns None when the home's height is unknown.
     """
-    if not home.height and not home.stories:
-        return None
     estimated = []
     for shape, peak in roof_parts(home.shape, home.sections, home.height or 0):
         if peak > 0:
