@@ -43,6 +43,25 @@ def _block_faces(setbacks):
     return BlockFaces(LOTS, lines_for, buildings)
 
 
+def test_narrow_middle_lot_sees_across_its_wider_neighbors():
+    widths = [(0, 60), (60, 80), (80, 140)]
+    lots = [box(x, y, end, y + 100) for y in (30, -130) for x, end in widths]
+    def lines_for(i):
+        neighbors = unary_union(lots[:i] + lots[i + 1:])
+        return classify(lots[i], neighbors, [MAIN_ST], "MAIN")
+    faces = BlockFaces(lots, lines_for, {})
+    assert faces.across(1, "MAIN") == [3, 4, 5]
+
+
+def test_block_average_counts_three_front_buildings_on_one_lot():
+    lots = [box(0, 30, 60, 130), box(60, 30, 100, 130), box(100, 30, 140, 130)]
+    buildings = {0: [(box(0, 30, 12, 60), True), (box(18, 42, 30, 65), True),
+                     (box(40, 42, 52, 65), True)], 1: [(box(70, 60, 90, 90), True)]}
+    faces = BlockFaces(lots, lambda i: classify(lots[i], unary_union(lots[:i] + lots[i + 1:]),
+                                                [MAIN_ST], "MAIN"), buildings)
+    assert sorted(s.distance for s in faces.block_side(2, "MAIN")) == [0, 12, 12, 30]
+
+
 def test_block_face_is_the_lots_beside_and_across_the_street():
     faces = _block_faces([20] * 10)
     found = faces.contextual(2, "MAIN")
