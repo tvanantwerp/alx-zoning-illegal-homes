@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import shapely
 from shapely.geometry import LineString
-from shapely.ops import nearest_points, unary_union
+from shapely.ops import nearest_points, substring, unary_union
 
 from .lot_lines import LotLines, largest_polygon, lot_width, lot_width_line
 from .rule_results import (
@@ -195,6 +195,33 @@ def _side_of(facts: LotFacts, point, home) -> int:
     return 1 if (np.asarray(point) - center) @ along >= 0 else -1
 
 
+def _wall_runs(line, outline):
+    """Project each connected footprint portion beside the lot line onto it."""
+    band = line.buffer(SHARED_WALL_GAP, cap_style="flat")
+    runs = []
+    for part in shapely.get_parts(outline.intersection(band)):
+        points = shapely.points(shapely.get_coordinates(part)[:, :2])
+        distances = shapely.line_locate_point(line, points)
+        if len(distances):
+            runs.append((distances.min(), distances.max()))
+    return runs
+
+
+def _shared_line(line, shape, neighbor):
+    """Return the runs of lot line alongside both outlines for at least four feet."""
+    if neighbor is None or line.distance(shape) >= SHARED_WALL_GAP or line.distance(
+            neighbor) >= SHARED_WALL_GAP:
+        return shapely.LineString()
+    other_runs = _wall_runs(line, neighbor)
+    shared = []
+    for start, end in _wall_runs(line, shape):
+        for other_start, other_end in other_runs:
+            lo, hi = max(start, other_start), min(end, other_end)
+            if hi - lo >= 4:
+                shared.append(substring(line, lo, hi))
+    return unary_union(shared)
+
+
 def _attached_sides(facts: LotFacts) -> set[int]:
     """Which sides of the lot's homes share a wall with a neighbor."""
     if facts.attached_neighbors is None or facts.lines.front_direction is None:
@@ -204,9 +231,7 @@ def _attached_sides(facts: LotFacts) -> set[int]:
         for piece in facts.lines.pieces:
             if piece.kind == "street":
                 continue
-            if (piece.line.distance(home.shape) < SHARED_WALL_GAP
-                    and piece.line.distance(facts.attached_neighbors)
-                    < SHARED_WALL_GAP):
+            if not _shared_line(piece.line, home.shape, facts.attached_neighbors).is_empty:
                 sides.add(_side_of(facts, piece.midpoint, home))
     return sides
 
@@ -476,11 +501,8 @@ def _yard_gaps(facts, home) -> tuple[dict, dict]:
         else:
             runs_along_front = abs(piece.direction @ along) > np.cos(np.radians(45))
             behind_home = (piece.midpoint - front_anchor) @ inward > rear_starts
-            on_shared_wall = (
-                facts.attached_neighbors is not None
-                and gap < SHARED_WALL_GAP
-                and piece.line.distance(facts.attached_neighbors) < SHARED_WALL_GAP
-            )
+            on_shared_wall = not _shared_line(
+                piece.line, home.shape, facts.attached_neighbors).is_empty
             if has_rear and runs_along_front and behind_home:
                 if on_shared_wall:
                     shared_wall.setdefault("rear", []).append(piece.line)
