@@ -159,8 +159,22 @@ def check_lot(facts: LotFacts) -> Findings:
     width = _check_width_and_frontage(facts, findings, position)
     older_lot = _excuse_older_lot(facts, findings)
     _check_yards(facts, findings, width)
-    _check_floor_area(facts, findings, older_lot)
-    _check_height(facts, findings, older_lot)
+    marginal = (not older_lot and facts.rules.name in OLDER_LOTS.zones
+                and facts.home_type in HOUSE_LIKE and facts.home_type in facts.rules.allowed
+                and any(row.rule in LOT_RULES and row.status == PASSES and row.required
+                        and row.measured is not None and row.measured < row.required
+                        for row in findings.results))
+    for check_bulk in (_check_floor_area, _check_height):
+        check_bulk(facts, findings, older_lot)
+        if marginal:
+            alternative = Findings()
+            check_bulk(facts, alternative, True)
+            row, other = findings.results[-1], alternative.results[-1]
+            if (row.status == FAILS) != (other.status == FAILS):
+                row.status = NOT_CHECKED
+                row.explanation = ("The lot falls below a minimum by less than the measurement "
+                                   "margin. The outcome depends on whether the older-lot limit applies.")
+                findings.reasons = [reason for reason in findings.reasons if reason.kind != row.rule]
     _check_open_space(facts, findings)
     explain_margin(findings.results)
     findings.results.sort(key=lambda row: RULE_IDS.index(row.rule))
