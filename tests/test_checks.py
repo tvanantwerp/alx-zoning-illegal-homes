@@ -664,6 +664,17 @@ def test_sloped_roof_gets_45_ft_and_says_it_may_be_held_to_35(zone):
     assert "At about 46 ft, it would fail the 35 ft limit." in row.explanation
 
 
+def test_stories_only_cd_height_leaves_roof_qualification_open():
+    _, row, _ = _roomy_height(zone="CD", height=None, stories=4.5)
+    assert row.measured == 45 and row.required == 45
+    assert row.status == "not_checked" and "roof shape is unknown" in row.explanation
+
+
+def test_rm_apartments_are_subject_to_the_structure_height_limit():
+    _, row, _ = _roomy_height(home_type="multi", height=44, stories=4)
+    assert row.status == "fails" and row.required == 35
+
+
 def test_short_sloped_roof_skips_the_would_fail_sentence():
     _, row, _ = _roomy_height(height=30, stories=2)
     assert row.required == 45 and "may be held to 35 ft" in row.explanation
