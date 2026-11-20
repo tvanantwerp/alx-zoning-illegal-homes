@@ -28,6 +28,14 @@ def place(lot_shapes, building_shapes):
     return _place_buildings(lots, buildings, pairs)
 
 
+def test_disconnected_scrap_does_not_follow_its_adjacent_component():
+    from shapely.geometry import MultiPolygon
+    from alx_zoning_illegal_homes.mapper.analyze import _join_small_pieces
+    home = box(0, 0, 20, 40)
+    scraps = MultiPolygon([box(20, 0, 21, 40), box(80, 0, 81, 40)])
+    assert _join_small_pieces({0: home}, [scraps])[0].equals(box(0, 0, 21, 40))
+
+
 def test_twin_half_keeps_the_strip_on_its_neighbors_lot():
     # The halves meet at x = 27.5, but the lot line runs 2.5 ft into half B.
     lot_a, lot_b = box(0, 0, 30, 100), box(30, 0, 60, 100)
