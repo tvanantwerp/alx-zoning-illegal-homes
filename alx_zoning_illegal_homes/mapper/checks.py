@@ -141,17 +141,22 @@ def check_lot(facts: LotFacts) -> Findings:
     position = _position(facts)
     findings.measurements["position"] = position
     allowance = _check_home_type(facts, findings)
+    if allowance is not None and allowance.older_rules:
+        note = older_rules_explanation(facts.rules.label, allowance.before)
+        for rule, name in (("lot_area", "Lot size"), ("frontage", "Street frontage"),
+                           ("width", "Lot width"), ("yard:front", "Front yard"),
+                           ("yard:left", "Left side yard"), ("yard:right", "Right side yard"),
+                           ("yard:rear", "Rear yard"), ("floor_area", "Floor space"),
+                           ("height", "Height"), ("open_space", "Open space")):
+            findings.results.append(RuleResult(rule, name, NOT_CHECKED, explanation=note))
+        findings.results.sort(key=lambda row: RULE_IDS.index(row.rule))
+        return findings
     _check_lot_area(facts, findings, position)
     width = _check_width_and_frontage(facts, findings, position)
     _check_yards(facts, findings, width)
     _check_floor_area(facts, findings)
     _check_height(facts, findings)
     _check_open_space(facts, findings)
-    if allowance is not None and allowance.older_rules:
-        note = older_rules_explanation(facts.rules.label, allowance.before)
-        for row in findings.results:
-            if row.status == NO_RULE:
-                row.explanation = f"{row.explanation} {note}" if row.explanation else note
     explain_margin(findings.results)
     findings.results.sort(key=lambda row: RULE_IDS.index(row.rule))
     return findings

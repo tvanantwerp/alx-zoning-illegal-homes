@@ -166,7 +166,7 @@ def test_older_houses_pass_in_rc_and_rcx(zone):
     row = _home_type_row(findings)
     assert row.status == "passes" and "deemed to be in compliance" in row.explanation
     lot_size = next(row for row in findings.results if row.rule == "lot_area")
-    assert lot_size.status == "no_rule"
+    assert lot_size.status == "not_checked"
     assert "rebuilt under the limits in force when it was built" in lot_size.explanation
     kinds, findings = check(lot, home, zone, home_type="semi", year_built=1999,
                             attached=box(-30, 20, 0, 60))
