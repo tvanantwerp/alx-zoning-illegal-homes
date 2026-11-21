@@ -807,7 +807,7 @@ def _contextual_front_row(facts, record, closest, home):
             worst.label, worst.gap.gap, distances, homes_only, rules.label, cap))
     row = _yard_row(facts, "front", FAILS if fails else PASSES, worst.gap, required,
                     detail="needs")
-    if not fails and (too_deep or alone):
+    if not fails and too_deep:
         row.status = NOT_CHECKED
     row.explanation = " ".join(filter(None, [
         "The setback exceeds the measured range. Its upper bound is unverified." if too_deep and not fails else None,

@@ -120,6 +120,21 @@ def test_home_within_the_neighbors_range_passes():
     assert row.status == PASSES and row.required == pytest.approx(20)
 
 
+def test_corner_street_without_neighbors_is_left_out():
+    side = ("SIDE", LineString([(85, -100), (85, 300)]))
+    home = box(10, 22, 50, 60)
+    neighbors = [FrontSetback(100 + i, "MAIN", d, LineString([(0, 0), (0, d)]))
+                 for i, d in enumerate([20, 28])]
+    facts = LotFacts(
+        shape=LOT, area=LOT.area, rules=ZONES["R-8"], home_type="single",
+        homes=[Home(shape=home, height=20, floor_area=1000)],
+        lines=classify(LOT, box(-60, 0, 0, 120), [MAIN, side], "MAIN"),
+        all_buildings=[home], contextual_block_face={"MAIN": neighbors})
+    assert set(facts.lines.fronts) == {"MAIN", "SIDE"}
+    row = {r.rule: r for r in check_lot(facts).results}["yard:front"]
+    assert row.status == PASSES and row.required == pytest.approx(20)
+
+
 def test_home_set_back_further_than_its_neighbors_is_unverified():
     row, _ = _with_block_face("R-8", box(10, 40, 50, 80), [20, 28])
     assert row.status == NOT_CHECKED
