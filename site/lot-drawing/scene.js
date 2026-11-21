@@ -359,6 +359,19 @@ export function drawLot(container, lot, results) {
     tag(v3([at[0], at[1] - 6], 1), sizeLabel(row), "fail", row.rule);
   }
 
+  // Too many townhouses in one row: the row's other buildings, on their own lots, outlined on the ground.
+  const longRow = failingRule("row_length");
+  if (longRow) {
+    const others = (longRow.shapes && longRow.shapes.row) || [];
+    for (const mesh of flat(others, C.accent, 0.08, 0.15)) mark(mesh, ["row_length"]);
+    for (const poly of others) {
+      for (const ring of poly) for (const mesh of ribbons(ring.concat([ring[0]]), 0.45, C.accent, 0.16)) mark(mesh, ["row_length"]);
+    }
+    const { at, top } = spotFor(longRow);
+    const outlined = longRow.detail ? ` · ${longRow.detail}` : "";
+    tag(v3(at, top + 8), `${fmt(longRow.measured)} homes in one row · at most ${fmt(longRow.required)} allowed${outlined}`, "fail", "row_length");
+  }
+
   // The height limit as a see-through ceiling over the lot, only when the height rule fails.
   if (limit) {
     for (const mesh of flat(lot.lot, C.accent, limit, 0.12)) mark(mesh, ["height"]);
@@ -370,7 +383,37 @@ export function drawLot(container, lot, results) {
     const corner = ring.reduce((best, p) => (p[0] + p[1] > best[0] + best[1] ? p : best));
     tag(v3(corner, limit), `${showValue(limit, heightRow.unit)} height limit`, "fail", "height");
     const { at, top } = spotFor(heightRow);
-    tag(v3(at, top + 4), `${showValue(heightRow.measured, heightRow.unit)} tall`, "fail", "height");
+    // When the roof is pitched, the measured height sits below the drawn peak, so the label names both.
+    const peak = heightRow.detail ? ` · ${heightRow.detail}` : "";
+    tag(v3(at, top + 4), `${showValue(heightRow.measured, heightRow.unit)} tall${peak}`, "fail", "height");
+  }
+
+  // Too tall for its distance to the street: the line from the part's wall to the street's center,
+  // and a see-through ceiling over that part at the height allowed there.
+  const nearStreet = failingRule("height_near_street");
+  if (nearStreet && nearStreet.shapes) {
+    const shapes = nearStreet.shapes;
+    // Both sit inside or behind the building, so they are drawn on top of it.
+    const onTop = (obj) => {
+      obj.material.depthTest = false;
+      obj.renderOrder = 2;
+      return mark(obj, ["height_near_street"]);
+    };
+    for (const line of shapes.gap || []) for (const mesh of ribbons(line, 0.6, C.accent, 0.2)) onTop(mesh);
+    if (shapes.part && nearStreet.required) {
+      for (const mesh of flat(shapes.part, C.accent, nearStreet.required, 0.3)) onTop(mesh);
+      for (const poly of shapes.part) {
+        const ring = poly[0];
+        const edge = new THREE.Line(new THREE.BufferGeometry().setFromPoints(ring.concat([ring[0]]).map((p) => v3(p, nearStreet.required))),
+          new THREE.LineDashedMaterial({ color: C.accent, dashSize: 2, gapSize: 1.2 }));
+        edge.computeLineDistances();
+        onTop(edge);
+      }
+    }
+    if (shapes.gap && shapes.gap.length) {
+      const text = `${showValue(nearStreet.measured, nearStreet.unit)} tall · ${nearStreet.detail} · ${showValue(nearStreet.required, nearStreet.unit)} allowed`;
+      tag(v3(midpoint(shapes.gap[0]), 0.5), text, "fail", "height_near_street");
+    }
   }
 
   const controls = new OrbitControls(camera, renderer.domElement);

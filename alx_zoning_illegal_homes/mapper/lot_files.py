@@ -11,7 +11,8 @@ from shapely import affinity
 from shapely.geometry.base import BaseGeometry
 from shapely.ops import linemerge
 
-from .checks import LotFacts, roof_parts
+from .checks import LotFacts
+from .heights import roof_parts
 from .rule_results import RuleResult
 from .rules import HOME_TYPE_NAMES
 
@@ -123,7 +124,8 @@ def _buildings(facts: LotFacts, frame) -> list[dict]:
     buildings = []
     for index, outline in enumerate(facts.all_buildings):
         home = next((h for h in facts.homes if h.shape.equals(outline)), None)
-        height = float(home.height) if home and home.height else DEFAULT_HEIGHT
+        height = (home.height or (home.stories or 0) * 10 or DEFAULT_HEIGHT
+                  if home else DEFAULT_HEIGHT)
         building = {
             "outline": polygons(frame(outline)),
             "height": _number(height),

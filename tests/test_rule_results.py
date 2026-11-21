@@ -41,10 +41,10 @@ def test_townhouse_in_house_zone_fails_home_type():
 
 def test_zone_without_lot_size_rule_says_no_rule():
     lot = box(0, 0, 80, 120)
-    zone = next(z for z, rules in ZONES.items() if "single" in rules.allowed and not rules.lot_area.get("single"))
-    _, findings = check(lot, box(20, 35, 60, 75), zone)
+    _, findings = check(lot, box(20, 35, 60, 75), "CRMU/L", home_type="multi")
     row = rows(findings)["lot_area"]
     assert row.status == NO_RULE and "minimum lot size" in row.explanation
+    assert "for an apartment or condo building." in row.explanation
 
 
 def test_no_street_leaves_frontage_and_width_unchecked():
@@ -129,6 +129,27 @@ def test_tall_home_row_says_height_drives_the_yard():
     assert row.status == FAILS and row.detail == "a home this tall needs" and row.required > 11
 
 
+def test_yard_row_says_which_height_sized_it():
+    lot = box(0, 0, 80, 120)
+    home = box(20, 35, 60, 93)
+    rear = rows(check(lot, home, "R-8", neighbors=between_neighbors(lot),
+                      height=30, stories=3)[1])["yard:rear"]
+    assert "setback ratio of 1:1" in rear.explanation
+    assert "treated as a flat roof" in rear.explanation
+    rear = rows(check(lot, home, "R-8", neighbors=between_neighbors(lot),
+                      height=30, stories=2)[1])["yard:rear"]
+    assert "roof peak about 30 ft" in rear.explanation
+    assert "about 26 ft tall" in rear.explanation and "gable or hip" in rear.explanation
+
+
+def test_yard_row_set_by_the_minimum_says_nothing_about_height():
+    # An 8 ft shed-like home measures under R-8's 8 ft minimum rear yard.
+    lot = box(0, 0, 80, 120)
+    rear = rows(check(lot, box(20, 35, 60, 75), "R-8", neighbors=between_neighbors(lot),
+                      height=8)[1])["yard:rear"]
+    assert rear.status == PASSES and rear.required == 8 and not rear.explanation
+
+
 def test_shared_wall_side_is_not_required():
     r = yard_rows("shared walls")
     for side in ("yard:left", "yard:right"):
@@ -150,10 +171,123 @@ def test_corner_lot_has_no_rear_yard_row_checked():
     assert "corner lot" in rows(f)["yard:rear"].explanation
 
 
-def test_front_yard_not_checked_in_contextual_zone():
+# An RM townhouse lot at the corner of Main St (south) and Side St (west),
+# sharing its east wall with the next townhouse in the row. The lot runs
+# 60 ft back from Main St.
+RM_CORNER_LOT = box(0, 0, 40, 60)
+RM_CORNER_EAST = box(40, 0, 120, 60)
+RM_CORNER_BEHIND = box(0, 60, 120, 160)
+
+
+def rm_corner(depth, behind=True, **fields):
+    """Check a townhouse `depth` ft deep from Main St, on the RM corner lot.
+
+    The next townhouse east is just as deep.
+    """
+    neighbors = unary_union([RM_CORNER_EAST, RM_CORNER_BEHIND] if behind else [RM_CORNER_EAST])
+    return check(RM_CORNER_LOT, box(0.5, 0.5, 40, depth), "RM", home_type="townhouse",
+                 neighbors=neighbors, streets=[SIDE_STREET], attached=box(40, 0, 60, depth),
+                 **fields)
+
+
+def test_rm_corner_townhouse_judges_the_leftover_yard_as_its_rear():
+    kinds, f = rm_corner(50)
+    assert f.measurements["position"] == "corner"
+    rear = rows(f)["yard:rear"]
+    assert rear.status == FAILS and rear.required == 16
+    assert rear.measured == pytest.approx(10)
+    assert "corner lot" in rear.explanation and "rear yard rule" in rear.explanation
+    assert any(r.kind == "yards" and r.text.startswith("Rear yard") for r in f.reasons)
+    assert rows(rm_corner(40)[1])["yard:rear"].status == PASSES
+
+
+def test_rm_corner_townhouse_skips_the_shared_wall_line_past_the_home():
+    # The east lot line carries the shared wall for the home's first 40 ft,
+    # then runs on 20 ft past the back of the home. The home's corner is
+    # right beside that stretch, but the yard is measured to the back line.
+    rear = rows(rm_corner(40)[1])["yard:rear"]
+    assert rear.measured == pytest.approx(20)
+
+
+def test_rm_corner_recess_beside_a_partial_shared_wall():
+    home = box(0.5, 0.5, 40, 27).union(box(0.5, 27, 35, 34))
+    _, findings = check(RM_CORNER_LOT, home, "RM", home_type="townhouse",
+                        neighbors=unary_union([RM_CORNER_EAST, RM_CORNER_BEHIND]),
+                        streets=[SIDE_STREET], attached=box(40, 0, 60, 27))
+    rear = rows(findings)["yard:rear"]
+    assert rear.status == FAILS and rear.measured == pytest.approx(5)
+
+
+def test_rm_corner_attachment_belongs_to_the_individual_home():
+    first, second = box(20, 1, 40, 20), box(2, 32, 18, 52)
+    neighbor = box(40, 1, 60, 20)
+    facts = LotFacts(shape=RM_CORNER_LOT, area=RM_CORNER_LOT.area,
+                     rules=ZONES["RM"], home_type="townhouse",
+                     homes=[Home(shape=s, height=20, floor_area=400) for s in (first, second)],
+                     lines=classify(RM_CORNER_LOT, unary_union([RM_CORNER_EAST, RM_CORNER_BEHIND]),
+                                    [("MAIN", LineString([(-300, -25), (500, -25)])), SIDE_STREET], "MAIN"),
+                     attached_neighbors=neighbor, all_buildings=[first, second])
+    rear = rows(check_lot(facts))["yard:rear"]
+    assert rear.status == FAILS and rear.measured == pytest.approx(8)
+
+
+def test_rm_corner_townhouse_side_rows_point_to_the_rear_row():
+    r = rows(rm_corner(40)[1])
+    sides = {r["yard:left"].status, r["yard:right"].status}
+    assert sides == {NOT_REQUIRED, NOT_CHECKED}
+    unchecked = next(r[k] for k in ("yard:left", "yard:right") if r[k].status == NOT_CHECKED)
+    assert "judged together as the rear yard" in unchecked.explanation
+
+
+def test_rm_corner_townhouse_with_a_tall_home_needs_a_deeper_yard():
+    # Three stories under a 40 ft peak measure about 36 ft, which needs 18 ft
+    # under the 1:2 setback ratio; 15 ft is too little.
+    rear = rows(rm_corner(45, height=40, stories=3)[1])["yard:rear"]
+    assert rear.status == FAILS and rear.required == pytest.approx(18)
+    assert "setback ratio of 1:2" in rear.explanation
+
+
+def test_rm_corner_townhouse_counts_half_an_alley_toward_the_setback_ratio():
+    # 14 ft to the back line clears the 16 ft minimum (with the margin) but
+    # not the 18 ft the home's height needs, unless half the alley behind counts.
+    assert rows(rm_corner(46, height=40, stories=3)[1])["yard:rear"].status == FAILS
+    rear = rows(rm_corner(46, behind=False, height=40, stories=3)[1])["yard:rear"]
+    assert rear.status == PASSES and "alley" in rear.detail
+
+
+def test_rm_corner_townhouse_walled_in_at_the_back_is_not_judged():
+    # Homes share the east wall and the back wall, so no yard is left over.
+    _, f = check(RM_CORNER_LOT, box(0.5, 0.5, 40, 60), "RM", home_type="townhouse",
+                 neighbors=unary_union([RM_CORNER_EAST, RM_CORNER_BEHIND]),
+                 streets=[SIDE_STREET],
+                 attached=unary_union([box(40, 0, 60, 60), box(0, 60, 40, 80)]))
+    rear = rows(f)["yard:rear"]
+    assert rear.status == NOT_CHECKED and "no yard left over" in rear.explanation
+
+
+def test_rm_corner_townhouse_with_its_wall_off_the_lot_line_is_not_judged():
+    # The next home east is attached, but the map draws this home 4 ft in
+    # from the east lot line, so no line carries the shared wall.
+    _, f = check(RM_CORNER_LOT, box(0.5, 0.5, 36, 40), "RM", home_type="townhouse",
+                 neighbors=unary_union([RM_CORNER_EAST, RM_CORNER_BEHIND]),
+                 streets=[SIDE_STREET], attached=box(37, 0, 60, 40))
+    rear = rows(f)["yard:rear"]
+    assert rear.status == NOT_CHECKED and "no lot line runs along the wall" in rear.explanation
+    assert not any(r.text.startswith("Rear yard") for r in f.reasons)
+
+
+def test_rm_corner_house_still_has_no_rear_yard():
+    _, f = check(RM_CORNER_LOT, box(5, 0.5, 35, 50), "RM",
+                 neighbors=unary_union([RM_CORNER_EAST, RM_CORNER_BEHIND]),
+                 streets=[SIDE_STREET])
+    assert rows(f)["yard:rear"].status == NOT_CHECKED
+    assert "no rear yard to check" in rows(f)["yard:rear"].explanation
+
+
+def test_front_yard_without_neighbors_is_not_checked_in_contextual_zone():
     row = yard_rows("roomy")["yard:front"]
     assert row.status == NOT_CHECKED and row.measured == pytest.approx(35)
-    assert "neighboring homes" in row.explanation
+    assert "neighbors along the same street" in row.explanation
 
 
 def test_narrow_rm_lot_needs_no_side_yards():
@@ -186,6 +320,28 @@ def test_crossing_outline_leaves_yards_unchecked():
     r = rows(f)
     assert r["yard:left"].status == NOT_CHECKED
     assert "crosses the lot line" in r["yard:left"].explanation
+
+
+def test_no_street_leaves_an_exempt_front_yard_exempt():
+    lot, home = YARD_LOT, box(20, 5, 60, 65)
+    facts = LotFacts(shape=lot, area=lot.area, rules=ZONES["RD"], home_type="multi",
+                     homes=[Home(shape=home, height=20, floor_area=1000)],
+                     lines=classify(lot, None, [], None), all_buildings=[home])
+    findings = check_lot(facts)
+    assert rows(findings)["yard:front"].status == NOT_REQUIRED
+    assert "yard:nearest" not in rows(findings)
+    assert all(r.kind != "yards" for r in findings.reasons)
+
+
+def test_rt_townhouse_without_a_street_has_no_frontage_rule():
+    lot = YARD_LOT
+    home = box(10, 15, 45, 55)
+    facts = LotFacts(shape=lot, area=lot.area, rules=ZONES["RT"], home_type="townhouse",
+                     homes=[Home(shape=home, height=20, floor_area=1000)],
+                     lines=classify(lot, None, [], None), all_buildings=[home])
+    result = rows(check_lot(facts))
+    assert result["frontage"].status == NO_RULE
+    assert result["width"].status == NOT_CHECKED
 
 
 def test_no_street_leaves_yards_unchecked_but_measures_the_nearest_line():
@@ -233,12 +389,45 @@ def test_unknown_floor_space_is_not_checked():
     assert rows(f)["floor_area"].status == NOT_CHECKED
 
 
-def test_rm_open_space_not_checked_until_the_rule_exists():
+@pytest.mark.parametrize("home_type", ["single", "semi", "townhouse"])
+def test_rm_open_space_is_checked_for_every_home_type(home_type):
     lot = box(0, 0, 30, 100)
-    _, f = check(lot, box(5, 20, 25, 60), "RM", home_type="single", neighbors=between_neighbors(lot))
-    r = rows(f)
-    assert "coverage" not in r and r["open_space"].status == NOT_CHECKED
-    assert "June 24, 1992" in r["open_space"].explanation
+    _, f = check(lot, box(5, 20, 25, 60), "RM", home_type=home_type,
+                 neighbors=between_neighbors(lot))
+    row = rows(f)["open_space"]
+    assert row.status == PASSES and row.required == pytest.approx(0.35)
+    # The 5 ft strips beside the home are too narrow to count.
+    assert row.measured == pytest.approx((30 * 20 + 30 * 40) / 3000)
+    assert "June 24, 1992" in row.about and "driveway" in row.about
+
+
+@pytest.mark.parametrize("home_type", ["single", "townhouse", "multi"])
+def test_cd_open_space_is_checked_for_every_home_type(home_type):
+    lot = box(0, 0, 18, 100)
+    reasons, f = check(lot, box(0, 10, 18, 90), "CD", home_type=home_type,
+                       neighbors=between_neighbors(lot))
+    row = rows(f)["open_space"]
+    assert "open_space" in reasons and row.status == FAILS
+    assert row.required == pytest.approx(0.35) and "June 24, 1992" in row.about
+
+
+def test_rm_lot_mostly_covered_fails_open_space():
+    lot = box(0, 0, 18, 100)
+    reasons, f = check(lot, box(0, 10, 18, 90), "RM", home_type="townhouse",
+                       neighbors=between_neighbors(lot))
+    assert "open_space" in reasons
+    assert rows(f)["open_space"].status == FAILS
+    assert any("35% must be left open" in r.text for r in f.reasons)
+
+
+def test_small_rm_lot_needs_at_least_300_sq_ft_open():
+    lot = box(0, 0, 16, 50)   # 800 sq ft, so 35% would be only 280 sq ft
+    reasons, f = check(lot, box(0, 10, 16, 43.5), "RM", home_type="townhouse",
+                       neighbors=between_neighbors(lot))
+    row = rows(f)["open_space"]
+    assert "open_space" in reasons and row.status == FAILS
+    assert row.required == pytest.approx(300 / 800)
+    assert any("300 sq ft" in r.text for r in f.reasons)
 
 
 def test_open_space_zone_gets_an_open_space_row():
@@ -248,17 +437,107 @@ def test_open_space_zone_gets_an_open_space_row():
     _, f = check(lot, box(5, 20, 75, 110), zone, home_type=kind)
     r = rows(f)
     assert "coverage" not in r and r["open_space"].limit == "min"
-    assert r["open_space"].measured == pytest.approx(1 - 70 * 90 / 9600)
+    # Only the 20 ft front and 10 ft rear strips count; the 5 ft sides don't.
+    assert r["open_space"].measured == pytest.approx(80 * 30 / 9600)
 
 
 BIG_LOT = box(0, 0, 80, 120)
 BIG_HOME = box(5, 20, 75, 110)   # covers about 66% of the lot
 
 
+def open_space_facts(zone, home_type, lot, home, paved=None, parking=None):
+    """Facts for a lot with one home and, optionally, paving and parking on it."""
+    return LotFacts(
+        shape=lot, area=lot.area, rules=ZONES[zone], home_type=home_type,
+        homes=[Home(shape=home, height=20, floor_area=1000)],
+        lines=classify(lot, None, [], ""), all_buildings=[home],
+        paved=paved, parking=parking)
+
+
+def test_strips_narrower_than_8_ft_are_not_open_space():
+    lot = box(0, 0, 40, 100)
+    # 7 ft on the left, 13 ft on the right, 30 ft in front and 30 ft behind.
+    f = check_lot(open_space_facts("RA", "single", lot, box(7, 30, 27, 70)))
+    row = rows(f)["open_space"]
+    assert row.measured == pytest.approx((40 * 60 + 13 * 40) / 4000)
+
+
+@pytest.mark.parametrize("width, counted", [(7.99, 0), (8, 320), (8.01, 320.4)])
+def test_eight_foot_open_strip(width, counted):
+    lot = box(0, 0, 20, 40)
+    home = box(0, 0, 20 - width, 40)
+    row = rows(check_lot(open_space_facts("RM", "single", lot, home)))["open_space"]
+    assert row.measured * lot.area == pytest.approx(counted)
+
+
+def test_driveways_and_parking_are_not_open_space():
+    lot = box(0, 0, 40, 100)
+    home = box(10, 30, 30, 70)
+    driveway = box(0, 0, 10, 100)
+    f = check_lot(open_space_facts("RA", "single", lot, home, paved=driveway))
+    row = rows(f)["open_space"]
+    # Left: the driveway. Right: a 10 ft strip beside the home.
+    assert row.measured == pytest.approx((30 * 60 + 10 * 40) / 4000)
+    assert row.status == PASSES
+
+
+def test_lot_paved_over_fails_open_space():
+    lot = box(0, 0, 100, 100)
+    home = box(20, 20, 60, 60)
+    parking = lot.difference(home.buffer(5, join_style="mitre"))
+    f = check_lot(open_space_facts("RA", "single", lot, home, paved=parking))
+    assert rows(f)["open_space"].status == FAILS
+    assert any("driveways, parking" in r.text for r in f.reasons)
+
+
+def test_rd_counts_half_its_parking_as_open_space():
+    lot = box(0, 0, 200, 200)              # 40,000 sq ft, 16,000 must be open
+    home = box(20, 20, 180, 120)           # 16,000 sq ft
+    parking = box(0, 130, 200, 200)        # 14,000 sq ft
+    paved = unary_union([parking, box(0, 0, 200, 15)])
+    f = check_lot(open_space_facts("RD", "multi", lot, home, paved=paved, parking=parking))
+    row = rows(f)["open_space"]
+    # Open: two 20 ft strips beside the home and a 10 ft strip behind it. The
+    # 5 ft strip in front is too narrow. Half the parking (7,000 sq ft) counts.
+    open_land = 20 * 115 * 2 + 160 * 10
+    assert row.measured == pytest.approx((open_land + 7000) / 40000)
+    assert "Half of" in row.about and "roof" in row.about
+
+
+def test_rd_parking_counts_no_more_than_90_percent_of_required_open_space():
+    lot = box(0, 0, 200, 200)
+    home = box(40, 40, 60, 60)
+    f = check_lot(open_space_facts("RD", "multi", lot, home, paved=lot, parking=lot))
+    row = rows(f)["open_space"]
+    assert row.measured == pytest.approx(0.9 * 0.40)
+    assert row.status == FAILS
+    assert any("sq ft of parking" in r.text for r in f.reasons)
+
+
+def test_paving_does_not_change_building_coverage():
+    lot = box(0, 0, 80, 120)
+    f = check_lot(open_space_facts("RT", "townhouse", lot, box(20, 35, 60, 75), paved=lot))
+    row = rows(f)["coverage"]
+    assert row.measured == pytest.approx(1600 / 9600) and row.status == PASSES
+
+
 def test_height_unknown_is_not_checked():
     _, f = check(BIG_LOT, box(20, 35, 60, 75), "R-8", height=None)
     row = rows(f)["height"]
     assert row.status == NOT_CHECKED and "3D building data" in row.explanation
+
+
+@pytest.mark.parametrize(("section_size", "peak", "expected"), [
+    (10, 20, NOT_CHECKED), (10, 50, FAILS), (50, 20, PASSES),
+])
+def test_whole_home_height_from_roof_sections(section_size, peak, expected):
+    home = box(20, 20, 70, 70)
+    section = box(20, 20, 20 + section_size, 20 + section_size)
+    _, findings = check(BIG_LOT, home, "R-8", height=None, sections=[(section, peak)])
+    row = rows(findings)["height"]
+    assert row.status == expected
+    if expected == NOT_CHECKED:
+        assert "unknown" in row.explanation
 
 
 def test_no_floor_space_limit_says_no_rule():
@@ -313,7 +592,7 @@ def test_zone_with_both_limits_shows_the_row_that_failed():
     r = rows(f)
     assert "open_space" in reasons
     assert r["open_space"].status == FAILS and "coverage" not in r
-    assert r["open_space"].measured == pytest.approx(1 - 6300 / 9600)
+    assert r["open_space"].measured == pytest.approx(80 * 30 / 9600)
 
 
 def test_zone_with_both_limits_shows_coverage_when_both_pass():
@@ -374,23 +653,79 @@ def test_special_approval_explains_other_rows_without_a_rule():
 
 def test_height_passing_within_the_margin_says_so():
     limit = ZONES["R-8"].max_height["single"]
-    _, f = check(BIG_LOT, box(20, 35, 60, 75), "R-8", height=limit + 3)
+    # Three stories reach nearly to the top, so the roof is taken as flat.
+    _, f = check(BIG_LOT, box(20, 35, 60, 75), "R-8", height=limit + 3, stories=3)
     row = rows(f)["height"]
     assert row.status == PASSES
-    assert row.explanation.startswith(f"About {limit + 3:.0f} ft, a little over the {limit:.0f} ft limit.")
+    assert f"About {limit + 3:.0f} ft, a little over the {limit:.0f} ft limit." in row.explanation
     assert "benefit of the doubt" in row.explanation
 
 
 def test_clearly_passing_row_gets_no_margin_explanation():
-    _, f = check(BIG_LOT, box(20, 35, 60, 75), "R-8", height=20)
+    _, f = check(BIG_LOT, box(20, 35, 60, 75), "R-8", height=20, stories=2)
     row = rows(f)["height"]
-    assert row.status == PASSES and row.explanation is None
+    assert row.status == PASSES and "benefit of the doubt" not in row.explanation
 
 
 def test_failing_row_gets_no_margin_explanation():
     _, f = check(BIG_LOT, box(20, 35, 60, 75), "R-8", height=60)
     row = rows(f)["height"]
-    assert row.status == FAILS and row.explanation is None
+    assert row.status == FAILS and "benefit of the doubt" not in row.explanation
+
+
+def test_pitched_roof_height_row_gives_peak_and_measured_height():
+    limit = ZONES["R-8"].max_height["single"]
+    # A 2.5-story house with a 37 ft peak: eaves about 22 ft up, so it is
+    # measured at 29.5 ft and passes, where the peak alone would have failed.
+    kinds, f = check(BIG_LOT, box(20, 35, 60, 75), "R-8", height=37, stories=2.5)
+    row = rows(f)["height"]
+    assert "height" not in kinds and row.status == PASSES
+    assert row.measured == pytest.approx(29.5) and row.required == limit
+    assert row.explanation.startswith(
+        "Roof peak about 37 ft; measured the ordinance's way, about 30 ft.")
+    assert row.detail == "roof peak 37 ft"
+    assert "gable or hip" in row.about
+
+
+def test_too_tall_pitched_roof_reason_names_the_peak():
+    _, f = check(BIG_LOT, box(20, 35, 60, 75), "R-8", height=50, stories=3)
+    assert rows(f)["height"].status == FAILS
+    assert f.reasons[0].text.startswith(
+        "Too tall: about 42 ft measured the ordinance's way (roof peak about 50 ft)")
+
+
+def test_apartment_building_roof_is_taken_as_flat():
+    lot = box(0, 0, 200, 200)
+    rules = ZONES["RA"]
+    limit = rules.max_height["multi"]
+    _, f = check(lot, box(40, 40, 160, 160), "RA", home_type="multi", units=4,
+                 height=limit + 10, stories=2)
+    row = rows(f)["height"]
+    assert row.status == FAILS and row.measured == limit + 10
+    assert row.detail is None
+
+
+def test_side_yard_short_by_a_roof_overhang_passes_and_says_why():
+    # R-5 needs a 7 ft side yard. A wall right at 7 ft with a 30 inch overhang
+    # is drawn about 4.5 ft from the line.
+    row = rows(check(YARD_LOT, box(4.5, 35, 44.5, 75), "R-5",
+                     neighbors=between_neighbors(YARD_LOT))[1])["yard:left"]
+    assert row.status == PASSES and row.required == 7
+    assert row.explanation.startswith("About 4.5 ft, a little under the 7.0 ft minimum.")
+    assert "roof overhangs" in row.explanation
+
+
+def test_side_yard_short_by_more_than_an_overhang_fails():
+    row = rows(check(YARD_LOT, box(4.3, 35, 44.3, 75), "R-5",
+                     neighbors=between_neighbors(YARD_LOT))[1])["yard:left"]
+    assert row.status == FAILS
+
+
+def test_counted_side_yard_within_the_margin_mentions_overhangs():
+    r = rows(check(RM_LOT, box(2.6, 20, 29, 60), "RM", neighbors=between_neighbors(RM_LOT))[1])
+    assert r["yard:left"].status == r["yard:right"].status == PASSES
+    assert "roof overhangs" in r["yard:left"].explanation
+    assert "roof overhangs" not in r["yard:right"].explanation
 
 
 def test_lot_size_within_the_margin_uses_square_feet():
@@ -409,3 +744,55 @@ def test_width_measured_at_the_street_is_drawn_along_the_front_line():
     assert row.status == FAILS and row.detail == "measured at the street"
     assert row.shapes["line"].length == pytest.approx(40, abs=0.5)
     assert row.shapes["line"].equals(rows(f)["frontage"].shapes["line"])
+
+
+@pytest.mark.parametrize("zone, home_type", [
+    ("RC", "townhouse"), ("RCX", "townhouse"), ("RD", "multi"), ("W-1", "multi"),
+    ("KR", "multi")])
+def test_front_yard_not_required_where_the_zone_asks_for_none(zone, home_type):
+    lot = box(0, 0, 80, 120)
+    _, findings = check(lot, box(20, 35, 60, 75), zone, home_type=home_type,
+                        neighbors=between_neighbors(lot))
+    row = rows(findings)["yard:front"]
+    assert row.status == NOT_REQUIRED
+    assert "requires no front yard" in row.explanation
+    assert "Duke Street" in row.explanation
+
+
+def test_cdx_houses_get_the_historic_floor_space_limit():
+    assert ZONES["CDX"].floor_area_ratio_for("townhouse", historic=True) == 1.50
+    assert ZONES["CDX"].floor_area_ratio_for("townhouse", historic=False) == 1.25
+
+
+def test_w1_houses_still_have_a_front_yard_rule():
+    lot = box(0, 0, 80, 120)
+    _, findings = check(lot, box(20, 35, 60, 75), "W-1", neighbors=between_neighbors(lot))
+    assert rows(findings)["yard:front"].status == NOT_CHECKED
+
+
+def test_many_outbuildings_are_summed_up_by_kind():
+    from alx_zoning_illegal_homes.mapper.rule_results import outbuildings_explanation
+    found = [("garage or shed", 100), ("garage or shed", 200), ("outbuilding", 300),
+             ("garage or shed", 150)]
+    text = outbuildings_explanation("R-5 zone", found, 350, 400)
+    assert "3 garages or sheds and 1 outbuilding, with about 750 sq ft in all" in text
+    text = outbuildings_explanation("R-5 zone", found[2:3], 350, 0)
+    assert "an outbuilding of about 300 sq ft" in text and "Its floor space" in text
+
+
+def test_cd_counts_one_of_two_parking_spaces_as_open():
+    lot, home = box(0, 0, 48, 40), box(0, 0, 26.4, 40)
+    stalls = [box(26.4, 0, 35.4, 18), box(35.4, 0, 44.4, 18)]
+    paving = unary_union(stalls)
+    facts = open_space_facts("CD", "single", lot, home, paved=paving, parking=paving)
+    assert rows(check_lot(facts))["open_space"].status == NOT_CHECKED
+    facts.parking_spaces = stalls
+    assert rows(check_lot(facts))["open_space"].status == PASSES
+    facts.parking_spaces = []
+    assert rows(check_lot(facts))["open_space"].status == FAILS
+
+
+def test_crmu_x_apartments_need_open_space_or_approved_amenities():
+    _, findings = check(YARD_LOT, box(10, 10, 40, 40), "CRMU/X", home_type="multi")
+    row = rows(findings)["open_space"]
+    assert row.status == NOT_CHECKED and row.required == 0.25

@@ -62,3 +62,14 @@ test("only failing rows take keyboard focus", () => {
   assert.match(html, /<tr data-rule="lot_area" tabindex="0">/);
   assert.match(html, /<tr data-rule="height">/);
 });
+test("older lots get their own pill, bar and squares, and keep the shortfall", () => {
+  const older = row({ status: "older_lot", measured: 1800, required: 1980, explanation: "recorded before December 16, 2023" });
+  const html = rulesTable({ label: "x", rules: [older] }, null);
+  assert.match(html, /pill older explain[^>]*>OLDER LOT OK</);
+  assert.match(html, /<i class="older"/);
+  assert.match(html, /1,800 sq ft/);
+  assert.match(html, /<tr data-rule="lot_area">/);
+  const squares = lotSquares(older);
+  assert.match(squares, /box older/);
+  assert.match(squares, /91% of the land the zone asks of a new lot/);
+});

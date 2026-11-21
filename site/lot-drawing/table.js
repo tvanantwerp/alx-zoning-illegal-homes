@@ -6,8 +6,12 @@ const LABELS = {
   not_checked: "NOT CHECKED",
   no_rule: "NO RULE",
   not_required: "NOT REQUIRED",
+  older_lot: "OLDER LOT OK",
 };
-const PILL_CLASS = { fails: "fail", passes: "pass", not_checked: "skip", no_rule: "none", not_required: "notreq" };
+const PILL_CLASS = {
+  fails: "fail", passes: "pass", not_checked: "skip", no_rule: "none", not_required: "notreq",
+  older_lot: "older",
+};
 
 /** Which result set the main columns show, and which the extra column shows. */
 export function chooseResults(lot, ordinary) {
@@ -32,11 +36,14 @@ function ruleSays(row) {
   return (row.limit === "max" ? "≤ " : "≥ ") + showValue(row.required, row.unit);
 }
 
-/** The measured value against the limit, with a mark at the limit. Red when the row fails. */
+/**
+ * The measured value against the limit, with a mark at the limit. Red when the row fails,
+ * and in the older-lot colour when the rule for older lots excuses a shortfall.
+ */
 function bar(row) {
   if (row.measured == null || row.required == null) return "";
   const scale = Math.max(row.measured, row.required) * 1.15 || 1;
-  const cls = row.status === "fails" ? "fail" : "";
+  const cls = { fails: "fail", older_lot: "older" }[row.status] || "";
   return `<div class="bar"><i class="${cls}" style="width:${(row.measured / scale) * 100}%"></i><b style="left:${(row.required / scale) * 100}%"></b></div>`;
 }
 
@@ -70,18 +77,23 @@ export function rulesTable(main, extra) {
 export function lotSquares(row) {
   if (row.required == null || row.measured == null) return "";
   const fails = row.status === "fails";
+  const older = row.status === "older_lot";
   const max = Math.max(row.measured, row.required);
   const box = (area, cls, label) => {
     const side = Math.max(18, Math.sqrt(area / max) * 170);
     return `<div class="sq"><svg class="box ${cls}" width="${side}" height="${side}" viewBox="0 0 ${side} ${side}" aria-hidden="true"><rect x="1" y="1" width="${side - 2}" height="${side - 2}"/></svg><span>${label}<br><b>${sqft(area)}</b></span></div>`;
   };
   const note = sizeNote(row);
-  return `<div class="inset lot-squares" data-rule="${esc(row.rule)}"><div class="inset-title">Lot size, drawn to scale</div><div class="squares">${box(row.measured, "", "This lot")}${box(row.required, fails ? "over" : "ghost", "Smallest allowed")}</div>${note ? `<p class="sq-note">${note}</p>` : ""}</div>`;
+  return `<div class="inset lot-squares" data-rule="${esc(row.rule)}"><div class="inset-title">Lot size, drawn to scale</div><div class="squares">${box(row.measured, "", "This lot")}${box(row.required, fails ? "over" : older ? "older" : "ghost", older ? "Smallest for a new lot" : "Smallest allowed")}</div>${note ? `<p class="sq-note">${note}</p>` : ""}</div>`;
 }
 
 /** One sentence under the lot-size squares comparing the lot with the smallest allowed. */
 function sizeNote(row) {
   if (row.status === "fails") return `This lot has ${pct(row.measured / row.required)} of the land the zone requires.`;
+  if (row.status === "older_lot") {
+    return `This lot has ${pct(row.measured / row.required)} of the land the zone asks of a new lot. `
+      + "Lots recorded before December 16, 2023 may still hold a house, a two-unit house or a townhouse.";
+  }
   if (row.status !== "passes") return "";
   if (row.measured >= row.required) return "This lot is at least as big as the zone requires.";
   return "This lot is slightly smaller than the zone requires, but within the map's margin for measuring error.";

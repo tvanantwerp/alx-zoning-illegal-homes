@@ -11,17 +11,21 @@ alone, in a way that holds up for pie-shaped, flag-shaped and corner lots:
    roughly straight out from the piece, with nothing in between.
 4. Street-facing pieces are grouped by street name. Two streets that meet
    make a corner lot; two that do not make a through lot.
+5. Each street the lot faces keeps its centerline, for rules measured from
+   the middle of the street. A divided road is drawn as two one-way
+   centerlines, one per side, so its middle is taken as halfway between them.
 
 All coordinates are in feet.
 """
 from dataclasses import dataclass, field
 from functools import cached_property
+from typing import NamedTuple
 
 import numpy as np
 import shapely
 from shapely.geometry import LineString, MultiLineString, Polygon
 from shapely.geometry.polygon import orient
-from shapely.ops import linemerge, unary_union
+from shapely.ops import linemerge, nearest_points, unary_union
 
 PIECE_LENGTH = 12.0
 # How far outside the lot we look to see whether another lot is there.
@@ -36,6 +40,71 @@ MAX_FACING_ANGLE_COS = np.cos(np.radians(50))
 SMOOTH_TURN_COS = np.cos(np.radians(40))
 MIN_FRONT_LENGTH = 8.0
 CORNER_GAP = 30.0
+# Where a corner lot's front lot line turns onto the other street, pieces
+# turning more than this from the street's main direction are the corner.
+CORNER_TURN_DEGREES = 30.0
+# On a divided road, centerlines of the same street up to this much farther
+# from the lot than the nearest one still belong to the near side.
+NEAR_SIDE_SLACK = 10.0
+# The two sides of a divided road are taken to be at most this far apart,
+# centerline to centerline.
+MAX_DIVIDED_GAP = 150.0
+# Two pieces of one side of a divided road are joined end to end only where
+# the road bends less than this many degrees from one piece to the next.
+MAX_CARRIAGEWAY_BEND = 60.0
+
+
+class Street(NamedTuple):
+    """One stretch of street centerline from the city's street map.
+
+    `divided` marks a road with a median, drawn as one centerline per side.
+    `label` is the street's full name for messages ("South Fayette Street"),
+    or None to use a tidied `name`.
+    """
+
+    name: str
+    line: object
+    divided: bool = False
+    label: str | None = None
+
+
+@dataclass
+class StreetCenterline:
+    """The middle of one street a lot faces, for rules measured from it.
+
+    `near` is the street's centerline on the lot's side. On a divided road
+    that is only the near side's own centerline, and `far` is the other
+    side's; the middle of the road is taken as halfway between the two.
+    `far` is None on an ordinary street, and on a divided road whose other
+    side couldn't be found.
+    """
+
+    name: str
+    label: str
+    near: object
+    far: object = None
+    divided: bool = False
+
+    def measure(self, shape) -> tuple[float, LineString] | None:
+        """How far a shape is from the middle of the street, and the line to draw for it.
+
+        Returns None on a divided road whose other side couldn't be found
+        nearby, where the middle can't be placed.
+        """
+        on_shape, on_near = nearest_points(shape, self.near)
+        distance = on_shape.distance(on_near)
+        if self.divided:
+            if self.far is None:
+                return None
+            far = shape.distance(self.far)
+            if far - distance > MAX_DIVIDED_GAP:
+                return None
+            distance = (distance + far) / 2
+        start, toward = np.array(on_shape.coords[0]), np.array(on_near.coords[0])
+        step = toward - start
+        length = np.linalg.norm(step)
+        end = start + step / length * distance if length else toward
+        return distance, LineString([start, end])
 
 
 @dataclass
@@ -68,6 +137,8 @@ class LotLines:
     primary_street: str | None = None
     is_corner: bool = False
     is_through: bool = False
+    # The middle of each street in `fronts`, by the same names.
+    centerlines: dict[str, StreetCenterline] = field(default_factory=dict)
 
     @cached_property
     def front_line(self):
@@ -161,7 +232,7 @@ def _street_for(piece, lot_core, neighbors, streets):
     streets is a list of (name, line) pairs near the lot.
     """
     best_name, best_distance = None, MAX_STREET_DISTANCE
-    for name, line in streets:
+    for name, line, *_ in streets:
         distance = line.distance(shapely.Point(piece.midpoint))
         if distance >= best_distance:
             continue
@@ -184,10 +255,11 @@ def classify(lot, neighbors, streets, address_street=None) -> LotLines:
 
     lot: the lot polygon.
     neighbors: one geometry holding every other lot near this one, or None.
-    streets: list of (name, centerline) pairs near the lot.
+    streets: `Street`s near the lot, or plain (name, centerline) pairs.
     address_street: street name from the lot's address, used to choose the
         main front on corner lots.
     """
+    streets = [Street(*street) for street in streets]
     lot = largest_polygon(lot)
     pieces = cut_outline(lot)
     if not pieces:
@@ -233,6 +305,8 @@ def classify(lot, neighbors, streets, address_street=None) -> LotLines:
     if not result.fronts:
         return result
 
+    result.centerlines = {name: _centerline(name, result.fronts[name], group, streets)
+                          for name, group in by_street.items()}
     result.primary_street = _choose_primary(result.fronts, address_street)
     if len(result.fronts) > 1:
         primary = result.fronts[result.primary_street]
@@ -244,6 +318,148 @@ def classify(lot, neighbors, streets, address_street=None) -> LotLines:
         result.is_corner = touching
         result.is_through = not touching
     return result
+
+
+def street_pieces(lines: LotLines, street: str) -> list[Piece]:
+    """The pieces of a lot's outline along one street."""
+    return [piece for piece in lines.pieces if piece.kind == "street" and piece.street == street]
+
+
+def front_for_yard(lines: LotLines, street: str):
+    """The front lot line along one street, without the bend where it turns onto another.
+
+    On a corner lot the lot line usually rounds or cuts across the corner.
+    The shortest line from a home to that bit runs diagonally, so it comes out
+    shallower than the yard straight out to either street. Pieces near
+    another street's front that turn more than `CORNER_TURN_DEGREES` away
+    from this street's main direction are left out. A lot with only one
+    street front keeps it whole, curves and all.
+    """
+    others = [front for name, front in lines.fronts.items() if name != street]
+    if not others:
+        return lines.fronts[street]
+    pieces = street_pieces(lines, street)
+    near_corner = [min(piece.line.distance(other) for other in others) <= CORNER_GAP
+                   for piece in pieces]
+    # The street's direction comes from the pieces away from the corner,
+    # so a long rounded corner doesn't tilt it.
+    steady = [piece for piece, near in zip(pieces, near_corner) if not near] or pieces
+    points = np.array([c for piece in steady for c in piece.line.coords])
+    main = np.linalg.svd(points - points.mean(axis=0), full_matrices=False)[2][0]
+    keep = [piece.line for piece, near in zip(pieces, near_corner)
+            if not near or abs(piece.direction @ main) >= np.cos(np.radians(CORNER_TURN_DEGREES))]
+    return MultiLineString(keep) if keep else lines.fronts[street]
+
+
+def facing_band(pieces: list[Piece], reach: float):
+    """The land straight out from these pieces of a lot's edge, `reach` feet deep."""
+    return unary_union([
+        Polygon([piece.line.coords[0], piece.line.coords[-1],
+                 np.array(piece.line.coords[-1]) + piece.outward * reach,
+                 np.array(piece.line.coords[0]) + piece.outward * reach])
+        for piece in pieces]).buffer(1.0)
+
+
+def _join_carriageway_pieces(same: list[Street]) -> list[Street]:
+    """Join each side of a divided road back together where the street map splits it.
+
+    `same` holds every centerline piece of one street. Without this, a piece
+    of the near side that bends away from the lot can be taken for the far
+    side. Two divided pieces join where they meet end to end, no other piece
+    of the street meets them there, and the road runs on rather than turning
+    back. That keeps the two sides apart where they meet at either end of
+    the median.
+    """
+    pieces = [(street, part) for street in same if street.divided
+              for part in shapely.get_parts(street.line)]
+    if len(pieces) < 2:
+        return same
+
+    def node(coord):
+        return round(coord[0], 1), round(coord[1], 1)
+
+    meetings = {}
+    for street in same:
+        for part in shapely.get_parts(street.line):
+            for coord in (part.coords[0], part.coords[-1]):
+                meetings[node(coord)] = meetings.get(node(coord), 0) + 1
+    ends = {}
+    for i, (_, part) in enumerate(pieces):
+        for at_start in (True, False):
+            ends.setdefault(node(part.coords[0 if at_start else -1]), []).append((i, at_start))
+
+    def heading_in(i, at_start):
+        coords = np.asarray(pieces[i][1].coords)[:, :2]
+        step = coords[0] - coords[1] if at_start else coords[-1] - coords[-2]
+        length = np.linalg.norm(step)
+        return step / length if length else None
+
+    group = list(range(len(pieces)))
+
+    def find(i):
+        while group[i] != i:
+            group[i] = group[group[i]]
+            i = group[i]
+        return i
+
+    min_cos = np.cos(np.radians(MAX_CARRIAGEWAY_BEND))
+    for key, found in ends.items():
+        if len(found) != 2 or meetings[key] != 2 or found[0][0] == found[1][0]:
+            continue
+        into, out = heading_in(*found[0]), heading_in(*found[1])
+        # Arriving along one piece and leaving along the other: `out` points
+        # back into the node, so going straight on gives -1.
+        if into is not None and out is not None and -(into @ out) > min_cos:
+            group[find(found[0][0])] = find(found[1][0])
+
+    joined = {}
+    for i, (street, part) in enumerate(pieces):
+        joined.setdefault(find(i), (street, []))[1].append(part)
+    return [street for street in same if not street.divided] + [
+        street._replace(line=linemerge(parts) if len(parts) > 1 else parts[0])
+        for street, parts in joined.values()]
+
+
+def _facing(pieces: list[Piece]):
+    """The land straight out from a lot's edge along one street, as far as a street is looked for.
+
+    It reaches far enough to take in the far side of a divided road.
+    """
+    return facing_band(pieces, MAX_STREET_DISTANCE + MAX_DIVIDED_GAP)
+
+
+def _centerline(name: str, front, pieces: list[Piece],
+                streets: list[Street]) -> StreetCenterline:
+    """The middle of the named street, as seen from a lot whose edge along it is `front`.
+
+    `pieces` are the lot's edge pieces along the street. Only the stretch
+    of centerline straight out from them counts, so a street that bends
+    around the far side of a building isn't measured from there, past land
+    the lot doesn't face. When no centerline lies straight out (around a
+    cul-de-sac, where the centerline stops short), the whole of it counts.
+
+    On a divided road the centerlines closest to the lot are its near side,
+    and divided centerlines of the same street a little farther off, but no
+    more than `MAX_DIVIDED_GAP` beyond, are its far side.
+    """
+    same = _join_carriageway_pieces([street for street in streets if street.name == name])
+    facing = _facing(pieces)
+    ahead = [street._replace(line=street.line.intersection(facing)) for street in same]
+    same = [street for street in ahead if not street.line.is_empty] or same
+    same.sort(key=lambda street: street.line.distance(front))
+    closest = same[0].line.distance(front)
+    label = next((street.label for street in same if street.label), None) or name.title()
+    if not any(street.divided for street in same):
+        return StreetCenterline(name, label, unary_union([street.line for street in same]))
+    near, far = [], []
+    for street in same:
+        gap = street.line.distance(front) - closest
+        if gap <= NEAR_SIDE_SLACK:
+            near.append(street.line)
+        elif street.divided and gap <= MAX_DIVIDED_GAP:
+            far.append(street.line)
+    return StreetCenterline(name, label, unary_union(near),
+                            unary_union(far) if far else None, divided=True)
 
 
 def _extend_fronts_along_curves(pieces):
