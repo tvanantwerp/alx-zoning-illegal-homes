@@ -245,17 +245,21 @@ def _place_buildings(lots, buildings, pairs):
             lot = lot_shapes.loc[pair["lot_id"]]
             part = _polygons_only(remaining.intersection(lot))
             remaining = remaining.difference(lot)
-            if not best["is_home"]:
-                if part.area > 0:
-                    rows.append((building_id, pair["lot_id"], part, part.area / best["footprint"]))
-                continue
-            big_enough = part.area >= MIN_PART_AREA and (
-                part.area >= MIN_PART_OF_BUILDING * pair["footprint"]
-                or part.area >= MIN_PART_OF_LOT * pair["lot_area"])
+            if best["is_home"]:
+                big_enough = part.area >= MIN_PART_AREA and (
+                    part.area >= MIN_PART_OF_BUILDING * pair["footprint"]
+                    or part.area >= MIN_PART_OF_LOT * pair["lot_area"])
+            else:
+                # Garages and sheds are often smaller than MIN_PART_AREA, so
+                # only the piece's share of the building decides.
+                big_enough = part.area >= MIN_PART_OF_BUILDING * pair["footprint"]
             if big_enough:
                 counted[pair["lot_id"]] = part
             else:
                 small.append(part)
+        if not counted and not best["is_home"]:
+            rows.append((building_id, best["lot_id"], whole, 1.0))
+            continue
         for lot_id, part in _join_small_pieces(counted, small).items():
             rows.append((building_id, lot_id, part, part.area / best["footprint"]))
     placed = gpd.GeoDataFrame(

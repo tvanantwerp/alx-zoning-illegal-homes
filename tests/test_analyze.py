@@ -141,3 +141,11 @@ def test_shared_garage_apportions_floor_area_to_both_lots():
     placed = place(lots, [box(30, 10, 70, 30)], is_home=False)
     assert list(placed.lot_id) == [0, 1]
     assert [_outbuilding(0, part).floor_area for _, part in placed.iterrows()] == [320, 320]
+
+
+def test_outbuilding_sliver_stays_with_the_rest_of_the_building():
+    # Half on each of the first two lots, and a 2% sliver over the back line.
+    lots = [box(0, 0, 50, 100), box(50, 0, 100, 100), box(0, 100, 100, 200)]
+    placed = place(lots, [box(20, 50, 80, 101)], is_home=False)
+    assert sorted(placed.lot_id) == [0, 1]
+    assert placed.share.sum() == pytest.approx(1.0)
