@@ -128,7 +128,10 @@ CG, CD, CDX, OC, OCM, OCH, W-1, CRMU, KR) and in planned districts:
   narrower than 8 ft. The map can't know any of that, so an older RM home
   may be fine as it stands. CD asks for 35% of every home lot, with the same
   1992 allowance for houses, twin houses and townhouses, so an older one
-  there may be fine too. The RD zone lets half the land used for parking count,
+  there may be fine too. Both zones let one parking space count as open
+  space where a lot provides at least two; the map can't tell stalls apart,
+  so it leaves the result unchecked when that space would make the
+  difference. The RD zone lets half the land used for parking count,
   up to 90% of the open space it requires. Building coverage (the RT zone's
   rule) counts buildings only.
 - **Home type**, e.g. townhouses in a zone that allows only houses. A few

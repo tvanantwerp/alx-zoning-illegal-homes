@@ -225,6 +225,9 @@ class ZoneRules:
     height_near_street_waived: bool = False
     # Share of the lot that must stay open (0.35 = 35%).
     min_open_space: float | None = None
+    # Home types whose lot may count one parking space as open space when it
+    # provides at least two (RM and CD).
+    parking_space_credit_for: frozenset = frozenset()
     # Least open space in sq ft, however small the lot (RM only).
     min_open_space_area: float = 0.0
     # Shown on the open space row's name, where the zone's rule needs explaining.
@@ -467,6 +470,7 @@ ZONES = {
         # empty lot today, so only the note mentions it.
         min_open_space=0.35,
         min_open_space_area=300,
+        parking_space_credit_for=ALL_TYPES,
         open_space_note=(
             "The RM zone requires each home lot to keep open, usable space: 35% "
             "of the lot, and never less than 300 sq ft. A lot may instead keep "
@@ -616,12 +620,14 @@ ZONES |= {
         # As in the RM zone, that can't help a new building on an empty lot,
         # so only the note mentions it.
         min_open_space=0.35,
+        parking_space_credit_for=frozenset(HOUSE_LIKE),
         open_space_note=(
             "The CD zone requires 35% of each home lot to be open, usable space. "
             "A house, twin house or townhouse may instead keep the open space its "
             "lot had on June 24, 1992, if that was less, so an older home may be "
             "fine as it stands. The map judges whether these buildings could be "
-            "built new."),
+            "built new. Where a lot provides at least two parking spaces, one may "
+            "count as open space."),
     ),
     # Waterfront mixed-use zone (sections 5-505, 5-506 and 5-512). Its height
     # is the height district map's (section 5-507).

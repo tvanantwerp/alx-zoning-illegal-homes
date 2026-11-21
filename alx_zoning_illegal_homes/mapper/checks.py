@@ -176,6 +176,7 @@ class LotFacts:
     year_built: int | None = None
     # Whether the lot lies within 1,000 ft of Eisenhower Avenue's centerline.
     near_eisenhower_avenue: bool = False
+    parking_spaces: list | None = None  # Individual stall outlines, when surveyed.
     # Roads, alleys, driveways and parking lots on the lot, from the city's
     # map, or None. None of this counts as open space.
     paved: object = None
@@ -1718,6 +1719,11 @@ def open_and_usable_area(facts: LotFacts, covered) -> tuple[float, float]:
     if facts.paved is not None:
         open_land = shapely.difference(open_land, _polygons(facts.paved),
                                        grid_size=OVERLAY_GRID)
+    stalls = []
+    if facts.parking_spaces:
+        stalls = [s.intersection(facts.shape).difference(covered) for s in facts.parking_spaces]
+        stalls = [s for s in stalls if s.area > 0]
+        open_land = open_land.difference(unary_union(stalls))
     open_land = _polygons(open_land)
     # Leave a sliver for a strip exactly eight feet wide. At this grid
     # precision the next narrower representable strip still disappears.
@@ -1726,6 +1732,9 @@ def open_and_usable_area(facts: LotFacts, covered) -> tuple[float, float]:
               .buffer(radius, join_style="mitre"))
     usable = shapely.intersection(opened, open_land, grid_size=OVERLAY_GRID)
     credit = 0.0
+    if facts.home_type in rules.parking_space_credit_for:
+        if len(stalls) >= 2:
+            credit = max(s.area for s in stalls)
     if rules.parking_counted_as_open and facts.parking is not None:
         need = (rules.min_open_space or 0.0) * facts.shape.area
         credit = min(rules.parking_counted_as_open * facts.parking.area,
@@ -1740,6 +1749,12 @@ def _check_open_space(facts, findings):
     cover_row = RuleResult("coverage", "Land covered by buildings", NO_RULE,
                            unit="share", limit="max")
     row = cover_row if rules.max_coverage else open_row
+    if rules.name == "CRMU-X" and kind == "multi":
+        open_row.status, open_row.required = NOT_CHECKED, 0.25
+        open_row.explanation = ("The multi-unit residential portion must provide 25% open space. "
+                                "Its land area and any approved substitute amenities are unknown.")
+        findings.results.append(open_row)
+        return
     if (rules.open_space_applies_to and kind not in rules.open_space_applies_to) or (
             not rules.min_open_space and not rules.max_coverage):
         row = cover_row
@@ -1761,7 +1776,7 @@ def _check_open_space(facts, findings):
                     rules.min_open_space_area / facts.shape.area)
     open_area = open_share = None
     credit = 0.0
-    if need_open > 0:
+    if rules.min_open_space:
         open_area, credit = open_and_usable_area(facts, covered)
         open_share = (open_area + credit) / facts.shape.area
         findings.measurements["open_space"] = open_share
@@ -1778,6 +1793,16 @@ def _check_open_space(facts, findings):
     row.status = FAILS if (too_much or too_little) else PASSES
     row.buildings = list(range(len(facts.all_buildings)))
     findings.results.append(row)
+    stall_credit = kind in rules.parking_space_credit_for
+    if credit and stall_credit:
+        row.explanation = f"One parking space counts, adding {_square_feet(credit)} of open space."
+    if too_little and stall_credit and facts.parking_spaces is None and facts.parking is not None:
+        possible_credit = facts.parking.difference(covered).area
+        if (open_area + possible_credit) / facts.shape.area + COVERAGE_MARGIN >= need_open:
+            row.status = NOT_CHECKED
+            row.explanation = ("The paving map does not distinguish individual stalls. "
+                               "One space can count if the lot provides at least two.")
+            return
     if too_much:
         findings.reasons.append(Reason(
             "open_space",
@@ -1795,7 +1820,7 @@ def _check_open_space(facts, findings):
         findings.reasons.append(Reason(
             "open_space",
             f"Not enough open space: only about {open_share:.0%} of the lot is left "
-            f"open {OPEN_SPACE_LEFT_OUT}, but {rules.min_open_space:.0%} must be left open."
+            f"open {OPEN_SPACE_LEFT_OUT}, but {need_open:.0%} must be left open."
             + (f" That counts {credit:,.0f} sq ft of parking, as the {rules.label} allows."
                if credit else ""),
         ))

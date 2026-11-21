@@ -778,3 +778,21 @@ def test_many_outbuildings_are_summed_up_by_kind():
     assert "3 garages or sheds and 1 outbuilding, with about 750 sq ft in all" in text
     text = outbuildings_explanation("R-5 zone", found[2:3], 350, 0)
     assert "an outbuilding of about 300 sq ft" in text and "Its floor space" in text
+
+
+def test_cd_counts_one_of_two_parking_spaces_as_open():
+    lot, home = box(0, 0, 48, 40), box(0, 0, 26.4, 40)
+    stalls = [box(26.4, 0, 35.4, 18), box(35.4, 0, 44.4, 18)]
+    paving = unary_union(stalls)
+    facts = open_space_facts("CD", "single", lot, home, paved=paving, parking=paving)
+    assert rows(check_lot(facts))["open_space"].status == NOT_CHECKED
+    facts.parking_spaces = stalls
+    assert rows(check_lot(facts))["open_space"].status == PASSES
+    facts.parking_spaces = []
+    assert rows(check_lot(facts))["open_space"].status == FAILS
+
+
+def test_crmu_x_apartments_need_open_space_or_approved_amenities():
+    _, findings = check(YARD_LOT, box(10, 10, 40, 40), "CRMU/X", home_type="multi")
+    row = rows(findings)["open_space"]
+    assert row.status == NOT_CHECKED and row.required == 0.25
