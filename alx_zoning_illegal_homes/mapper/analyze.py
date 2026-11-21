@@ -361,22 +361,24 @@ def _home_sites(parts: pd.DataFrame, lots: gpd.GeoDataFrame) -> dict:
     """Group lots that hold one home recorded as several parcels.
 
     Some condo townhouses are recorded as a unit parcel plus a second parcel
-    beside it, each holding part of the same building. Lots holding pieces of
-    the same buildings are one site only with matching condo addresses.
-    Lots beside each other in an ordinary row hold different sets, since each
-    home's outline is cut along its own lot lines. Returns each lot id's
-    site, keyed by lot id.
+    beside it, each holding part of the same building. So exactly two lots
+    holding pieces of exactly the same buildings, at least one of them a
+    condo, are one site. Their addresses can't confirm it: the city often
+    gives the second parcel a neighbor's street number. Three or more lots
+    sharing one outline are a row drawn as a single building, each lot its
+    own home. Lots beside each other in an ordinary row hold different sets,
+    since each home's outline is cut along its own lot lines. Returns each
+    lot id's site, keyed by lot id.
     """
     held = parts.groupby("lot_id")["building_id"].agg(frozenset)
-    sites = {lot_id: lot_id for lot_id in held.index}
-    matching = {}
-    for lot_id, buildings in held.items():
-        lot = lots.loc[lot_id]
-        address = lot.get("address")
-        if lot.condo_units > 0 and isinstance(address, str) and address.strip():
-            # Matching outlines alone can describe a whole row of freehold lots.
-            key = (buildings, address.strip().upper())
-            sites[lot_id] = matching.setdefault(key, lot_id)
+    condo = lots.loc[held.index, "condo_units"].values > 0
+    sites = {}
+    for buildings, group in pd.Series(held.index, index=held.values).groupby(level=0):
+        lot_ids = list(group.values)
+        if len(lot_ids) == 2 and condo[held.index.get_indexer(lot_ids)].any():
+            sites |= {lot_id: lot_ids[0] for lot_id in lot_ids}
+        else:
+            sites |= {lot_id: lot_id for lot_id in lot_ids}
     return sites
 
 

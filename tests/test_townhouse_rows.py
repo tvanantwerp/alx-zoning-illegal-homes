@@ -197,6 +197,20 @@ def test_home_recorded_as_two_condo_parcels_counts_once():
     assert rows[0].homes == 9
 
 
+def test_condo_parcel_pairs_count_once_whatever_their_addresses():
+    # As on Franklin St: a unit parcel ("809 Franklin St Unit 665") and a
+    # second parcel that carries the next home's street number.
+    parts = []
+    for i in range(6):
+        parts += [(i, i, box(i * 20, 0, (i + 1) * 20, 20)),
+                  (i, 6 + i, box(i * 20, 20, (i + 1) * 20, 40))]
+    addresses = ([f"{809 - 2 * i} Franklin St Unit {665 + 2 * i}" for i in range(6)]
+                 + [f"{807 - 2 * i} Franklin St" for i in range(6)])
+    rows = rows_for(parts, ["CONDO (TOWNHOUSE)"] * 12, condo_units=[1] * 12,
+                    addresses=addresses)
+    assert {row.homes for row in rows.values()} == {6}
+
+
 def test_single_outline_does_not_merge_freehold_lots_with_a_condo():
     parts = [(0, i, shape) for _, i, shape in row_of(9)]
     rows = rows_for(parts, [ROW] * 9, condo_units=[1] + [0] * 8)
