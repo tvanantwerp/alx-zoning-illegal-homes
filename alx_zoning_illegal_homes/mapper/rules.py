@@ -146,7 +146,6 @@ class ZoneRules:
     # Share of the lot that must stay open (0.35 = 35%).
     min_open_space: float | None = None
     # Least open space in sq ft, however small the lot (RM only).
-    historic_open_space: bool = False
     min_open_space_area: float = 0.0
     # Shown on the open space row's name, where the zone's rule needs explaining.
     open_space_note: str = ""
@@ -332,7 +331,7 @@ ZONES = {
         # 1992 if that was less. That says nothing about building on an
         # empty lot today, so only the note mentions it.
         min_open_space=0.35,
-        historic_open_space=True, min_open_space_area=300,
+        min_open_space_area=300,
         open_space_note=(
             "The RM zone requires each home lot to keep open, usable space: 35% "
             "of the lot, and never less than 300 sq ft. A lot may instead keep "
