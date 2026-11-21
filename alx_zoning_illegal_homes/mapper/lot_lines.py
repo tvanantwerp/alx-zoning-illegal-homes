@@ -46,6 +46,9 @@ NEAR_SIDE_SLACK = 10.0
 # The two sides of a divided road are taken to be at most this far apart,
 # centerline to centerline.
 MAX_DIVIDED_GAP = 150.0
+# Two pieces of one side of a divided road are joined end to end only where
+# the road bends less than this many degrees from one piece to the next.
+MAX_CARRIAGEWAY_BEND = 60.0
 
 
 class Street(NamedTuple):
@@ -327,6 +330,66 @@ def _facing(pieces: list[Piece]):
         for piece in pieces]).buffer(1.0)
 
 
+def _join_carriageway_pieces(same: list[Street]) -> list[Street]:
+    """Join each side of a divided road back together where the street map splits it.
+
+    `same` holds every centerline piece of one street. Without this, a piece
+    of the near side that bends away from the lot can be taken for the far
+    side. Two divided pieces join where they meet end to end, no other piece
+    of the street meets them there, and the road runs on rather than turning
+    back. That keeps the two sides apart where they meet at either end of
+    the median.
+    """
+    pieces = [(street, part) for street in same if street.divided
+              for part in shapely.get_parts(street.line)]
+    if len(pieces) < 2:
+        return same
+
+    def node(coord):
+        return round(coord[0], 1), round(coord[1], 1)
+
+    meetings = {}
+    for street in same:
+        for part in shapely.get_parts(street.line):
+            for coord in (part.coords[0], part.coords[-1]):
+                meetings[node(coord)] = meetings.get(node(coord), 0) + 1
+    ends = {}
+    for i, (_, part) in enumerate(pieces):
+        for at_start in (True, False):
+            ends.setdefault(node(part.coords[0 if at_start else -1]), []).append((i, at_start))
+
+    def heading_in(i, at_start):
+        coords = np.asarray(pieces[i][1].coords)[:, :2]
+        step = coords[0] - coords[1] if at_start else coords[-1] - coords[-2]
+        length = np.linalg.norm(step)
+        return step / length if length else None
+
+    group = list(range(len(pieces)))
+
+    def find(i):
+        while group[i] != i:
+            group[i] = group[group[i]]
+            i = group[i]
+        return i
+
+    min_cos = np.cos(np.radians(MAX_CARRIAGEWAY_BEND))
+    for key, found in ends.items():
+        if len(found) != 2 or meetings[key] != 2 or found[0][0] == found[1][0]:
+            continue
+        into, out = heading_in(*found[0]), heading_in(*found[1])
+        # Arriving along one piece and leaving along the other: `out` points
+        # back into the node, so going straight on gives -1.
+        if into is not None and out is not None and -(into @ out) > min_cos:
+            group[find(found[0][0])] = find(found[1][0])
+
+    joined = {}
+    for i, (street, part) in enumerate(pieces):
+        joined.setdefault(find(i), (street, []))[1].append(part)
+    return [street for street in same if not street.divided] + [
+        street._replace(line=linemerge(parts) if len(parts) > 1 else parts[0])
+        for street, parts in joined.values()]
+
+
 def _centerline(name: str, front, pieces: list[Piece],
                 streets: list[Street]) -> StreetCenterline:
     """The middle of the named street, as seen from a lot whose edge along it is `front`.
@@ -341,13 +404,7 @@ def _centerline(name: str, front, pieces: list[Piece],
     and divided centerlines of the same street a little farther off, but no
     more than `MAX_DIVIDED_GAP` beyond, are its far side.
     """
-    same = [street for street in streets if street.name == name]
-    divided = [street for street in same if street.divided]
-    if divided:
-        # Join contiguous carriageway sections before clipping to this frontage.
-        joined = shapely.line_merge(unary_union([s.line for s in divided]))
-        same = [s for s in same if not s.divided] + [
-            divided[0]._replace(line=line) for line in shapely.get_parts(joined)]
+    same = _join_carriageway_pieces([street for street in streets if street.name == name])
     facing = _facing(pieces)
     ahead = [street._replace(line=street.line.intersection(facing)) for street in same]
     same = [street for street in ahead if not street.line.is_empty] or same

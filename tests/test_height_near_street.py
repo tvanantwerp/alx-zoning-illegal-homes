@@ -160,6 +160,23 @@ def test_split_divided_carriageways_keep_the_same_limit():
     assert split.status == whole.status == PASSES
 
 
+@pytest.mark.parametrize("ends", [
+    # Both sides meet the undivided road at one point at each end.
+    [[(400, -20), (450, -40)], [(400, -60), (450, -40)],
+     [(-400, -20), (-450, -40)], [(-400, -60), (-450, -40)]],
+    # The two sides run into each other with nothing else at the point.
+    [[(400, -20), (450, -40)], [(400, -60), (450, -40)]],
+])
+def test_divided_sides_meeting_at_the_ends_stay_apart(ends):
+    sides = [[(-400, -20), (400, -20)], [(-400, -60), (400, -60)]]
+    streets = [Street("MAIN", LineString(line), True) for line in sides + ends]
+    streets.append(Street("MAIN", LineString([(450, -40), (600, -40)]), False))
+    facts = _facts(streets, height=125)
+    row = _row(check_lot(facts))
+    assert facts.lines.centerlines["MAIN"].far is not None
+    assert row.status == FAILS
+
+
 def test_passing_known_height_does_not_cover_a_second_unmeasured_home():
     facts = _facts([NEAR_SIDE, FAR_SIDE], height=50)
     facts.homes.append(Home(shape=box(10, 80, 50, 100), floor_area=500))
