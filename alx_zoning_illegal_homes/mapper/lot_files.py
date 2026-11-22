@@ -149,7 +149,7 @@ def lot_drawing(lot_id: int, record: dict, facts: LotFacts) -> dict:
     district = district if isinstance(district, str) else None
     fallback = record.get("fallback_zone") if district else None
     zone_label = f"{district} planned district" if district else facts.rules.label
-    results_label = "Special approval" if district else f"{facts.rules.label} rules"
+    results_label = f"{district} approved plan" if district else f"{facts.rules.label} rules"
 
     drawing = {
         "id": int(lot_id),

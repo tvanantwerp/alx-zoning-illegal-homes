@@ -130,7 +130,7 @@ def test_ordinary_block_only_for_district_lots():
               "ordinary_notes": ["an ordinary note"]}
     drawing = lot_drawing(7, record, facts)
     assert drawing["zone_label"] == "Test Village planned district"
-    assert drawing["results"]["label"] == "Special approval"
+    assert drawing["results"]["label"] == "Test Village approved plan"
     assert drawing["district"] == "Test Village" and drawing["fallback_zone"] == "R-8"
     assert drawing["ordinary"]["label"] == "Ordinary R-8 zone"
     assert drawing["ordinary"]["rules"] and drawing["ordinary_notes"] == ["an ordinary note"]

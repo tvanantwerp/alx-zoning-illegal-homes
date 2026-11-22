@@ -117,7 +117,7 @@ CG, CD, CDX, OC, OCM, OCH, W-1, CRMU, KR) and in planned districts:
   the lot faces (on a corner or through lot, both streets). The center comes
   from the city's street map. A divided road is drawn there as one
   centerline per side, so its center is taken as halfway between the two.
-  The approval for the Eisenhower Avenue Metro planned district sets this
+  The approved plan for the Eisenhower Avenue Metro planned district sets this
   rule aside, so it isn't checked there.
 - **Open space** or building coverage. Open space is the land not under a
   building, road, alley, driveway or parking lot, leaving out every strip
@@ -175,11 +175,12 @@ back today?*
 ### Planned districts
 
 Zones starting with CDD (Cameron Station, Potomac Yard, Carlyle and others)
-are planned districts. Each was built under a special permit from City
-Council, and that approval still governs the land. The ordinance (section
+are planned districts. Each was built under a plan for the whole district,
+approved by City Council through a special use permit, and that plan still
+governs the land in place of the ordinary zone rules. The ordinance (section
 5-602, Table 1) gives two sets of limits for every district:
 
-- **With the special approval:** which kinds of home are allowed, a maximum
+- **With the approved plan:** which kinds of home are allowed, a maximum
   height, and a cap on homes or floor space across the whole district. Lot
   sizes and yards are not set by rule; the approved site plan drawings fix
   them.
@@ -371,7 +372,7 @@ Other details that matter:
   two halves, but the map can't tell if one half's own parcel is too small.
 - A few hundred home lots are left unchecked because the city's data gives
   them no zone, two zones, or no matching building.
-- Variances and special approvals for individual properties are unknown.
+- Variances and special use permits for individual properties are unknown.
 - On the height district map, two Old Town North areas need a guess. One
   caps height at 77 ft and the average at 50 ft; the average covers a whole
   block or development, so only the 77 ft cap is checked. Another allows

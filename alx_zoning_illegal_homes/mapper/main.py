@@ -31,26 +31,89 @@ PROPERTY_NAMES = {
     "fallback_zone": "fallback_zone",
     "ordinary_reasons": "ordinary_reasons",
     "case": "case",
+    "skipped": "skipped",
 }
 
 
-# Plain descriptions for the assessor's most common non-home land uses.
+# Plain descriptions for the assessor's land use codes, shown on lots that
+# were not checked. Codes not listed here are shown as the city writes them.
 LAND_USE_DESCRIPTIONS = {
     "VACANT LAND COM AREA": "Shared community land: private streets, alleys "
                             "and green space owned by a homeowners association",
     "VACANT LAND - RESID.": "Vacant residential land",
     "VACANT LAND COMMERC.": "Vacant commercial land",
     "VACANT LAND - APT": "Vacant land for apartments",
+    "VACANT LAND - INDUST": "Vacant industrial land",
     "CITY PKS/PLAYGROUNDS": "City park or playground",
     "CITY VACANT LAND": "Vacant city land",
+    "CITY AVAILABLE USE": "City-owned land",
+    "CITY GOVT BLDGS": "City government building",
+    "CITY LEASED TO OTHER": "City-owned land leased to someone else",
+    "CITY LIBRARIES": "City library",
+    "CITY PARKING": "City parking lot or garage",
+    "CITY REC/CUL/CENTERS": "City recreation or cultural center",
+    "BOARDS/COMMISSIONS": "City board or commission property",
+    "ALEX.REDV.HOUS.AUTH": "Alexandria Redevelopment and Housing Authority property",
+    "FEDERAL": "Federal government property",
+    "STATE/GENERAL": "State government property",
+    "REGIONAL/GENERAL": "Regional government property",
+    "WASH METRO TRAN AUTH": "Metro (WMATA) property",
+    "SANITATION AUTHORITY": "Sewer authority property",
+    "ELE LG & POW COM SCC": "Electric utility property",
+    "TELPH/TELGR CO SCC": "Phone company property",
+    "WATER CORP. SCC": "Water company property",
+    "OP.RAILROAD VDT": "Railroad tracks in use",
+    "RAILROAD PROPERTY": "Railroad property",
     "CHURCHES/RELIGIOUS": "Place of worship",
+    "RES. RELIGIOUS": "Housing for a religious order",
+    "CHARITABLE": "Charity property",
     "GENERAL COMMERCIAL": "Commercial property",
     "OFFICE BUILDINGS": "Office building",
     "JR OFFICE BUILDING": "Small office building",
+    "OFFICE/COMM WHSE": "Office or warehouse",
+    "CONDO/OFFICE": "Office condo",
+    "RETAIL CONDO": "Shop condo",
+    "CONDO MASTER CARDS": "Condo building's shared land",
+    "SHOPPING CENTERS": "Shopping center",
+    "RESTAURANT/FST FOOD": "Restaurant",
+    "FAST FOOD": "Fast food restaurant",
+    "FINANCIAL INST": "Bank",
+    "SERVICE STATIONS": "Gas station",
+    "GAS KIOSK": "Gas station",
+    "INDUSTRIAL FLEX": "Industrial building",
+    "INDUST. WASTE ENERGY": "Waste-to-energy plant",
+    "HOTEL AND MOTEL": "Hotel or motel",
+    "EXTENDED STAY": "Extended-stay hotel",
+    "FACULTY/STF HOUSING": "School staff housing",
+    "HOSPITALS": "Hospital",
+    "NURSING HOME": "Nursing home",
+    "FUNERAL HOME": "Funeral home",
+    "VETERINARY CLINIC": "Veterinary clinic",
+    "DRUG STORE": "Drug store",
+    "CONVENIENCE STORE": "Convenience store",
+    "AUTO DEALERSHIP": "Car dealership",
+    "REPAIR SERVICES": "Repair shop",
+    "SELF STORAGE FACILITY": "Self-storage building",
+    "PARKING GARAGE": "Parking garage",
+    "PRIVATE CEMETERIES": "Private cemetery",
+    "PUBLIC CEMETERIES": "Public cemetery",
     "RES SUB PARCEL": "Leftover piece of a residential lot",
     "SUB-PARCEL": "Leftover piece of a lot",
+    "Legal Parcel beneath Leased": "Land under a leased building",
     "ED. PUBLIC SCHOOLS": "Public school",
     "PRIVATE ED INSTS.": "Private school",
+    "ST. ED. INSTITUTIONS": "State college property",
+    "ROW (TOWNHOUSE)": "City records list this as a townhouse",
+    "SEMI-DETACHED HOUSE": "City records list this as half of a twin house",
+    "DETACHED HOUSE": "City records list this as a detached house",
+    "CONDO (TOWNHOUSE)": "City records list this as a townhouse condo",
+    "CONDO (GARDEN)": "City records list this as a low-rise condo building",
+    "CONDO (HI-RISE)": "City records list this as a high-rise condo building",
+    "GARDEN APT 3 ST OR <": "City records list this as an apartment building of 3 stories or fewer",
+    "MED RISE ELEV (4-6S)": "City records list this as an apartment building of 4 to 6 stories",
+    "HI-RISE (7 ST AND UP": "City records list this as an apartment building of 7 stories or more",
+    "SMALL APTS": "City records list this as a small apartment building",
+    "COOPERATIVE": "City records list this as a co-op apartment building",
 }
 
 
@@ -89,7 +152,9 @@ def export(results, path: Path = OUTPUT) -> None:
             value = _clean(record.get(column))
             if value is not None:
                 properties[name] = value
-        if record["status"] == "not_checked":
+        # A home skipped for its zone already shows its home type, which the
+        # city's land use label would only repeat or contradict.
+        if record["status"] == "not_checked" and _clean(record.get("home_type")) is None:
             use = _describe_land_use(record.get("land_use"))
             if use:
                 properties["use"] = use
@@ -127,7 +192,7 @@ def main() -> None:
     planned = checked["district"].notna().sum()
     print(f"Checked {len(checked):,} lots with homes.")
     print(f"{planned:,} of them are in planned districts, judged by what "
-          "their special approvals allow.")
+          "their approved plans allow.")
     print(f"{illegal:,} ({illegal / len(checked):.0%}) break at least one "
           "of today's zoning rules.")
     print(f"Wrote {OUTPUT}")

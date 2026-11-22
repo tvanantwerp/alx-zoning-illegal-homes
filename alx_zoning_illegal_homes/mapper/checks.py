@@ -1308,7 +1308,7 @@ def _check_yards_without_front(facts, findings, homes):
     if fails:
         findings.reasons.append(Reason(
             "yards",
-            f"Too close to the lot line: about {_feet(gap)}, but at least "
+            f"Too close to a lot line: about {_feet(gap)}, but at least "
             f"{_feet(needed)} is required.",
         ))
     row = _yard_row(facts, "nearest", FAILS if fails else PASSES, nearest, detail="needs")
