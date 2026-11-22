@@ -70,6 +70,21 @@ CG, CD, CDX, OC, OCM, OCH, W-1, CRMU, KR) and in planned districts:
   RB homes in the historic districts belong at the front lot line unless the
   board of architectural review approves another line: a home at the line
   passes, and one set back isn't judged.
+- **Extra setbacks along named streets** (section 7-1006). In every zone,
+  buildings along these stretches must stand back at least this far:
+  - Mount Vernon Avenue, from Braddock Road north: 10 ft from the front lot line.
+  - Duke Street, from Diagonal Road to Quaker Lane: 60 ft from the center of
+    the street; west of Quaker Lane: 75 ft.
+  - King Street, from Braddock Road northwest: 75 ft from the center.
+  - Seminary Road, west of Quaker Lane: 60 ft from the center.
+  - Beauregard Street: 80 ft from the center.
+  - South Pickett Street: 50 ft from the center.
+
+  The ordinance measures from the centerline as mapped in 1960; the map uses
+  today's street map, with 5 ft of slack as for the height-near-the-street
+  rule (2.5 ft on Mount Vernon Avenue, as for other yards). The ends of each
+  stretch are approximated by lines of longitude or latitude through the
+  cross streets. Planned districts' approved plans set the rule aside.
 - **Side and rear yards**, both the fixed minimum and the deeper yard taller
   buildings need. The deeper yard is judged for each part of a home (a
   low wing, a taller main block) at that part's own height and distance
@@ -314,8 +329,6 @@ Other details that matter:
   Old Town rows were built a house or two at a time, but where their walls
   are shared the map counts them as one building, as the ordinance's words
   read, so a number of Old Town blocks fail.
-- The extra street setbacks along Duke Street, King Street and four other
-  streets (section 7-1006) aren't checked yet.
 - Roads, driveways and parking lots come from the city's planimetric map,
   traced from aerial photos. Patios, small parking pads and paving missing
   from that map still count as open space, so open space can look bigger

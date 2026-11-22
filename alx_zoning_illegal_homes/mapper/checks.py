@@ -27,6 +27,7 @@ from .rule_results import (
     explain_margin, format_feet as _feet, front_yard_explanation, frontage_about,
     height_explanation, height_map_explanation, height_near_street_explanation,
     height_near_street_waived_explanation, height_winner_explanation,
+    named_street_setback_about, named_street_setback_explanation, named_street_setback_reason,
     margin_explanation, no_front_yard_explanation, no_height_limit_explanation,
     block_average_front_yard_explanation,
     contextual_front_yard_explanation, contextual_front_yard_reason,
@@ -194,6 +195,9 @@ class LotFacts:
     # The row of attached homes this lot's homes stand in, or None when they
     # share a wall with no home on another lot.
     row: TownhouseRow | None = None
+    # The extra setbacks along named streets (section 7-1006) that cover this
+    # lot's location, as NamedStreetSetbacks keyed by street name.
+    street_setbacks: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -244,6 +248,7 @@ def check_lot(facts: LotFacts) -> Findings:
     width = _check_width_and_frontage(facts, findings, position)
     older_lot = _excuse_older_lot(facts, findings)
     _check_yards(facts, findings, width)
+    _check_named_street_setbacks(facts, findings)
     marginal = (not older_lot and facts.rules.name in OLDER_LOTS.zones
                 and facts.home_type in HOUSE_LIKE and facts.home_type in facts.rules.allowed
                 and any(row.rule in LOT_RULES and row.status == PASSES and row.required
@@ -1633,6 +1638,97 @@ def _street_gaps(facts: LotFacts, known: list) -> tuple[list[StreetGap], list[st
                     continue
                 gaps.append(StreetGap(home, roof, street, *found))
     return gaps, unplaced
+
+
+@dataclass
+class NamedStreetGap:
+    """How far one home is from a named street, against that street's section 7-1006 setback."""
+
+    rule: object          # the NamedStreetSetback
+    label: str
+    home: Home
+    distance: float
+    line: LineString
+
+    @property
+    def short(self) -> float:
+        """How far short of the setback the home falls, before any margin; below zero when clear."""
+        return self.rule.distance - self.distance
+
+
+def _named_street_gaps(facts: LotFacts) -> tuple[list[NamedStreetGap], list[str]]:
+    """Measure every home against every named-street setback along a street the lot faces.
+
+    Returns the measurements and the names of streets that couldn't be
+    measured (a divided road whose middle couldn't be placed).
+    """
+    lines = facts.lines
+    gaps, unmeasured = [], []
+    for street, rule in facts.street_setbacks.items():
+        if street not in lines.fronts:
+            continue
+        center = lines.centerlines.get(street)
+        label = center.label if center else street.title()
+        if rule.label_starts and not label.startswith(rule.label_starts):
+            continue
+        for home in facts.homes:
+            if not rule.from_centerline:
+                front = front_for_yard(lines, street)
+                gaps.append(NamedStreetGap(rule, label, home, front.distance(home.shape),
+                                           _nearest_line(home, front)))
+                continue
+            found = center.measure(home.shape) if center else None
+            if found is None:
+                if label not in unmeasured:
+                    unmeasured.append(label)
+                continue
+            gaps.append(NamedStreetGap(rule, label, home, *found))
+    return gaps, unmeasured
+
+
+def _check_named_street_setbacks(facts, findings):
+    """Check the extra setbacks along a few named streets (section 7-1006).
+
+    Along stretches of Mount Vernon Avenue, Duke Street, King Street, Seminary
+    Road, Beauregard Street and South Pickett Street, buildings must stand a
+    set distance back: from the street's centerline, or on Mount Vernon Avenue
+    from the front lot line. This holds in every zone, even where the zone
+    asks no front yard, but not under a planned district's approved plan.
+    Only lots on one of those stretches get a row. The home closest to
+    failing sets it.
+    """
+    if not facts.rules.named_street_setbacks or not facts.street_setbacks:
+        return
+    gaps, unmeasured = _named_street_gaps(facts)
+    if not gaps and not unmeasured:
+        return
+    if not gaps:
+        label = unmeasured[0]
+        findings.results.append(RuleResult(
+            "yard:street", f"Setback from {label}", NOT_CHECKED, unit="ft",
+            explanation=unplaced_divided_explanation(unmeasured)))
+        return
+    worst = max(gaps, key=lambda gap: gap.short)
+    rule = worst.rule
+    margin = CENTERLINE_MARGIN if rule.from_centerline else DISTANCE_MARGIN
+    fails = worst.distance + margin < rule.distance
+    row = RuleResult(
+        "yard:street", f"Setback from {worst.label}", FAILS if fails else PASSES,
+        measured=worst.distance, required=rule.distance, unit="ft", detail="needs",
+        about=named_street_setback_about(worst.label, rule.stretch, rule.section),
+        shapes={"gap": worst.line})
+    row.buildings = [i for i, outline in enumerate(facts.all_buildings)
+                     if outline.equals(worst.home.shape)][:1]
+    if fails:
+        findings.reasons.append(Reason("yards", named_street_setback_reason(
+            worst.label, worst.distance, rule.distance, rule.from_centerline,
+            rule.stretch, rule.section)))
+    row.explanation = " ".join(filter(None, [
+        named_street_setback_explanation(worst.label, worst.distance, rule.distance,
+                                         rule.from_centerline),
+        unplaced_divided_explanation(unmeasured) if unmeasured else None,
+        margin_explanation(row)]))
+    findings.results.append(row)
 
 
 def _check_height_near_street(facts, findings):

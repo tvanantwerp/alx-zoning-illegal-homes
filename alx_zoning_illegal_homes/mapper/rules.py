@@ -34,8 +34,6 @@ zone that has them:
   limit that applies without that approval.
 - Rules for shops, offices and other non-home uses, and site plan rules
   for a whole new development (parking, landscaping, building form).
-- The extra setbacks along six named streets (section 7-1006), not yet
-  checked.
 
 Rules left out of only one zone are noted beside that zone.
 """
@@ -246,6 +244,10 @@ class ZoneRules:
     # CD and CL), and "plan" under a planned district's approved plan, which
     # sets how homes are grouped there.
     long_townhouse_rows: str = "permit"
+    # Whether the extra setbacks along a few named streets (section 7-1006)
+    # apply. They do in every zone; a planned district's approved plan, whose
+    # site plans fix where buildings go, sets them aside.
+    named_street_setbacks: bool = True
 
     @property
     def label(self) -> str:
@@ -1001,6 +1003,7 @@ def planned_district_rules(label, in_historic_district=False, zone=None, changes
         if district.plan_height else {},
         height_near_street_waived=district.plan_waives_height_near_street,
         long_townhouse_rows="plan",
+        named_street_setbacks=False,
     )
     from_table = {}
     if zone is None or zone == district.fallback_zone:
@@ -1018,6 +1021,69 @@ def planned_district_rules(label, in_historic_district=False, zone=None, changes
     fallback = rules_for(zone, in_historic_district)
     changes = from_table | (changes or {})
     return district, plan, replace(fallback, **changes) if changes else fallback
+
+
+@dataclass(frozen=True)
+class NamedStreetSetback:
+    """An extra setback along one stretch of a named street (section 7-1006).
+
+    Along these streets every building must stand back at least `distance`
+    feet, measured from the street's centerline, or from the front lot line
+    where `from_centerline` is False. Where this asks more than the zone's own
+    front yard, it wins.
+
+    The stretch is bounded by cross streets, approximated by lines of
+    longitude or latitude through where they meet. `label_starts` narrows a
+    street name the city's street map shares between two streets (North and
+    South Pickett Street).
+    """
+
+    street: str           # the name in the city's street map, e.g. "DUKE"
+    section: str          # e.g. "7-1006(B)"
+    distance: float
+    from_centerline: bool = True
+    stretch: str = ""     # the stretch in plain words, for messages
+    west_of: float | None = None    # longitude
+    east_of: float | None = None    # longitude
+    north_of: float | None = None   # latitude
+    label_starts: str = ""
+
+    def covers(self, longitude: float, latitude: float) -> bool:
+        """Whether a lot at this location is on the stretch the rule covers."""
+        return ((self.west_of is None or longitude < self.west_of)
+                and (self.east_of is None or longitude > self.east_of)
+                and (self.north_of is None or latitude > self.north_of))
+
+
+# Where the cross streets that end each stretch meet the named street,
+# from the city's street map.
+DUKE_AT_DIAGONAL_LONGITUDE = -77.0633
+DUKE_AT_QUAKER_LONGITUDE = -77.0891
+KING_AT_BRADDOCK_LONGITUDE = -77.0875
+SEMINARY_AT_QUAKER_LONGITUDE = -77.0896
+MOUNT_VERNON_AT_BRADDOCK_LATITUDE = 38.8137
+
+NAMED_STREET_SETBACKS = (
+    NamedStreetSetback("MOUNT VERNON", "7-1006(A)", 10, from_centerline=False,
+                       stretch="from Braddock Road north",
+                       north_of=MOUNT_VERNON_AT_BRADDOCK_LATITUDE),
+    NamedStreetSetback("DUKE", "7-1006(B)", 60, stretch="from Diagonal Road to Quaker Lane",
+                       west_of=DUKE_AT_DIAGONAL_LONGITUDE, east_of=DUKE_AT_QUAKER_LONGITUDE),
+    NamedStreetSetback("DUKE", "7-1006(B)", 75, stretch="west of Quaker Lane",
+                       west_of=DUKE_AT_QUAKER_LONGITUDE),
+    NamedStreetSetback("KING", "7-1006(C)", 75, stretch="from Braddock Road northwest",
+                       west_of=KING_AT_BRADDOCK_LONGITUDE),
+    NamedStreetSetback("SEMINARY", "7-1006(D)", 60, stretch="west of Quaker Lane",
+                       west_of=SEMINARY_AT_QUAKER_LONGITUDE),
+    NamedStreetSetback("BEAUREGARD", "7-1006(E)", 80),
+    NamedStreetSetback("PICKETT", "7-1006(F)", 50, label_starts="South"),
+)
+
+
+def named_street_setbacks(longitude: float, latitude: float) -> dict:
+    """The section 7-1006 setbacks for a lot at this location, keyed by street name."""
+    return {rule.street: rule for rule in NAMED_STREET_SETBACKS
+            if rule.covers(longitude, latitude)}
 
 
 # Inside the two historic districts the RB zone swaps in looser rules.
