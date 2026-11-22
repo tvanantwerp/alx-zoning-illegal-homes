@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chooseResults, rulesTable, lotSquares } from "../../site/lot-drawing/table.js";
+import { chooseResults, rulesTable, lotSquares, verdict } from "../../site/lot-drawing/table.js";
 
 const row = (o) => ({ rule: "lot_area", name: "Lot size", status: "fails", measured: 4000, required: 8000, unit: "sq ft", limit: "min", ...o });
 const plain = { results: { label: "R-8 zone rules", rules: [row()] } };
@@ -72,4 +72,22 @@ test("older lots get their own pill, bar and squares, and keep the shortfall", (
   const squares = lotSquares(older);
   assert.match(squares, /box older/);
   assert.match(squares, /91% of the land the zone asks of a new lot/);
+});
+test("the verdict links to each failing row", () => {
+  const html = verdict({ label: "x", rules: [row(), row({ rule: "yard:rear", name: "Rear yard" }), row({ rule: "height", status: "passes" })] });
+  assert.match(html, /^Breaks 2 rules: /);
+  assert.match(html, /<button type="button" class="jump" data-jump="lot_area">Lot size<\/button>,<\/span>/);
+  assert.match(html, /data-jump="yard:rear">Rear yard</);
+  assert.doesNotMatch(html, /data-jump="height"/);
+});
+test("a lot that passes gets a plain verdict", () => {
+  assert.equal(verdict({ label: "x", rules: [row({ status: "passes" })] }), "Passes every rule the map checks");
+  assert.match(verdict({ label: "x", rules: [row()] }), /^Breaks 1 rule: /);
+});
+test("cells carry labels for the narrow-screen layout", () => {
+  const { main, extra } = chooseResults(district, true);
+  const html = rulesTable(main, extra);
+  assert.match(html, /<td class="col-measured num" data-label="Measured">/);
+  assert.match(html, /<td class="col-says num" data-label="Rule says">/);
+  assert.match(html, /<td class="col-extra" data-label="Cameron Station approved plan">/);
 });
