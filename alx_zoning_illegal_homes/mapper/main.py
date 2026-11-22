@@ -152,7 +152,9 @@ def export(results, path: Path = OUTPUT) -> None:
             value = _clean(record.get(column))
             if value is not None:
                 properties[name] = value
-        if record["status"] == "not_checked":
+        # A home skipped for its zone already shows its home type, which the
+        # city's land use label would only repeat or contradict.
+        if record["status"] == "not_checked" and _clean(record.get("home_type")) is None:
             use = _describe_land_use(record.get("land_use"))
             if use:
                 properties["use"] = use
