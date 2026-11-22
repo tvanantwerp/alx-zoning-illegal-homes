@@ -868,10 +868,7 @@ PLANNED_DISTRICTS = {
         "Heights run from 45 ft at the edges to 120 ft for a few buildings "
         "on the south side; this map only tests the 120 ft ceiling."),
     # Potomac Yard's fallback depends on where in the district the lot is;
-    # see potomac_yard_zone(). The ordinance also lets the "Piggyback Yard"
-    # and Slaters Lane parts of the yard use CRMU-L rules, but those areas
-    # are drawn only on a 1995 rezoning plat (REZ #95-0004) that isn't in
-    # the map's data, so they are judged like the rest of the yard.
+    # see potomac_yard_fallback().
     "CDD#10": PlannedDistrict(
         "Potomac Yard / Potomac Greens", None, home_cap=2800,
         plan_summary="The plan allows up to 2,800 homes, mostly "
@@ -921,20 +918,36 @@ METRO_TRACKS_LONGITUDE = -77.0472
 MONROE_BRIDGE_LATITUDE = 38.8222
 
 
-def potomac_yard_zone(longitude, latitude, feet_east_of_route_1) -> str:
-    """Pick the fallback zone for a lot in the Potomac Yard district.
+def potomac_yard_fallback(longitude, latitude, feet_east_of_route_1) -> tuple:
+    """Pick the fallback zone, and changes to it, for a lot in the Potomac Yard district.
 
-    The ordinance gives three: RB south of the Monroe Avenue bridge and
-    east of the Metro tracks, CSL for the first 250 feet east of Route 1,
-    and industrial everywhere else. The bridge and tracks are approximated
-    here by a line of latitude and a line of longitude.
+    The ordinance gives RB south of the Monroe Avenue bridge and east of the
+    Metro tracks, CSL for the first 250 feet east of Route 1, and industrial
+    everywhere else, except that the "Piggyback Yard" and Slaters Lane parts
+    may be built under CRMU-L rules, with the Piggyback Yard capped at 50 ft.
+
+    The bridge and tracks are approximated here by a line of latitude and a
+    line of longitude. The Piggyback Yard and Slaters Lane parts are drawn
+    only on a 1995 rezoning plat (REZ #95-0004) that the map doesn't have.
+    The city's master plan lists that rezoning as "Piggyback Yard and Slater's
+    Lane; RB to CRMU-L", and both lie east of the tracks, from Slaters Lane
+    north through Potomac Greens. That is all of the district east of the
+    tracks and north of the bridge, so that whole area gets CRMU-L. The two
+    parts can't be told apart, so the Piggyback Yard's 50 ft cap applies to both.
     """
-    if longitude > METRO_TRACKS_LONGITUDE and latitude < MONROE_BRIDGE_LATITUDE:
-        return "RB"
+    east_of_tracks = longitude > METRO_TRACKS_LONGITUDE
+    if east_of_tracks and latitude < MONROE_BRIDGE_LATITUDE:
+        return "RB", {}
+    if east_of_tracks:
+        return "CRMU/L", {
+            "max_height": {kind: 50 for kind in ALL_TYPES},
+            "height_set_by": "",
+            "described_as": "CRMU-L zone rules for the Piggyback Yard and Slaters Lane",
+        }
     if (feet_east_of_route_1 is not None
             and 0 <= feet_east_of_route_1 <= ROUTE_1_STRIP_DEPTH + ROUTE_1_HALF_WIDTH):
-        return "CSL"
-    return "I"
+        return "CSL", {}
+    return "I", {}
 
 
 def duke_street_floor_area(near_king_street_metro: bool) -> dict:
