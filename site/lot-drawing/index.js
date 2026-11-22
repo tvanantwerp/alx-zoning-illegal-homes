@@ -21,13 +21,14 @@ function loadScene() {
 
 /**
  * Wire up the pop-up. `isOrdinary()` reads the shared switch; `setOrdinary(bool)` changes it everywhere.
+ * `onClose()`, if given, runs each time the pop-up closes.
  *
  * Expects a `<dialog id="lot-drawing">` on the page holding `.ld-title`, `.ld-meta`,
  * `.ld-switch` (a label around a checkbox), `.ld-close` and `.ld-body`.
  * Closing the pop-up hands focus back to the map's canvas.
  * Returns `{ open(properties), refresh(), close() }`.
  */
-export function setUpLotDrawing({ isOrdinary, setOrdinary }) {
+export function setUpLotDrawing({ isOrdinary, setOrdinary, onClose = () => {} }) {
   const dialog = document.getElementById("lot-drawing");
   const title = dialog.querySelector(".ld-title");
   const meta = dialog.querySelector(".ld-meta");
@@ -173,6 +174,7 @@ export function setUpLotDrawing({ isOrdinary, setOrdinary }) {
     body.innerHTML = "";
     const canvas = document.querySelector(".maplibregl-canvas");
     if (canvas) canvas.focus();
+    onClose();
   });
 
   return { open, refresh, close };

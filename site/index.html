@@ -617,14 +617,63 @@ function describe(properties, full) {
 }
 
 let selectedFeature = null;
+/** The lot whose report is open, if any. The page's web address names it, so the report can be shared. */
+let reportFeature = null;
 
-const drawing = setUpLotDrawing({ isOrdinary: () => ordinaryRules, setOrdinary: setOrdinaryRules });
+const drawing = setUpLotDrawing({
+  isOrdinary: () => ordinaryRules,
+  setOrdinary: setOrdinaryRules,
+  onClose: () => { reportFeature = null; updateAddressBar(); },
+});
+
+/**
+ * Keeps the web address in step with what's on screen, so copying it shares the same view:
+ * `?address=415+PRINCE+ST&lot=15940` while a lot's report is open, and `judge=ordinary`
+ * while planned districts are judged by ordinary zoning.
+ * It replaces the current address rather than adding to the browser's history.
+ */
+function updateAddressBar() {
+  const params = new URLSearchParams();
+  if (reportFeature) {
+    params.set("address", reportFeature.properties.address || "");
+    params.set("lot", reportFeature.properties.id);
+  }
+  if (ordinaryRules) params.set("judge", "ordinary");
+  const query = params.toString();
+  history.replaceState(null, "", query ? "?" + query : location.pathname);
+}
+
+/**
+ * The lot a shared web address points to. The lot number is tried first, as long as
+ * its address still matches; lot numbers can change when the map data is rebuilt, so
+ * otherwise the first lot with a report at that address is used.
+ */
+function lotFromAddressBar(params) {
+  const id = params.get("lot");
+  const address = (params.get("address") || "").trim().toUpperCase();
+  const hasReport = f => f.properties.id != null;
+  const byId = id ? lots.features.find(f => hasReport(f) && String(f.properties.id) === id) : null;
+  if (byId && (!address || (byId.properties.address || "").toUpperCase() === address)) return byId;
+  if (!address) return null;
+  return lots.features.find(f => hasReport(f) && (f.properties.address || "").toUpperCase() === address) || null;
+}
+
+/** Moves the map to show a lot up close. */
+function zoomTo(feature) {
+  const ring = feature.geometry.type === "Polygon" ? feature.geometry.coordinates[0] : feature.geometry.coordinates[0][0];
+  const bounds = ring.reduce((b, c) => b.extend(c), new maplibregl.LngLatBounds(ring[0], ring[0]));
+  map.fitBounds(bounds, { padding: 140, maxZoom: 18.5 });
+}
 
 /** Shows a lot in the side panel and outlines it on the map, then opens its drawing. */
 function select(feature) {
   selectedFeature = feature;
   document.getElementById("detail").innerHTML = describe(feature.properties, true);
   map.getSource("picked")?.setData({ type: "FeatureCollection", features: [feature] });
+  if (feature.properties.id != null) {
+    reportFeature = feature;
+    updateAddressBar();
+  }
   drawing.open(feature.properties);
 }
 
@@ -636,6 +685,7 @@ function setOrdinaryRules(value) {
   updateHeadline();
   if (selectedFeature) document.getElementById("detail").innerHTML = describe(selectedFeature.properties, true);
   drawing.refresh();
+  updateAddressBar();
 }
 
 function setUpSearch() {
@@ -653,9 +703,7 @@ function setUpSearch() {
       lots.features.find(f => tidy(f).includes(wanted));
     if (!match) { status.textContent = "No lot found with that address."; return; }
     status.textContent = "";
-    const ring = match.geometry.type === "Polygon" ? match.geometry.coordinates[0] : match.geometry.coordinates[0][0];
-    const bounds = ring.reduce((b, c) => b.extend(c), new maplibregl.LngLatBounds(ring[0], ring[0]));
-    map.fitBounds(bounds, { padding: 140, maxZoom: 18.5 });
+    zoomTo(match);
     select(match);
   });
 }
@@ -742,6 +790,18 @@ map.on("load", async () => {
   plannedBox.addEventListener("change", () => setOrdinaryRules(plannedBox.checked));
   updateHeadline();
   setUpSearch();
+
+  // Open the view a shared web address describes.
+  const params = new URLSearchParams(location.search);
+  if (params.get("judge") === "ordinary") setOrdinaryRules(true);
+  const shared = lotFromAddressBar(params);
+  if (shared) {
+    zoomTo(shared);
+    select(shared);
+  } else if (params.has("lot") || params.has("address")) {
+    document.getElementById("search-status").textContent = "The lot in this link wasn't found in the current map data.";
+    updateAddressBar();
+  }
 
   const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 12 });
   map.on("mousemove", "lots-fill", event => {
