@@ -24,8 +24,9 @@ function loadScene() {
  *
  * Expects a `<dialog id="lot-drawing">` on the page holding `.ld-title`, `.ld-meta`,
  * `.ld-switch` (a label around a checkbox), `.ld-close` and `.ld-body`.
- * Closing the pop-up hands focus back to the map's canvas.
- * Returns `{ open(properties), refresh(), close() }`.
+ * Closing the pop-up hands focus to the element passed as `returnFocus` when it
+ * was opened, or else to the map's canvas.
+ * Returns `{ open(properties, { returnFocus }), refresh(), close() }`.
  */
 export function setUpLotDrawing({ isOrdinary, setOrdinary }) {
   const dialog = document.getElementById("lot-drawing");
@@ -39,6 +40,7 @@ export function setUpLotDrawing({ isOrdinary, setOrdinary }) {
   let latest = 0;
   let lot = null;
   let view = null;
+  let returnFocusTo = null;
 
   const clearDrawing = () => {
     if (view) view.dispose();
@@ -113,8 +115,9 @@ export function setUpLotDrawing({ isOrdinary, setOrdinary }) {
   };
 
   /** Shows the pop-up for a lot on the map. Lots without an id weren't checked, so there is nothing to draw. */
-  const open = async (properties) => {
+  const open = async (properties, { returnFocus = null } = {}) => {
     if (!properties || properties.id == null) return;
+    returnFocusTo = returnFocus;
     const mine = ++latest;
     clearDrawing();
     tips.hide();
@@ -171,8 +174,9 @@ export function setUpLotDrawing({ isOrdinary, setOrdinary }) {
     tips.hide();
     lot = null;
     body.innerHTML = "";
-    const canvas = document.querySelector(".maplibregl-canvas");
-    if (canvas) canvas.focus();
+    const target = returnFocusTo?.isConnected ? returnFocusTo : document.querySelector(".maplibregl-canvas");
+    returnFocusTo = null;
+    if (target) target.focus();
   });
 
   return { open, refresh, close };
