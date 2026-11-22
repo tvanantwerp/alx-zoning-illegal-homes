@@ -506,15 +506,23 @@ function breaksSelected(properties) {
   return [...selected].some(kind => properties[flagFor(kind, !!properties.district)]);
 }
 
+/**
+ * The share of checked home lots that break a selected rule. When planned
+ * districts are judged by ordinary zoning, the caption says so, because that
+ * number is a what-if, not a finding about the approved plans.
+ */
 function updateHeadline() {
   const checked = lots.features.filter(f => f.properties.status !== "not_checked");
   const failing = checked.filter(f => breaksSelected(f.properties));
   const share = checked.length ? failing.length / checked.length : 0;
+  const rules = selected.size === KINDS.length ? "rule" : "of the selected rules";
   document.getElementById("share").textContent = Math.round(share * 100) + "%";
   document.getElementById("share-caption").innerHTML =
     `<strong>${failing.length.toLocaleString()}</strong> of ${checked.length.toLocaleString()} ` +
-    `checked home lots break ` +
-    (selected.size === KINDS.length ? "at least one current rule." : "at least one of the selected rules.");
+    `checked home lots ` +
+    (ordinaryRules
+      ? `would break at least one ${rules} if ordinary zoning applied in planned districts.`
+      : `break at least one ${selected.size === KINDS.length ? "current rule" : rules}.`);
 }
 
 function buildFilters() {
