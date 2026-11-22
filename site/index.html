@@ -517,15 +517,27 @@ function updateHeadline() {
     (selected.size === KINDS.length ? "at least one current rule." : "at least one of the selected rules.");
 }
 
+/**
+ * Puts each rule's lot count beside its checkbox. Counts follow the same
+ * planned-district setting as the headline and map, so with one rule ticked
+ * its count matches the headline.
+ */
+function updateRuleCounts() {
+  const checked = lots.features.filter(f => f.properties.status !== "not_checked");
+  for (const [kind] of KINDS) {
+    const total = checked.filter(f => f.properties[flagFor(kind, !!f.properties.district)]).length;
+    document.querySelector(`.count[data-kind="${kind}"]`).textContent = total.toLocaleString();
+  }
+}
+
 function buildFilters() {
   const box = document.getElementById("filters");
   for (const [kind, title, hint] of KINDS) {
-    const total = lots.features.filter(f => f.properties["has_" + kind]).length;
     const label = document.createElement("label");
     label.innerHTML =
       `<input type="checkbox" checked data-kind="${kind}">` +
       `<span>${title}<small>${hint}</small></span>` +
-      `<span class="count">${total.toLocaleString()}</span>`;
+      `<span class="count" data-kind="${kind}"></span>`;
     label.querySelector("input").addEventListener("change", event => {
       event.target.checked ? selected.add(kind) : selected.delete(kind);
       recolorLots();
@@ -533,6 +545,7 @@ function buildFilters() {
     });
     box.appendChild(label);
   }
+  updateRuleCounts();
 }
 
 /** Why a lot was left unchecked, keyed by the "skipped" value in the map data. */
@@ -634,6 +647,7 @@ function setOrdinaryRules(value) {
   document.getElementById("ordinary-rules").checked = value;
   recolorLots();
   updateHeadline();
+  updateRuleCounts();
   if (selectedFeature) document.getElementById("detail").innerHTML = describe(selectedFeature.properties, true);
   drawing.refresh();
 }
