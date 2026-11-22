@@ -818,10 +818,10 @@ class PlannedDistrict:
     # Cap on homes across the whole district, if the ordinance sets one.
     home_cap: int | None = None
     homes_per_acre_cap: float | None = None
-    # True where the approval sets aside the rule tying a building's height
+    # True where the approved plan sets aside the rule tying a building's height
     # to its distance from the middle of the street (section 6-403(A)).
     plan_waives_height_near_street: bool = False
-    # Plain-language summary of what the approval allows.
+    # Plain-language summary of what the approved plan allows.
     plan_summary: str = ""
 
 
@@ -830,41 +830,41 @@ PLANNED_DISTRICTS = {
     # Street Metro kiosk and 1.0 elsewhere; see duke_street_floor_area().
     "CDD#1": PlannedDistrict(
         "Duke Street / Carlyle", "OC", 1.25, 77, plan_height=200,
-        plan_summary="The approval allows a mix of uses including homes, "
+        plan_summary="The plan allows a mix of uses including homes, "
         "with buildings up to 200 ft."),
     "CDD#2": PlannedDistrict(
         "Eisenhower Avenue Metro", "OC", 1.25, 100,
         plan_allowed=frozenset({"multi"}),
         plan_waives_height_near_street=True,
-        plan_summary="The approval allows apartment buildings, with no lot "
+        plan_summary="The plan allows apartment buildings, with no lot "
         "size or yard rules; heights are set block by block in the "
         "neighborhood plan."),
     "CDD#3": PlannedDistrict(
         "Cameron Center", "OC", 1.50, 77, plan_height=225,
-        plan_summary="The approval allows offices, shops and homes, with "
+        plan_summary="The plan allows offices, shops and homes, with "
         "mostly residential buildings up to 225 ft."),
     "CDD#4": PlannedDistrict(
         "Winkler Tract", "RA", plan_height=150,
-        plan_summary="The approval allows homes among other uses, with "
+        plan_summary="The plan allows homes among other uses, with "
         "buildings up to 150 ft."),
     "CDD#5": PlannedDistrict(
         "Stone Tract", "RA", plan_height=150, homes_per_acre_cap=54.45,
-        plan_summary="The approval allows up to 54.45 homes per acre "
+        plan_summary="The plan allows up to 54.45 homes per acre "
         "across the district, with buildings up to 150 ft."),
     # RB along Reed Avenue, RC along Commonwealth Avenue, OC on the rest;
     # see route_1_properties_fallback().
     "CDD#7": PlannedDistrict(
         "Route 1 Properties", "OC", plan_height=45,
-        plan_summary="The approval allows homes among other uses, with "
+        plan_summary="The plan allows homes among other uses, with "
         "buildings up to 45 ft."),
     "CDD#8": PlannedDistrict(
         "Trade Center", "CG",
-        plan_summary="The approval allows a mix of shops and homes with "
+        plan_summary="The plan allows a mix of shops and homes with "
         "limited offices; the ordinance sets no district-wide height or home "
         "count."),
     "CDD#9": PlannedDistrict(
         "Cameron Station", "R-8", plan_height=120, home_cap=2510,
-        plan_summary="The approval allows up to 2,510 homes on 97 acres. "
+        plan_summary="The plan allows up to 2,510 homes on 97 acres. "
         "Heights run from 45 ft at the edges to 120 ft for a few buildings "
         "on the south side; this map only tests the 120 ft ceiling."),
     # Potomac Yard's fallback depends on where in the district the lot is;
@@ -874,19 +874,19 @@ PLANNED_DISTRICTS = {
     # the map's data, so they are judged like the rest of the yard.
     "CDD#10": PlannedDistrict(
         "Potomac Yard / Potomac Greens", None, home_cap=2800,
-        plan_summary="The approval allows up to 2,800 homes, mostly "
+        plan_summary="The plan allows up to 2,800 homes, mostly "
         "residential with offices, shops and parks. Heights follow a map "
         "in the neighborhood plan, which is not checked here."),
     "CDD#11": PlannedDistrict(
         "South Carlyle", "OCM(100)", 1.0, 100,
-        plan_summary="The approval allows offices, homes and shops, with "
+        plan_summary="The plan allows offices, homes and shops, with "
         "floor space and height set block by block in the neighborhood "
         "plan."),
     "CDD#13": PlannedDistrict(
         "Triangle Sites", "CL", plan_height=45,
         fallback_allowed=frozenset({"multi"}),
         plan_allowed=frozenset({"multi"}),
-        plan_summary="The approval allows apartments over shops, up to "
+        plan_summary="The plan allows apartments over shops, up to "
         "45 ft; houses and townhouses are not allowed."),
     # OCM(50) on most of the site, CRMU-H on one acre at First and Fayette
     # Streets; see braddock_gateway_fallback().
@@ -984,7 +984,7 @@ def planned_district_rules(label, in_historic_district=False, zone=None, changes
     """Look up both rule sets for a lot in a planned district.
 
     Returns (district, plan rules, fallback rules), or None for a district
-    not in the table. Plan rules are what the district's special approval
+    not in the table. Plan rules are what the district's approved plan
     allows. Fallback rules are the ordinary zone that applies without it;
     zone overrides the table's fallback where that depends on location, and
     changes (field name to value) override the table's changes to it.
@@ -1169,8 +1169,8 @@ def height_map_limit(district: str, text: str) -> HeightMapLimit:
 
 HOME_TYPE_NAMES = {
     "single": "detached house",
-    "semi": "twin house (one half)",
-    "two_unit": "two-unit house (both homes on one lot)",
+    "semi": "half of a twin house",
+    "two_unit": "two-unit house, both homes on one lot",
     "townhouse": "townhouse",
     "multi": "apartment or condo building",
 }

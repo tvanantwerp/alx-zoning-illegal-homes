@@ -1,7 +1,7 @@
 import { esc } from "./format.js";
 import { chooseResults, rulesTable, lotSquares, notesList } from "./table.js";
-const LOAD_ERROR = "The drawing for this lot couldn't be loaded. Try rebuilding the map data.";
-const NO_DRAWING = "The 3D drawing couldn't be shown here, but the rules below still apply.";
+const LOAD_ERROR = "The drawing for this lot couldn't be loaded. Try reloading the page.";
+const NO_DRAWING = "The 3D drawing couldn't be shown here, but the rule results below are complete.";
 const CAPTION = "Measured from the city's map data, not a survey. Drag to turn it.";
 
 let sceneModule = null;

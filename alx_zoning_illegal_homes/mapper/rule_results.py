@@ -627,11 +627,11 @@ def side_count_explanation(zone_label: str, width: float, needed: int) -> str:
 
 def under_special_approval(results: list[RuleResult],
                            district: PlannedDistrict) -> list[RuleResult]:
-    """The results as they stand under a planned district's special approval.
+    """The results as they stand under a planned district's approved plan.
 
     Lot size, frontage, width and yard rows with no rule or no check become
     "not required", since the approved site plan sets them. Other rows with no
-    rule say the approval sets no lot-by-lot limit. Returns new rows and leaves
+    rule say the plan sets no lot-by-lot limit. Returns new rows and leaves
     the ones passed in alone.
     """
     out = []
@@ -643,7 +643,7 @@ def under_special_approval(results: list[RuleResult],
                 "yards here, so no general rule applies."))
         elif row.status == NO_RULE:
             row = replace(row, explanation=(
-                "The special approval sets no lot-by-lot limit for this. "
+                "The approved plan sets no lot-by-lot limit for this. "
                 f"{district.plan_summary}"))
         out.append(row)
     return out
@@ -748,9 +748,9 @@ def long_row_explanation(zone_label: str, homes: int, length: float, permit: boo
 
 
 def row_set_by_plan_explanation(rules_label: str) -> str:
-    """Say that a planned district's approval, not the townhouse rule, sets how homes are grouped."""
+    """Say that a planned district's approved plan, not the townhouse rule, sets how homes are grouped."""
     return (f"The {rules_label} sets how townhouses are grouped, so this isn't judged here. "
-            "The ordinary zoning view checks it.")
+            "Tick \"Judge by ordinary zoning instead\" to see it checked.")
 
 
 def row_no_townhouses_explanation(zone_label: str) -> str:

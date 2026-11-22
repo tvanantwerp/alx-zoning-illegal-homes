@@ -592,13 +592,15 @@ def _add_district_totals(records):
         homes, land = totals[label]
         if district.home_cap:
             record["notes"].append(
-                f"District total: about {homes:,} homes on the lots checked, "
-                f"against {district.home_cap:,} allowed.")
+                f"Across all of {district.name}, the lots this map checked hold "
+                f"about {homes:,} homes. The plan allows up to "
+                f"{district.home_cap:,} in the whole district.")
         elif district.homes_per_acre_cap and land:
             record["notes"].append(
-                f"District total: about {homes / (land / 43560):.0f} homes "
-                "per acre on the lots checked, against "
-                f"{district.homes_per_acre_cap:g} allowed.")
+                f"Across all of {district.name}, the lots this map checked hold "
+                f"about {homes / (land / 43560):.0f} homes per acre. The plan "
+                f"allows up to {district.homes_per_acre_cap:g} per acre across "
+                "the district.")
 
 
 def _paving_on(shape, tree, paving_shapes, is_parking):
@@ -722,10 +724,13 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
     lot, keyed by row number, for debugging and drawing.
 
     status is "illegal" (breaks at least one rule), "ok" (no problem
-    found), or "not_checked" (no home, or a zone this project has no rules
+    found), or "not_checked". A lot not checked says why in "skipped":
+    "no_building" (no home building on it in the city's map),
+    "not_home_use" (city records don't list it as a home), "no_zone" (no
+    zone on the zoning map) or "no_rules" (a zone this project has no rules
     for). Lots in planned districts are judged by what the district's
-    special approval allows. They also carry "ordinary_reasons": how they
-    would fare under the ordinary zone that applies without that approval.
+    approved plan allows. They also carry "ordinary_reasons": how they
+    would fare under the ordinary zone that applies without that plan.
     """
     lots = loader.load_lots()
     buildings = loader.load_buildings()
@@ -815,6 +820,7 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
             "reasons": [],
             "kinds": [],
             "notes": [],
+            "skipped": "no_building",
         }
         records.append(record)
         on_lot = parts_by_lot.get(lot_id)
@@ -823,6 +829,7 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
         homes = on_lot[on_lot["is_home"]]
         if homes.empty:
             continue
+        record["skipped"] = "not_home_use"
         home_union = unary_union(homes.geometry.values)
         nearby_homes = home_tree.query(home_union, predicate="dwithin",
                                        distance=LONE_HOUSE_GAP)
@@ -830,6 +837,7 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
         home_type = _home_type(lot, homes, row_sizes.get(lot_id, 1), alone)
         if home_type is None:
             continue
+        record["skipped"] = "no_rules" if isinstance(lot["zoning_label"], str) else "no_zone"
         years = homes["YEARBLT"][homes["YEARBLT"] > 1600]
         record["home_type"] = HOME_TYPE_NAMES[home_type]
         record["year_built"] = int(years.min()) if len(years) else None
@@ -858,6 +866,7 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
             if planned is None:
                 continue
             district, rules, fallback_rules = planned
+        record["skipped"] = None
 
         shape = lot.geometry
         lines = lines_for(lot_id)
@@ -926,7 +935,7 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
             keep_facts[lot_id] = facts
         if district:
             # Second opinion: the same home under the ordinary zone that
-            # would apply if the district's special approval did not exist.
+            # would apply if the district's approved plan did not exist.
             ordinary = check_lot(replace(facts, rules=fallback_rules))
             findings.results = under_special_approval(findings.results, district)
             project = _project_for(lot_points.loc[lot_id], projects, project_tree)
@@ -942,9 +951,10 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
             })
             findings.notes.insert(0, (
                 f"This lot is in the {district.name} planned district "
-                f"({label.strip()}), built under a special approval from City "
-                f"Council. {district.plan_summary} Lot sizes and yards there "
-                "are fixed by the approved site plan drawings, not by general "
+                f"({label.strip()}). City Council approved a plan for the whole "
+                "district, which replaces the ordinary zone rules there. "
+                f"{district.plan_summary} Lot sizes and yards there are drawn "
+                "lot by lot on the approved site plans, not set by general "
                 "rules, so they are not judged."
                 + (f" City case file: {project}." if project else "")))
         record.update({

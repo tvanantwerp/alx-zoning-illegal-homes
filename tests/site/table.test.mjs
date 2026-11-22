@@ -4,17 +4,17 @@ import { chooseResults, rulesTable, lotSquares } from "../../site/lot-drawing/ta
 
 const row = (o) => ({ rule: "lot_area", name: "Lot size", status: "fails", measured: 4000, required: 8000, unit: "sq ft", limit: "min", ...o });
 const plain = { results: { label: "R-8 zone rules", rules: [row()] } };
-const district = { district: "Cameron Station", results: { label: "Special approval", rules: [row({ status: "not_required", required: undefined, explanation: "site plan" })] },
+const district = { district: "Cameron Station", results: { label: "Cameron Station approved plan", rules: [row({ status: "not_required", required: undefined, explanation: "site plan" })] },
                    ordinary: { label: "Ordinary R-8 zone", rules: [row()] } };
 
 test("plain lots have no extra column", () => {
   assert.equal(chooseResults(plain, true).extra, null);
 });
 test("district lots swap sets with the switch", () => {
-  assert.equal(chooseResults(district, false).main.label, "Special approval");
+  assert.equal(chooseResults(district, false).main.label, "Cameron Station approved plan");
   assert.equal(chooseResults(district, false).extra.label, "Ordinary R-8 zone");
   assert.equal(chooseResults(district, true).main.label, "Ordinary R-8 zone");
-  assert.equal(chooseResults(district, true).extra.label, "Special approval");
+  assert.equal(chooseResults(district, true).extra.label, "Cameron Station approved plan");
 });
 test("table shows labels, limits and tooltips", () => {
   const { main, extra } = chooseResults(district, false);

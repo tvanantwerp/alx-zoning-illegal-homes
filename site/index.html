@@ -359,7 +359,7 @@
   <div class="filters">
     <label>
       <input type="checkbox" id="ordinary-rules">
-      <span>Judge them by ordinary zoning instead<small>Cameron Station, Potomac Yard, Carlyle and others were built under special approvals, and are judged by those. Tick this to see how they would fare under the ordinary zone that applies there without one.</small></span>
+      <span>Judge them by ordinary zoning instead<small>Cameron Station, Potomac Yard, Carlyle and others were each built under a plan approved by City Council, which replaces the ordinary zone rules there. They are judged by those plans. Tick this to judge them by the ordinary zone rules for that land instead.</small></span>
       <span class="count" id="planned-count"></span>
     </label>
   </div>
@@ -371,7 +371,7 @@
     <span class="swatch" style="background:var(--p3)"></span><span>Breaks 3 kinds</span>
     <span class="swatch" style="background:var(--p4)"></span><span>Breaks 4 or more</span>
     <span class="swatch" style="background:var(--ok)"></span><span>No problem found with the selected rules</span>
-    <span class="swatch" style="background:var(--unchecked)"></span><span>Not checked: not a home lot (shared community land, shops, offices, parks), or zoning unclear</span>
+    <span class="swatch" style="background:var(--unchecked)"></span><span>Not checked: no home found on the lot (shared community land, shops, offices, parks), or no zone rules this map can use</span>
   </div>
 
   <details>
@@ -395,10 +395,11 @@
         home passes almost by definition.</li>
       <li>Parking requirements are not checked.</li>
       <li>Planned districts such as Cameron Station, Potomac Yard and
-        Carlyle were built under special approvals from City Council, which
-        still govern that land. Homes there are judged by what the approval
-        allows, as written in the ordinance: which kinds of home, how tall,
-        and how many across the district. Lot sizes and yards in these
+        Carlyle were each built under a plan for the whole district,
+        approved by City Council, which replaces the ordinary zone rules
+        there. Homes there are judged by what the ordinance says each plan
+        allows: which kinds of home, how tall, and how many across the
+        district. Lot sizes and yards in these
         districts are fixed by approved site plan drawings, not by general
         rules, so they are not judged. Tick "Judge them by ordinary zoning
         instead" to see how far these neighborhoods are from what the
@@ -406,8 +407,9 @@
       <li>In Potomac Yard the fallback zone depends on where a lot sits
         (near Route 1, east of the Metro tracks, or elsewhere). Those
         boundaries are approximated.</li>
-      <li>Permits, variances and special approvals for individual
-        properties are not known to this map.</li>
+      <li>Exceptions the city grants to single properties, such as
+        variances and special use permits, are not known to this map. A
+        home shown breaking a rule may have been allowed this way.</li>
     </ul>
   </details>
 </aside>
@@ -533,19 +535,43 @@ function buildFilters() {
   }
 }
 
+/** Why a lot was left unchecked, keyed by the "skipped" value in the map data. */
+const SKIPPED = {
+  no_building: () => "The city's building map shows no home on this lot, so it was not checked.",
+  not_home_use: () => "City records don't list this lot as a home, so it was not checked.",
+  no_zone: () => "This lot has no zone on the city's zoning map, so it was not checked.",
+  no_rules: properties => `This map has no rules for zone ${properties.zone}, so it was not checked.`,
+};
+
+const ruleCount = n => n ? `${n} rule${n === 1 ? "" : "s"}` : "no rules";
+
+/**
+ * The summary card for a lot. `full` is the side panel version; otherwise
+ * it is the short hover version.
+ *
+ * Lots in planned districts can be judged two ways: by the plan City Council
+ * approved for the district, or by the ordinary zone rules that would apply
+ * without it. The card says which one it used and how the lot does under the other.
+ */
 function describe(properties, full) {
-  const useOrdinary = ordinaryRules && properties.district;
+  const district = properties.district;
+  const useOrdinary = ordinaryRules && district;
   const reasons = asList(useOrdinary ? properties.ordinary_reasons : properties.reasons);
-  const otherReasons = properties.district
+  const otherReasons = district
     ? asList(useOrdinary ? properties.reasons : properties.ordinary_reasons) : [];
   const notes = asList(properties.notes);
-  const judgedBy = !properties.district ? ""
-    : useOrdinary ? `Judged by ordinary ${properties.fallback_zone} zone rules`
-    : "Judged by its special approval";
-  const otherView = !properties.district || !full ? ""
-    : `<div class="notes"><strong>${useOrdinary ? "Under its special approval" : `Without its special approval (ordinary ${escapeHtml(properties.fallback_zone)} zone rules)`}:</strong> ` +
+  const plan = `the approved plan for ${district}`;
+  const ordinaryZoning = `ordinary ${properties.fallback_zone} zoning`;
+  const judgedBy = !district ? ""
+    : useOrdinary ? `Judged by ${ordinaryZoning}, as if ${district} had no approved plan.`
+    : `Judged by ${plan}.`;
+  const otherName = useOrdinary ? plan : ordinaryZoning;
+  const compared = !district ? ""
+    : `Under ${otherName} it would break ${ruleCount(otherReasons.length)}.`;
+  const otherView = !district || !full ? ""
+    : `<div class="notes"><strong>Under ${escapeHtml(otherName)} instead:</strong> ` +
       (otherReasons.length
-        ? `it would break ${otherReasons.length} rule${otherReasons.length > 1 ? "s" : ""}.<ul class="reasons">${otherReasons.map(r => `<li>${escapeHtml(r)}</li>`).join("")}</ul>`
+        ? `it would break ${ruleCount(otherReasons.length)}.<ul class="reasons">${otherReasons.map(r => `<li>${escapeHtml(r)}</li>`).join("")}</ul>`
         : "no problems found.") + `</div>`;
   const meta = [
     properties.zone ? "Zone " + properties.zone : null,
@@ -558,14 +584,15 @@ function describe(properties, full) {
   let html = `<div class="card-title">${escapeHtml(properties.address || "No address on record")}</div>` +
     `<div class="card-meta">${escapeHtml(meta)}</div>`;
   if (properties.status === "not_checked") {
-    return html + `<div class="notes">${properties.use
-      ? escapeHtml(properties.use) + ". Not a home lot, so not checked."
-      : "Not checked: no home found here, or the zoning is unclear."}</div>`;
+    return html + `<div class="notes">${properties.use ? escapeHtml(properties.use) + ". " : ""}` +
+      `${escapeHtml(SKIPPED[properties.skipped]?.(properties) || "Not checked.")}</div>`;
   }
   if (!reasons.length) {
-    return html + `<div class="verdict ok">${properties.district && !useOrdinary
-        ? "Allowed under its special approval." : "No problems found with current rules."}</div>` +
-      (judgedBy && !full ? `<div class="notes">${judgedBy}.</div>` : "") + otherView +
+    const verdict = !district ? "No problems found with current rules."
+      : useOrdinary ? `Passes ${ordinaryZoning}.`
+      : `Fits ${plan}.`;
+    return html + `<div class="verdict ok">${escapeHtml(verdict)}</div>` +
+      (compared && !full ? `<div class="notes">${escapeHtml(compared)}</div>` : "") + otherView +
       (full && notes.length ? `<div class="notes">${notes.map(escapeHtml).join("<br><br>")}</div>` : "");
   }
   const shown = full ? reasons : reasons.slice(0, 3);
@@ -574,6 +601,7 @@ function describe(properties, full) {
   if (!full && reasons.length > shown.length) {
     html += `<div class="notes">+ ${reasons.length - shown.length} more. Click for all.</div>`;
   }
+  if (judgedBy) html += `<div class="notes">${escapeHtml(judgedBy)}${full ? "" : " " + escapeHtml(compared)}</div>`;
   if (full) {
     const facts = [
       properties.lot_area ? `Lot: ${properties.lot_area.toLocaleString()} sq ft` : null,
@@ -584,8 +612,6 @@ function describe(properties, full) {
     if (facts) html += `<div class="notes">${facts}</div>`;
     html += otherView;
     if (notes.length) html += `<div class="notes">${notes.map(escapeHtml).join("<br><br>")}</div>`;
-  } else if (judgedBy) {
-    html += `<div class="notes">${judgedBy}.</div>`;
   }
   return html;
 }
