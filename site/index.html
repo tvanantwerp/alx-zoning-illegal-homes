@@ -5,6 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Alexandria's Illegal Homes</title>
 <link rel="icon" href="data:,">
+<script>
+  // Pick the theme before anything is drawn, so a dark-theme visitor never sees a flash of light.
+  {
+    let saved = null;
+    try { saved = localStorage.getItem("theme"); } catch {}
+    document.documentElement.dataset.theme =
+      saved || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  }
+</script>
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.css">
 <script type="importmap">
 {"imports": {"three": "https://unpkg.com/three/build/three.module.js", "three/addons/": "https://unpkg.com/three/examples/jsm/"}}
@@ -35,6 +44,38 @@
     --p3: #bf3a1e;
     --p4: #7d1212;
     --accent: #bf3a1e;
+    --ink-soft: #3d362e;
+    --lot-edge: #ffffff;
+    --swatch-edge: rgba(0, 0, 0, .18);
+    color-scheme: light;
+  }
+  :root[data-theme="dark"] {
+    --paper: #1b1916;
+    --card: #24211d;
+    --ink: #ece6dc;
+    --ink-soft: #cfc7ba;
+    --muted: #a39a8e;
+    --rule: #3a352e;
+    --pass: #7fb3a4;
+    --pass-soft: #23352f;
+    --older: #8eaad3;
+    --older-soft: #232c3a;
+    --accent: #ec6a48;
+    --accent-soft: #3d2219;
+    --lot: #2e2a25;
+    --building: #8c8273;
+    --shed: #5f584e;
+    --street: #36322b;
+    --ok: #5d7d74;
+    --unchecked: #4a4640;
+    --planned: #6f6a9a;
+    --p1: #f3b469;
+    --p2: #e9783c;
+    --p3: #d24a2a;
+    --p4: #a51f1f;
+    --lot-edge: #1b1916;
+    --swatch-edge: rgba(255, 255, 255, .2);
+    color-scheme: dark;
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
@@ -57,6 +98,15 @@
     margin: 0 0 8px;
     letter-spacing: -0.01em;
   }
+  .panel-head { display: flex; justify-content: space-between; align-items: start; gap: 12px; }
+  #theme-toggle {
+    flex: none; margin-top: 2px; padding: 4px 9px;
+    font: 12px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    color: var(--muted); background: var(--card);
+    border: 1px solid var(--rule); border-radius: 999px; cursor: pointer;
+  }
+  #theme-toggle:hover { color: var(--ink); }
+  #theme-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .lede { color: var(--muted); margin: 0 0 18px; }
   .headline {
     border-top: 3px solid var(--ink);
@@ -89,20 +139,21 @@
   .filters small { display: block; color: var(--muted); }
   .count { font-variant-numeric: tabular-nums; color: var(--muted); }
   .legend { display: grid; grid-template-columns: 16px 1fr; gap: 6px 9px; align-items: center; }
-  .swatch { width: 16px; height: 16px; border-radius: 3px; border: 1px solid rgba(0,0,0,.18); }
+  .swatch { width: 16px; height: 16px; border-radius: 3px; border: 1px solid var(--swatch-edge); }
   #search {
     width: 100%;
     padding: 8px 10px;
     font: inherit;
     border: 1px solid var(--rule);
     border-radius: 6px;
-    background: #fff;
+    background: var(--card);
+    color: var(--ink);
   }
   #search-status { color: var(--muted); font-size: 12px; min-height: 18px; margin-top: 4px; }
   #detail {
     border: 1px solid var(--rule);
     border-radius: 8px;
-    background: #fff;
+    background: var(--card);
     padding: 13px 14px;
   }
   #detail .placeholder { color: var(--muted); }
@@ -110,13 +161,13 @@
   .card-meta { color: var(--muted); margin: 2px 0 8px; }
   .verdict { font-weight: 600; margin: 6px 0; }
   .verdict.illegal { color: var(--accent); }
-  .verdict.ok { color: #3f6f63; }
+  .verdict.ok { color: var(--pass); }
   ul.reasons { margin: 6px 0 0; padding-left: 18px; }
   ul.reasons li { margin-bottom: 5px; }
   .notes { color: var(--muted); font-size: 12.5px; margin-top: 8px; }
   details { margin-top: 20px; border-top: 1px solid var(--rule); padding-top: 12px; }
   summary { cursor: pointer; font-weight: 600; }
-  details p, details li { color: #3d362e; }
+  details p, details li { color: var(--ink-soft); }
   details ul { padding-left: 18px; }
   .maplibregl-popup-content {
     font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -124,10 +175,27 @@
     max-width: 320px;
     border-radius: 8px;
     box-shadow: 0 4px 18px rgba(0,0,0,.18);
+    background: var(--card);
+    color: var(--ink);
   }
+  .maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
+  .maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,
+  .maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip { border-top-color: var(--card); }
+  .maplibregl-popup-anchor-top .maplibregl-popup-tip,
+  .maplibregl-popup-anchor-top-left .maplibregl-popup-tip,
+  .maplibregl-popup-anchor-top-right .maplibregl-popup-tip { border-bottom-color: var(--card); }
+  .maplibregl-popup-anchor-left .maplibregl-popup-tip { border-right-color: var(--card); }
+  .maplibregl-popup-anchor-right .maplibregl-popup-tip { border-left-color: var(--card); }
+  /* MapLibre's zoom buttons and credits line are drawn for light maps only. */
+  [data-theme="dark"] .maplibregl-ctrl-group { background: var(--card); }
+  [data-theme="dark"] .maplibregl-ctrl-group button + button { border-top-color: var(--rule); }
+  [data-theme="dark"] .maplibregl-ctrl-icon { filter: invert(1); }
+  [data-theme="dark"] .maplibregl-ctrl.maplibregl-ctrl-attrib { background: rgba(27, 25, 22, .75); color: var(--muted); }
+  [data-theme="dark"] .maplibregl-ctrl-attrib a { color: var(--ink-soft); }
+  [data-theme="dark"] .maplibregl-ctrl-attrib-button { filter: invert(1); }
   #loading {
     position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
-    background: var(--ink); color: #fff; padding: 7px 14px; border-radius: 20px;
+    background: var(--ink); color: var(--paper); padding: 7px 14px; border-radius: 20px;
     font-size: 13px; z-index: 5;
   }
   #map-wrap { position: relative; }
@@ -265,7 +333,10 @@
 </head>
 <body>
 <aside id="panel">
-  <h1>Alexandria's Illegal Homes</h1>
+  <div class="panel-head">
+    <h1>Alexandria's Illegal Homes</h1>
+    <button type="button" id="theme-toggle"></button>
+  </div>
   <p class="lede">Homes in Alexandria, Virginia that could not be built today,
     because they break the city's current zoning rules for new construction.</p>
 
@@ -372,7 +443,13 @@ const KINDS = [
   ["home_type", "Home type not allowed", "e.g. townhouses where only houses are allowed, or homes that need a special permit"],
   ["row_length", "Too many townhouses in a row", "More than 8 attached townhouses in one building"],
 ];
-const COLORS = { ok: "#9db8b0", unchecked: "#d9d4cb", planned: "#a9a3cf", ramp: ["#f3b469", "#e9783c", "#bf3a1e", "#7d1212"] };
+const BASEMAPS = {
+  light: "https://tiles.openfreemap.org/styles/positron",
+  dark: "https://tiles.openfreemap.org/styles/dark",
+};
+const currentTheme = () => document.documentElement.dataset.theme;
+/** A color from the page's theme, as set in the CSS variables at the top. */
+const themeColor = name => getComputedStyle(document.documentElement).getPropertyValue("--" + name).trim();
 const selected = new Set(KINDS.map(k => k[0]));
 let ordinaryRules = false;
 
@@ -385,7 +462,7 @@ const asList = value => Array.isArray(value) ? value : value ? JSON.parse(value)
 
 const map = new maplibregl.Map({
   container: "map",
-  style: "https://tiles.openfreemap.org/styles/positron",
+  style: BASEMAPS[currentTheme()],
   center: [-77.075, 38.82],
   zoom: 12.4,
   minZoom: 10,
@@ -394,6 +471,8 @@ const map = new maplibregl.Map({
 map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
 
 let lots = null;
+/** False while a new base map is loading. Lot layers can only be added once it's in. */
+let baseMapReady = false;
 
 /** Count of selected rule kinds a lot breaks, as a map style expression. */
 function problemCountExpression() {
@@ -407,13 +486,18 @@ function fillColorExpression() {
   const count = problemCountExpression();
   return [
     "case",
-    ["==", ["get", "status"], "not_checked"], COLORS.unchecked,
-    ["==", count, 0], COLORS.ok,
-    ["==", count, 1], COLORS.ramp[0],
-    ["==", count, 2], COLORS.ramp[1],
-    ["==", count, 3], COLORS.ramp[2],
-    COLORS.ramp[3],
+    ["==", ["get", "status"], "not_checked"], themeColor("unchecked"),
+    ["==", count, 0], themeColor("ok"),
+    ["==", count, 1], themeColor("p1"),
+    ["==", count, 2], themeColor("p2"),
+    ["==", count, 3], themeColor("p3"),
+    themeColor("p4"),
   ];
+}
+
+/** Recolors the lots for the current rule choices. Skipped while a new base map is loading, which re-adds the lots itself. */
+function recolorLots() {
+  if (map.getLayer("lots-fill")) map.setPaintProperty("lots-fill", "fill-color", fillColorExpression());
 }
 
 function breaksSelected(properties) {
@@ -442,7 +526,7 @@ function buildFilters() {
       `<span class="count">${total.toLocaleString()}</span>`;
     label.querySelector("input").addEventListener("change", event => {
       event.target.checked ? selected.add(kind) : selected.delete(kind);
-      map.setPaintProperty("lots-fill", "fill-color", fillColorExpression());
+      recolorLots();
       updateHeadline();
     });
     box.appendChild(label);
@@ -514,7 +598,7 @@ const drawing = setUpLotDrawing({ isOrdinary: () => ordinaryRules, setOrdinary: 
 function select(feature) {
   selectedFeature = feature;
   document.getElementById("detail").innerHTML = describe(feature.properties, true);
-  map.getSource("picked").setData({ type: "FeatureCollection", features: [feature] });
+  map.getSource("picked")?.setData({ type: "FeatureCollection", features: [feature] });
   drawing.open(feature.properties);
 }
 
@@ -522,7 +606,7 @@ function select(feature) {
 function setOrdinaryRules(value) {
   ordinaryRules = value;
   document.getElementById("ordinary-rules").checked = value;
-  map.setPaintProperty("lots-fill", "fill-color", fillColorExpression());
+  recolorLots();
   updateHeadline();
   if (selectedFeature) document.getElementById("detail").innerHTML = describe(selectedFeature.properties, true);
   drawing.refresh();
@@ -550,13 +634,24 @@ function setUpSearch() {
   });
 }
 
-map.on("load", async () => {
-  lots = await (await fetch("lots.geojson")).json();
-  document.getElementById("loading").remove();
-  const firstLabel = map.getStyle().layers.find(layer => layer.type === "symbol")?.id;
+/**
+ * Puts the lots on the map. Runs once the lots have loaded, and again after
+ * every theme change, because swapping the base map throws away added layers.
+ */
+function addLotLayers() {
+  if (!lots || !baseMapReady || map.getSource("lots")) return;
+  // Lots go above every road, building and water shape but below the place names.
+  // The dark base map tucks a water label underneath its buildings, so "below the
+  // first label" isn't enough: use the first label after the last shape.
+  const layers = map.getStyle().layers;
+  const lastShape = layers.findLastIndex(layer => layer.type !== "symbol");
+  const firstLabel = layers[lastShape + 1]?.id;
 
   map.addSource("lots", { type: "geojson", data: lots, generateId: true });
-  map.addSource("picked", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+  map.addSource("picked", {
+    type: "geojson",
+    data: { type: "FeatureCollection", features: selectedFeature ? [selectedFeature] : [] },
+  });
   map.addLayer({
     id: "lots-fill", type: "fill", source: "lots",
     paint: {
@@ -569,12 +664,50 @@ map.on("load", async () => {
   }, firstLabel);
   map.addLayer({
     id: "lots-line", type: "line", source: "lots", minzoom: 14,
-    paint: { "line-color": "#ffffff", "line-width": ["interpolate", ["linear"], ["zoom"], 14, 0.2, 18, 1.2] },
+    paint: { "line-color": themeColor("lot-edge"), "line-width": ["interpolate", ["linear"], ["zoom"], 14, 0.2, 18, 1.2] },
   }, firstLabel);
   map.addLayer({
     id: "picked-line", type: "line", source: "picked",
-    paint: { "line-color": "#1f1b16", "line-width": 3 },
+    paint: { "line-color": themeColor("ink"), "line-width": 3 },
   });
+}
+
+function setTheme(theme, remember) {
+  if (remember) {
+    try { localStorage.setItem("theme", theme); } catch {}
+  }
+  document.documentElement.dataset.theme = theme;
+  updateThemeButton();
+  baseMapReady = false;
+  map.setStyle(BASEMAPS[theme], { diff: false });
+  drawing.refresh();
+}
+
+function updateThemeButton() {
+  const button = document.getElementById("theme-toggle");
+  const dark = currentTheme() === "dark";
+  button.textContent = dark ? "☀ Light" : "☾ Dark";
+  button.setAttribute("aria-label", dark ? "Switch to light theme" : "Switch to dark theme");
+}
+
+updateThemeButton();
+document.getElementById("theme-toggle").addEventListener("click", () =>
+  setTheme(currentTheme() === "dark" ? "light" : "dark", true));
+// Follow the computer's light or dark setting, unless the reader has picked one here.
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", event => {
+  let saved = null;
+  try { saved = localStorage.getItem("theme"); } catch {}
+  if (!saved) setTheme(event.matches ? "dark" : "light", false);
+});
+map.on("style.load", () => {
+  baseMapReady = true;
+  addLotLayers();
+});
+
+map.on("load", async () => {
+  lots = await (await fetch("lots.geojson")).json();
+  document.getElementById("loading").remove();
+  addLotLayers();
 
   buildFilters();
   const plannedBox = document.getElementById("ordinary-rules");
