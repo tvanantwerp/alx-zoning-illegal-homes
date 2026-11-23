@@ -375,6 +375,39 @@ def test_route_1_properties_fallback_by_street():
     assert route_1_properties_fallback(False, 400) == ("OC", {})
 
 
+def test_potomac_yard_fallback_by_area():
+    from alx_zoning_illegal_homes.mapper.rules import (planned_district_rules,
+                                                       potomac_yard_fallback)
+    # East of the tracks: RB south of the Monroe Avenue bridge, CRMU-L north of it.
+    assert potomac_yard_fallback(-77.0465, 38.8200, None) == ("RB", {})
+    zone, changes = potomac_yard_fallback(-77.0455, 38.8280, None)
+    _, _, rules = planned_district_rules("CDD#10", zone=zone, changes=changes)
+    assert rules.name == "CRMU-L" and "townhouse" in rules.allowed
+    assert not rules.max_height
+    assert rules.label == "CRMU-L zone rules for the Piggyback Yard and Slaters Lane"
+    # West of the tracks: CSL along Route 1, industrial on the rest.
+    assert potomac_yard_fallback(-77.0495, 38.8260, 100) == ("CSL", {})
+    assert potomac_yard_fallback(-77.0485, 38.8260, 600) == ("I", {})
+
+
+def test_crmu_l_townhouse_east_of_the_tracks_gets_no_unplaced_height_cap():
+    from alx_zoning_illegal_homes.mapper.rules import (planned_district_rules,
+                                                       potomac_yard_fallback)
+    zone, changes = potomac_yard_fallback(-77.0455, 38.8280, None)
+    _, _, rules = planned_district_rules("CDD#10", zone=zone, changes=changes)
+    lot = box(0, 0, 20, 100)
+    home = box(0, 20, 20, 75)
+    kinds, _ = check(lot, home, "CRMU/L", home_type="townhouse", rules=rules,
+                     neighbors=between_neighbors(lot), height=45)
+    assert "home_type" not in kinds and "height" not in kinds
+    # The Piggyback Yard's 50 ft cap can't be placed, so a taller townhouse isn't flagged for it.
+    kinds, findings = check(lot, home, "CRMU/L", home_type="townhouse", rules=rules,
+                            neighbors=between_neighbors(lot), height=66, stories=6)
+    assert "height" not in kinds
+    height = next(r for r in findings.results if r.rule == "height")
+    assert "Potomac Yard/Potomac Greens Small Area Plan" in height.explanation
+
+
 def test_triangle_sites_fallback_allows_no_houses():
     from alx_zoning_illegal_homes.mapper.rules import planned_district_rules
     _, _, rules = planned_district_rules("CDD#13")
