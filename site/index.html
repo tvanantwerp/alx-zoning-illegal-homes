@@ -120,6 +120,10 @@
     font-variant-numeric: tabular-nums;
   }
   .headline .caption { margin-top: 6px; }
+  .headline .what-if {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--muted); margin-bottom: 4px;
+  }
   h2 {
     font-size: 11px;
     text-transform: uppercase;
@@ -341,6 +345,7 @@
     because they break the city's current zoning rules for new construction.</p>
 
   <div class="headline">
+    <div class="what-if" id="what-if" hidden>What-if: planned districts judged by ordinary zoning</div>
     <div class="big" id="share">–</div>
     <div class="caption" id="share-caption">Loading the map data…</div>
   </div>
@@ -506,15 +511,32 @@ function breaksSelected(properties) {
   return [...selected].some(kind => properties[flagFor(kind, !!properties.district)]);
 }
 
+/**
+ * The share of checked home lots that break a selected rule. When planned
+ * districts are judged by ordinary zoning, a label above the number and the
+ * caption both say so, because that number is a what-if, not a finding about
+ * the approved plans.
+ */
 function updateHeadline() {
+  document.getElementById("what-if").hidden = !ordinaryRules;
+  const share = document.getElementById("share");
+  const caption = document.getElementById("share-caption");
+  if (!selected.size) {
+    share.textContent = "–";
+    caption.textContent = "No rules selected. Tick at least one rule below to count homes that break it.";
+    return;
+  }
   const checked = lots.features.filter(f => f.properties.status !== "not_checked");
   const failing = checked.filter(f => breaksSelected(f.properties));
-  const share = checked.length ? failing.length / checked.length : 0;
-  document.getElementById("share").textContent = Math.round(share * 100) + "%";
-  document.getElementById("share-caption").innerHTML =
+  const all = selected.size === KINDS.length;
+  const rules = all ? "rule" : "of the selected rules";
+  share.textContent = Math.round((checked.length ? failing.length / checked.length : 0) * 100) + "%";
+  caption.innerHTML =
     `<strong>${failing.length.toLocaleString()}</strong> of ${checked.length.toLocaleString()} ` +
-    `checked home lots break ` +
-    (selected.size === KINDS.length ? "at least one current rule." : "at least one of the selected rules.");
+    `checked home lots ` +
+    (ordinaryRules
+      ? `would break at least one ${rules} if ordinary zoning applied in planned districts.`
+      : `break at least one ${all ? "current rule" : rules}.`);
 }
 
 function buildFilters() {
