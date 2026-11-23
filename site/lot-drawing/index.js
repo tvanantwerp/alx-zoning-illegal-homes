@@ -109,6 +109,10 @@ export function setUpLotDrawing({ isOrdinary, setOrdinary }) {
       row.addEventListener("focusin", () => show(row.dataset.rule));
     }
     table.addEventListener("mouseleave", () => show(null));
+    // Keyboard and touch users never trigger mouseleave, so also clear when focus leaves the table.
+    table.addEventListener("focusout", (event) => {
+      if (!table.contains(event.relatedTarget) && !table.matches(":hover")) show(null);
+    });
     drawScene(body.querySelector(".ld-three"), main, mine);
   };
 

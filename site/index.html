@@ -230,7 +230,7 @@
   }
   #lot-drawing .ld-title:focus { outline: none; }
   .ld-meta { color: var(--muted); font-size: 13px; margin-top: 2px; min-height: 1.45em; }
-  .ld-verdict { font-size: 13px; margin-top: 2px; }
+  .ld-verdict { font-size: 13px; margin-top: 2px; min-height: 1.45em; }
   .ld-verdict .jump-item { white-space: nowrap; }
   .ld-verdict .jump {
     font: inherit; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer;
@@ -339,7 +339,11 @@
      *   bar
      *   Other set of rules: RESULT and its limit
      */
-    table.report thead { display: none; }
+    /* Hidden from sight only, so screen readers still have the column names. */
+    table.report thead {
+      position: absolute; width: 1px; height: 1px; overflow: hidden;
+      clip-path: inset(50%); white-space: nowrap;
+    }
     table.report, table.report tbody { display: block; }
     table.report tbody tr {
       display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -354,7 +358,10 @@
     table.report .col-bar:empty { display: none; }
     table.report .col-bar .bar { margin: 3px 0 1px; }
     table.report td[data-label]::before {
-      content: attr(data-label); display: block; margin-bottom: 1px;
+      /* The second line keeps screen readers from reading the label on top of the column name. */
+      content: attr(data-label);
+      content: attr(data-label) / "";
+      display: block; margin-bottom: 1px;
       font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted);
     }
     table.report .col-extra { border-left: 0; padding: 4px 0 0; white-space: normal; }
