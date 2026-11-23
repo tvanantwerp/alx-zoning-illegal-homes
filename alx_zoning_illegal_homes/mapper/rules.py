@@ -928,20 +928,33 @@ def potomac_yard_fallback(longitude, latitude, feet_east_of_route_1) -> tuple:
 
     The bridge and tracks are approximated here by a line of latitude and a
     line of longitude. The Piggyback Yard and Slaters Lane parts are drawn
-    only on a 1995 rezoning plat (REZ #95-0004) that the map doesn't have.
-    The city's master plan lists that rezoning as "Piggyback Yard and Slater's
-    Lane; RB to CRMU-L", and both lie east of the tracks, from Slaters Lane
-    north through Potomac Greens. That is all of the district east of the
-    tracks and north of the bridge, so that whole area gets CRMU-L. The two
-    parts can't be told apart, so the Piggyback Yard's 50 ft cap applies to both.
+    only on a 1995 rezoning plat (REZ #95-0004) that the map doesn't have,
+    so their edges are a judgment call:
+
+    - The Piggyback Yard is taken to be Potomac Greens, east of the tracks and
+      north of the bridge line. Its approved plan allows 244 homes, which fits
+      the ordinance's cap of 275 for the Piggyback Yard.
+    - Slaters Lane itself runs just south of the bridge line. The townhouses
+      just north of it (Hunting Creek Drive and nearby), between Slaters Lane
+      and Potomac Greens, are taken to be the Slaters Lane part.
+
+    So everything east of the tracks and north of the line gets CRMU-L. The
+    city's master plan calls the rezoning "RB to CRMU-L", which suggests the
+    bridge boundary sat further north than this line. That doesn't change any
+    result: no home in the district sits east of the tracks and south of the
+    line, where RB still applies.
+
+    The Piggyback Yard's 50 ft cap isn't applied, because the map can't tell
+    where the Piggyback Yard ends and the Slaters Lane part begins. CRMU-L
+    takes its height from the small area plan, so the height district map's
+    limit is what's checked, as in other CRMU-L areas.
     """
     east_of_tracks = longitude > METRO_TRACKS_LONGITUDE
     if east_of_tracks and latitude < MONROE_BRIDGE_LATITUDE:
         return "RB", {}
     if east_of_tracks:
         return "CRMU/L", {
-            "max_height": {kind: 50 for kind in ALL_TYPES},
-            "height_set_by": "",
+            "height_set_by": "the Potomac Yard/Potomac Greens Small Area Plan",
             "described_as": "CRMU-L zone rules for the Piggyback Yard and Slaters Lane",
         }
     if (feet_east_of_route_1 is not None

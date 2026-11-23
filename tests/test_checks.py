@@ -383,14 +383,14 @@ def test_potomac_yard_fallback_by_area():
     zone, changes = potomac_yard_fallback(-77.0455, 38.8280, None)
     _, _, rules = planned_district_rules("CDD#10", zone=zone, changes=changes)
     assert rules.name == "CRMU-L" and "townhouse" in rules.allowed
-    assert rules.max_height["townhouse"] == 50
+    assert not rules.max_height
     assert rules.label == "CRMU-L zone rules for the Piggyback Yard and Slaters Lane"
     # West of the tracks: CSL along Route 1, industrial on the rest.
     assert potomac_yard_fallback(-77.0495, 38.8260, 100) == ("CSL", {})
     assert potomac_yard_fallback(-77.0485, 38.8260, 600) == ("I", {})
 
 
-def test_crmu_l_townhouse_in_piggyback_yard_is_held_to_50_ft():
+def test_crmu_l_townhouse_east_of_the_tracks_gets_no_unplaced_height_cap():
     from alx_zoning_illegal_homes.mapper.rules import (planned_district_rules,
                                                        potomac_yard_fallback)
     zone, changes = potomac_yard_fallback(-77.0455, 38.8280, None)
@@ -400,10 +400,12 @@ def test_crmu_l_townhouse_in_piggyback_yard_is_held_to_50_ft():
     kinds, _ = check(lot, home, "CRMU/L", home_type="townhouse", rules=rules,
                      neighbors=between_neighbors(lot), height=45)
     assert "home_type" not in kinds and "height" not in kinds
+    # The Piggyback Yard's 50 ft cap can't be placed, so a taller townhouse isn't flagged for it.
     kinds, findings = check(lot, home, "CRMU/L", home_type="townhouse", rules=rules,
                             neighbors=between_neighbors(lot), height=66, stories=6)
-    assert "height" in kinds
-    assert "Piggyback Yard" in next(r.text for r in findings.reasons if r.kind == "height")
+    assert "height" not in kinds
+    height = next(r for r in findings.results if r.rule == "height")
+    assert "Potomac Yard/Potomac Greens Small Area Plan" in height.explanation
 
 
 def test_triangle_sites_fallback_allows_no_houses():
