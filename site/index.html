@@ -156,7 +156,8 @@
     box-shadow: 0 8px 24px -12px rgba(0, 0, 0, .35);
   }
   #search-list li { padding: 6px 10px; cursor: pointer; }
-  #search-list li:hover, #search-list li[aria-selected="true"] { background: var(--accent-soft); }
+  #search-list li[aria-selected="true"] { background: var(--accent-soft); }
+  #search-list .which { color: var(--muted); font-size: 12px; }
   #detail {
     border: 1px solid var(--rule);
     border-radius: 8px;
@@ -667,18 +668,31 @@ function setUpSearch() {
   const status = document.getElementById("search-status");
   const addresses = lots.features.map(f => f.properties.address || "");
   const normalized = addresses.map(normalizeAddress);
-  const find = () => findAddresses(addresses, input.value, normalized);
+  const checked = index => lots.features[index].properties.status !== "not_checked";
+  const find = () => findAddresses(addresses, input.value, normalized, checked);
+  // Lots that share an address, so the list can tell them apart.
+  const sharing = new Map();
+  normalized.forEach((address, index) => {
+    if (checked(index)) sharing.set(address, [...(sharing.get(address) || []), index]);
+  });
+  const which = index => {
+    const group = sharing.get(normalized[index]) || [];
+    return group.length > 1 ? ` <span class="which">lot ${group.indexOf(index) + 1} of ${group.length}</span>` : "";
+  };
+  // Measure what the reader typed, since "West" shortens to a single letter.
+  const longEnough = () => input.value.trim().length >= 2;
   let shown = [];
   let active = -1;
 
-  const setActive = n => {
+  const setActive = (n, scroll = true) => {
     active = n;
     [...list.children].forEach((item, i) => item.setAttribute("aria-selected", String(i === n)));
     if (n < 0) { input.removeAttribute("aria-activedescendant"); return; }
     input.setAttribute("aria-activedescendant", list.children[n].id);
-    list.children[n].scrollIntoView({ block: "nearest" });
+    if (scroll) list.children[n].scrollIntoView({ block: "nearest" });
   };
   const closeList = () => {
+    status.textContent = "";
     shown = [];
     list.replaceChildren();
     list.hidden = true;
@@ -688,7 +702,7 @@ function setUpSearch() {
   const showList = matches => {
     shown = matches.slice(0, SEARCH_LIST_SIZE).map(m => m.index);
     list.innerHTML = shown.map((index, n) =>
-      `<li role="option" id="search-option-${n}" aria-selected="false">${escapeHtml(addresses[index])}</li>`).join("");
+      `<li role="option" id="search-option-${n}" aria-selected="false">${escapeHtml(addresses[index])}${which(index)}</li>`).join("");
     list.hidden = !shown.length;
     input.setAttribute("aria-expanded", String(!list.hidden));
     setActive(-1);
@@ -700,7 +714,6 @@ function setUpSearch() {
     const feature = lots.features[index];
     input.value = feature.properties.address;
     closeList();
-    status.textContent = "";
     const ring = feature.geometry.type === "Polygon" ? feature.geometry.coordinates[0] : feature.geometry.coordinates[0][0];
     const bounds = ring.reduce((b, c) => b.extend(c), new maplibregl.LngLatBounds(ring[0], ring[0]));
     map.fitBounds(bounds, { padding: 140, maxZoom: 18.5 });
@@ -708,13 +721,13 @@ function setUpSearch() {
   };
 
   input.addEventListener("input", () => {
-    if (normalizeAddress(input.value).length < 2) { closeList(); status.textContent = ""; return; }
+    if (!longEnough()) { closeList(); return; }
     showList(find());
   });
   input.addEventListener("keydown", event => {
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       if (list.hidden) {
-        if (normalizeAddress(input.value)) showList(find());
+        if (longEnough()) showList(find());
         return;
       }
       event.preventDefault();
@@ -735,12 +748,18 @@ function setUpSearch() {
     if (!normalizeAddress(input.value)) return;
     const matches = find();
     if (!matches.length) { closeList(); status.textContent = "No lot found with that address."; return; }
-    if (matches[0].exact || matches.length === 1) { choose(matches[0].index); return; }
+    const exact = matches.filter(m => m.exact);
+    if (exact.length === 1 || matches.length === 1) { choose(matches[0].index); return; }
     showList(matches);
     if (matches.length <= SEARCH_LIST_SIZE) status.textContent = `${matches.length} lots match. Pick one from the list.`;
   });
   // Keep focus in the box while the pointer picks an address, so the list doesn't close first.
   list.addEventListener("mousedown", event => event.preventDefault());
+  // Follow the pointer with the same highlight the arrow keys move, so only one item looks picked.
+  list.addEventListener("mouseover", event => {
+    const item = event.target.closest("li");
+    if (item) setActive([...list.children].indexOf(item), false);
+  });
   list.addEventListener("click", event => {
     const item = event.target.closest("li");
     if (item) choose(shown[[...list.children].indexOf(item)]);
