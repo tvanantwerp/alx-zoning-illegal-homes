@@ -18,8 +18,8 @@ from .rule_results import under_special_approval
 from .rules import (HOME_TYPE_NAMES, MAX_TOWNHOUSES_IN_ROW, PLANNED_DISTRICTS,
                     braddock_gateway_fallback, duke_street_floor_area, height_map_limit,
                     king_street_retail_rules, normalize_zone, office_high_rules,
-                    planned_district_rules, potomac_yard_fallback, route_1_properties_fallback,
-                    rules_for)
+                    named_street_setbacks, planned_district_rules, potomac_yard_fallback,
+                    route_1_properties_fallback, rules_for)
 
 # A building counts as sitting on a second lot when this much of it does.
 STRADDLE_SHARE = 0.15
@@ -918,6 +918,8 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
             paved=paved,
             parking=parking,
             row=townhouse_rows.get(lot_id),
+            street_setbacks=named_street_setbacks(lot_lon_lat.loc[lot_id].x,
+                                                  lot_lon_lat.loc[lot_id].y),
         )
         waiting.append((lot_id, lot, record, facts, district, fallback_rules))
 

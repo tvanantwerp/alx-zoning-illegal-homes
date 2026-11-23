@@ -17,7 +17,7 @@ FAILS, PASSES, NOT_CHECKED, NO_RULE, NOT_REQUIRED = (
 # lots excuses. Counts as passing; the row keeps the shortfall on show.
 OLDER_LOT = "older_lot"
 
-RULE_IDS = ("lot_area", "frontage", "width", "yard:front", "yard:left", "yard:right",
+RULE_IDS = ("lot_area", "frontage", "width", "yard:front", "yard:street", "yard:left", "yard:right",
             "yard:rear", "yard:nearest", "floor_area", "height", "height_near_street",
             "coverage", "open_space", "home_type", "row_length")
 
@@ -405,6 +405,47 @@ def yard_height_explanation(per_foot_of_height: float, roof: RoofHeight, several
         numbers = (f"{whose} has a roof peak about {format_feet(roof.peak)}; measured the "
                    f"ordinance's way, it is about {format_feet(roof.height)} tall.")
     return f"{text}. {numbers} {roof.why}"
+
+
+def named_street_setback_about(label: str, stretch: str, section: str) -> str:
+    """The tooltip on a section 7-1006 row's name: what the rule is and why it exists."""
+    where = f"{label} {stretch}".strip()
+    return (f"Section {section} of the zoning ordinance sets an extra setback along {where}, "
+            "to leave room for sidewalks and road widening and to keep buildings in a steady "
+            "line. Where it asks more than the zone's own front yard, it wins. It applies "
+            "whatever the zone.")
+
+
+def named_street_setback_explanation(label: str, distance: float, required: float,
+                                     from_centerline: bool, what: str = "the home") -> str:
+    """How a building's distance from a named street was measured against section 7-1006.
+
+    `what` names the building: "the home", or an outbuilding such as "a garage or shed".
+    """
+    building = what[0].upper() + what[1:]
+    if from_centerline:
+        return (f"{building} is about {format_feet(distance)} from the center of {label}; "
+                f"at least {format_feet(required)} is required. The ordinance measures from "
+                "the street's centerline as mapped in 1960. The map uses the centerline in "
+                "today's street map, which may differ where the street was widened or moved.")
+    return (f"{building} is about {format_feet(distance)} from the front lot line along "
+            f"{label}; at least {format_feet(required)} is required.")
+
+
+def named_street_setback_reason(label: str, distance: float, required: float,
+                                from_centerline: bool, stretch: str, section: str,
+                                what: str = "the home") -> str:
+    """The reason a lot breaks a section 7-1006 setback, in one sentence.
+
+    `what` names the building that stands too close. A home is taken as read;
+    an outbuilding is named, since the home itself may stand far enough back.
+    """
+    measured_from = "the center of the street" if from_centerline else "the front lot line"
+    where = f"on {label} {stretch}".strip()
+    which = "" if what == "the home" else f"{what} on the lot is "
+    return (f"Too close to {label}: {which}about {format_feet(distance)} from {measured_from}, but "
+            f"buildings {where} must stand at least {format_feet(required)} back from it "
+            f"(section {section}).")
 
 
 def height_near_street_waived_explanation(rules_label: str) -> str:
