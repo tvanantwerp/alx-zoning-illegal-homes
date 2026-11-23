@@ -18,7 +18,7 @@ from .rule_results import under_special_approval
 from .rules import (HOME_TYPE_NAMES, MAX_TOWNHOUSES_IN_ROW, PLANNED_DISTRICTS,
                     braddock_gateway_fallback, duke_street_floor_area, height_map_limit,
                     king_street_retail_rules, normalize_zone, office_high_rules,
-                    named_street_setbacks, planned_district_rules, potomac_yard_zone,
+                    named_street_setbacks, planned_district_rules, potomac_yard_fallback,
                     route_1_properties_fallback, rules_for)
 
 # A building counts as sitting on a second lot when this much of it does.
@@ -490,17 +490,17 @@ def _home_type(lot, homes, row_size, alone=False):
     return None
 
 
-def _potomac_yard_zone(point, lon_lat, route_1):
-    """Find a Potomac Yard lot's fallback zone from where it sits.
+def _potomac_yard_fallback(point, lon_lat, route_1):
+    """Find a Potomac Yard lot's fallback zone and changes to it from where it sits.
 
-    Returns "outside" for the few lots that carry the Potomac Yard label
+    Returns ("outside", {}) for the few lots that carry the Potomac Yard label
     but lie elsewhere in the city, where its sub-areas mean nothing.
     """
     if lon_lat.x < POTOMAC_YARD_WEST_EDGE:
-        return "outside"
+        return "outside", {}
     nearest = route_1.interpolate(route_1.project(point))
     distance = point.distance(nearest) if point.x >= nearest.x else -1.0
-    return potomac_yard_zone(lon_lat.x, lon_lat.y, distance)
+    return potomac_yard_fallback(lon_lat.x, lon_lat.y, distance)
 
 
 def _king_street_divide(streets):
@@ -539,7 +539,7 @@ def _district_fallback(label, lot, point, places):
     fallback zone, or "outside" for a Potomac Yard lot that lies elsewhere.
     """
     if label == "CDD#10":
-        return _potomac_yard_zone(point, places["lon_lat"], places["route_1"]), {}
+        return _potomac_yard_fallback(point, places["lon_lat"], places["route_1"])
     if label == "CDD#1":
         return None, duke_street_floor_area(near_a_station(
             lot.geometry, places["stations"], ["King Street-Old Town"]))

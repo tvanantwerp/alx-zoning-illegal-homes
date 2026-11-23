@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chooseResults, rulesTable, lotSquares } from "../../site/lot-drawing/table.js";
+import { chooseResults, rulesTable, lotSquares, verdict } from "../../site/lot-drawing/table.js";
 
 const row = (o) => ({ rule: "lot_area", name: "Lot size", status: "fails", measured: 4000, required: 8000, unit: "sq ft", limit: "min", ...o });
 const plain = { results: { label: "R-8 zone rules", rules: [row()] } };
@@ -59,8 +59,8 @@ test("squares only call the lot bigger when it is", () => {
 });
 test("only failing rows take keyboard focus", () => {
   const html = rulesTable({ label: "x", rules: [row(), row({ rule: "height", status: "passes" })] }, null);
-  assert.match(html, /<tr data-rule="lot_area" tabindex="0">/);
-  assert.match(html, /<tr data-rule="height">/);
+  assert.match(html, /<tr role="row" data-rule="lot_area" tabindex="0">/);
+  assert.match(html, /<tr role="row" data-rule="height">/);
 });
 test("older lots get their own pill, bar and squares, and keep the shortfall", () => {
   const older = row({ status: "older_lot", measured: 1800, required: 1980, explanation: "recorded before December 16, 2023" });
@@ -68,8 +68,34 @@ test("older lots get their own pill, bar and squares, and keep the shortfall", (
   assert.match(html, /pill older explain[^>]*>OLDER LOT OK</);
   assert.match(html, /<i class="older"/);
   assert.match(html, /1,800 sq ft/);
-  assert.match(html, /<tr data-rule="lot_area">/);
+  assert.match(html, /<tr role="row" data-rule="lot_area">/);
   const squares = lotSquares(older);
   assert.match(squares, /box older/);
   assert.match(squares, /91% of the land the zone asks of a new lot/);
+});
+test("the verdict links to each failing row", () => {
+  const html = verdict({ label: "x", rules: [row(), row({ rule: "yard:rear", name: "Rear yard" }), row({ rule: "height", status: "passes" })] });
+  assert.match(html, /^Breaks 2 rules: /);
+  assert.match(html, /<button type="button" class="jump" data-jump="lot_area">Lot size<\/button>,<\/span>/);
+  assert.match(html, /data-jump="yard:rear">Rear yard</);
+  assert.doesNotMatch(html, /data-jump="height"/);
+});
+test("a lot that passes gets a plain verdict", () => {
+  assert.equal(verdict({ label: "x", rules: [row({ status: "passes" })] }), "Passes every rule the map checks");
+  assert.match(verdict({ label: "x", rules: [row()] }), /^Breaks 1 rule: /);
+});
+test("cells carry labels for the narrow-screen layout", () => {
+  const { main, extra } = chooseResults(district, true);
+  const html = rulesTable(main, extra);
+  assert.match(html, /<td role="cell" class="col-measured num" data-label="Measured">/);
+  assert.match(html, /<td role="cell" class="col-says num" data-label="Rule says">/);
+  assert.match(html, /<td role="cell" class="col-extra" data-label="Cameron Station approved plan">/);
+});
+test("table parts name their roles, so screen readers keep the table on narrow screens", () => {
+  const { main, extra } = chooseResults(district, true);
+  const html = rulesTable(main, extra);
+  assert.match(html, /<table class="report" role="table"><thead role="rowgroup"><tr role="row"><th role="columnheader">Rule<\/th>/);
+  assert.match(html, /<tbody role="rowgroup">/);
+  assert.doesNotMatch(html, /<td[ >](?!role="cell")/);
+  assert.doesNotMatch(html, /<th[ >](?!role="columnheader")/);
 });

@@ -219,10 +219,14 @@ covers cases from about 2002 on.
 In a few districts the ordinary zone depends on where the lot sits, and
 those boundaries are approximated:
 
-- Potomac Yard: near Route 1, east of the Metro tracks, or elsewhere, where
-  it is industrial and allows no homes. The ordinance also lets the
-  "Piggyback Yard" and Slaters Lane parts use CRMU-L rules, but those areas
-  are drawn only on a 1995 rezoning plat the map doesn't have.
+- Potomac Yard: RB east of the Metro tracks and south of the Monroe Avenue
+  bridge; CRMU-L east of the tracks and north of the bridge; CSL near
+  Route 1; and industrial, which allows no homes, on the rest. The CRMU-L
+  part stands in for the "Piggyback Yard" (taken to be Potomac Greens) and
+  the Slaters Lane townhouses just north of Slaters Lane, which are drawn
+  only on a 1995 rezoning plat the map doesn't have. No home in the
+  district sits in the RB part. The ordinance caps the Piggyback Yard at
+  50 ft, but the map can't tell where it ends, so that cap isn't checked.
 - Route 1 Properties: RB along Reed Avenue, RC within 100 ft of Commonwealth
   Avenue, OC on the rest.
 - Duke Street / Carlyle: a looser floor space limit within 1,000 ft of the

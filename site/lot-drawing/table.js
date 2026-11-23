@@ -47,30 +47,54 @@ function bar(row) {
   return `<div class="bar"><i class="${cls}" style="width:${(row.measured / scale) * 100}%"></i><b style="left:${(row.required / scale) * 100}%"></b></div>`;
 }
 
-/** Every rule the map checks, with the result, the numbers and a bar. */
+/**
+ * The header's verdict: how many rules the lot breaks, with each one's name as a
+ * button (`data-jump` holds the rule) that takes the reader to its row in the table.
+ */
+export function verdict(main) {
+  const broken = main.rules.filter((row) => row.status === "fails");
+  if (!broken.length) return "Passes every rule the map checks";
+  // Each comma stays on the same line as the name before it.
+  const links = broken.map((row, i) =>
+    `<span class="jump-item"><button type="button" class="jump" data-jump="${esc(row.rule)}">${esc(row.name)}</button>`
+    + `${i < broken.length - 1 ? "," : ""}</span>`);
+  return `Breaks ${broken.length} rule${broken.length === 1 ? "" : "s"}: ${links.join(" ")}`;
+}
+
+/**
+ * Every rule the map checks, with the result, the numbers and a bar.
+ * Cells carry a class and a `data-label` naming their column, so narrow screens
+ * can lay each row out as a small card instead of a wide table. The table roles
+ * are spelled out because some browsers stop reporting a table to screen readers
+ * once CSS changes how its parts are laid out.
+ */
 export function rulesTable(main, extra) {
   const extraByRule = new Map((extra ? extra.rules : []).map((r) => [r.rule, r]));
-  const head = `<th>Rule</th><th>Result</th><th>Measured</th><th>Rule says</th><th class="col-bar"></th>`
-    + (extra ? `<th class="col-extra">${esc(extra.label)}</th>` : "");
+  const th = (text, cls) => `<th role="columnheader"${cls ? ` class="${cls}"` : ""}>${text}</th>`;
+  const head = th("Rule") + th("Result") + th("Measured") + th("Rule says") + th("", "col-bar")
+    + (extra ? th(esc(extra.label), "col-extra") : "");
+  const extraLabel = extra ? ` data-label="${esc(extra.label)}"` : "";
   const body = main.rules.map((row) => {
     const name = row.about
       ? `<span class="explain" tabindex="0" data-tip="${esc(row.about)}">${esc(row.name)}</span>`
       : esc(row.name);
     const middle = row.summary
-      ? `<td colspan="3">${esc(row.summary)}</td>`
-      : `<td class="num">${row.measured == null ? "–" : showValue(row.measured, row.unit)}</td><td class="num">${ruleSays(row)}</td><td class="col-bar">${bar(row)}</td>`;
+      ? `<td role="cell" class="col-summary" colspan="3">${esc(row.summary)}</td>`
+      : `<td role="cell" class="col-measured num" data-label="Measured">${row.measured == null ? "–" : showValue(row.measured, row.unit)}</td>`
+        + `<td role="cell" class="col-says num" data-label="Rule says">${ruleSays(row)}</td><td role="cell" class="col-bar">${bar(row)}</td>`;
     let extraCell = "";
     if (extra) {
       const other = extraByRule.get(row.rule);
       extraCell = other
-        ? `<td class="col-extra">${pill(other)}${other.summary ? "" : ` ${ruleSays(other)}`}</td>`
-        : `<td class="col-extra">–</td>`;
+        ? `<td role="cell" class="col-extra"${extraLabel}>${pill(other)}${other.summary ? "" : ` ${ruleSays(other)}`}</td>`
+        : `<td role="cell" class="col-extra"${extraLabel}>–</td>`;
     }
     // Failing rows take keyboard focus so their part of the drawing can be highlighted without a mouse.
     const focus = row.status === "fails" ? ` tabindex="0"` : "";
-    return `<tr data-rule="${esc(row.rule)}"${focus}><td>${name}</td><td>${pill(row)}</td>${middle}${extraCell}</tr>`;
+    return `<tr role="row" data-rule="${esc(row.rule)}"${focus}><td role="cell" class="col-name">${name}</td><td role="cell" class="col-result">${pill(row)}</td>${middle}${extraCell}</tr>`;
   });
-  return `<div class="report-wrap"><table class="report"><thead><tr>${head}</tr></thead><tbody>${body.join("")}</tbody></table></div>`;
+  return `<div class="report-wrap"><table class="report" role="table"><thead role="rowgroup"><tr role="row">${head}</tr></thead>`
+    + `<tbody role="rowgroup">${body.join("")}</tbody></table></div>`;
 }
 
 /** Two squares drawn to the same scale: this lot and the smallest lot allowed. */
