@@ -205,6 +205,8 @@
     background: var(--card); color: var(--ink); border: 1px solid var(--rule); border-radius: 8px;
     box-shadow: 0 6px 20px -10px rgba(0, 0, 0, .35);
   }
+  /* Sit below the "Loading lots…" notice while it is still showing. */
+  #loading + #basemap-error { top: 56px; }
   #basemap-error p { margin: 0 0 8px; }
   #basemap-error button {
     font: inherit; padding: 5px 12px; cursor: pointer;
@@ -429,7 +431,7 @@
 <div id="map-wrap">
   <div id="loading">Loading lots…</div>
   <div id="basemap-error" role="alert" hidden>
-    <p>The background map couldn't be loaded. Address search and the numbers in the side panel still work.</p>
+    <p id="basemap-error-text">The background map couldn't be loaded.</p>
     <button type="button">Try again</button>
   </div>
   <div id="map"></div>
@@ -491,6 +493,10 @@ map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-ri
 let lots = null;
 /** False while a new base map is loading. Lot layers can only be added once it's in. */
 let baseMapReady = false;
+/** Whether the base map has drawn fully at least once since its style was last set. */
+let baseMapSettled = false;
+/** Where the lot data is: "loading", "ready" or "failed". */
+let lotsState = "loading";
 
 /** Count of selected rule kinds a lot breaks, as a map style expression. */
 function problemCountExpression() {
@@ -721,6 +727,7 @@ function setTheme(theme, remember) {
   document.documentElement.dataset.theme = theme;
   updateThemeButton();
   baseMapReady = false;
+  baseMapSettled = false;
   map.setStyle(BASEMAPS[theme], { diff: false });
   drawing.refresh();
 }
@@ -747,15 +754,35 @@ map.on("style.load", () => {
   addLotLayers();
 });
 
-// An error before the base map's style has loaded means the base map itself failed.
-// Errors after that (a missing tile, say) are left to MapLibre, which shows what it can.
-map.on("error", () => {
-  if (baseMapReady) return;
-  document.getElementById("loading")?.remove();
+map.on("idle", () => { baseMapSettled = true; });
+
+/** The base map failure banner's text, which only promises what has actually loaded. */
+function updateBaseMapError() {
+  const extra = {
+    ready: " Address search and the numbers in the side panel still work.",
+    loading: " Address search and the numbers in the side panel will work once the lots finish loading.",
+    failed: "",
+  }[lotsState];
+  document.getElementById("basemap-error-text").textContent = "The background map couldn't be loaded." + extra;
+}
+
+// MapLibre only prints errors itself when nothing listens for them, so print them here.
+// The base map has failed if its style fails, or if its own tiles fail before it has
+// drawn once. A missing tile after that is left alone, since the rest still shows.
+map.on("error", event => {
+  console.error(event.error);
+  const ownSource = event.sourceId === "lots" || event.sourceId === "picked";
+  const failed = !baseMapReady || (event.sourceId && !ownSource && !baseMapSettled);
+  if (!failed) return;
+  updateBaseMapError();
   document.getElementById("basemap-error").hidden = false;
 });
 document.querySelector("#basemap-error button").addEventListener("click", () => {
   document.getElementById("basemap-error").hidden = true;
+  // Hiding the banner drops focus from its button, so hand it to the map.
+  map.getCanvas().focus();
+  baseMapReady = false;
+  baseMapSettled = false;
   map.setStyle(BASEMAPS[currentTheme()], { diff: false });
 });
 
@@ -769,12 +796,16 @@ async function loadLots() {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     lots = await response.json();
   } catch {
+    lotsState = "failed";
+    updateBaseMapError();
     document.getElementById("share-caption").textContent =
       "The lot data couldn't be loaded. Try reloading the page.";
     const loading = document.getElementById("loading");
     if (loading) loading.textContent = "The lot data couldn't be loaded.";
     return;
   }
+  lotsState = "ready";
+  updateBaseMapError();
   document.getElementById("loading")?.remove();
   addLotLayers();
 
