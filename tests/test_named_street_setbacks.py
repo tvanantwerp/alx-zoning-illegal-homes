@@ -91,3 +91,56 @@ def test_which_stretch_a_lot_is_on():
     assert rule(-77.058, 38.830, "MOUNT VERNON") == 10
     assert rule(-77.058, 38.810, "MOUNT VERNON") is None
     assert rule(-77.120, 38.840, "BEAUREGARD") == 80
+
+
+def test_a_garage_inside_the_setback_fails_even_when_the_home_passes():
+    from alx_zoning_illegal_homes.mapper.checks import Outbuilding
+    home = box(10, 70, 50, 120)    # 95 ft from Main's centerline
+    garage = box(10, 15, 30, 35)   # 40 ft
+    kinds, findings = check(LOT, home, "R-8", neighbors=between_neighbors(LOT),
+                            street_setbacks=FROM_CENTER, all_buildings=[home, garage],
+                            outbuildings=[Outbuilding(1, 400, "garage or shed")])
+    row = _street_row(findings)
+    assert "yards" in kinds
+    assert row.status == "fails" and round(row.measured) == 40 and row.buildings == [1]
+    assert row.explanation.startswith("A garage or shed is about 40 ft")
+    reason = next(r.text for r in findings.reasons if "7-1006" in r.text)
+    assert reason.startswith("Too close to Main: a garage or shed on the lot is about 40 ft")
+
+
+def test_an_unmeasured_street_turns_a_pass_into_not_checked():
+    from alx_zoning_illegal_homes.mapper import checks
+    setbacks = FROM_CENTER | {"SIDE": NamedStreetSetback("SIDE", "7-1006(E)", 80)}
+    real = checks._named_street_gaps
+
+    def with_side_unmeasured(facts):
+        gaps, unmeasured = real(facts)
+        return gaps, unmeasured | {"Side": setbacks["SIDE"]}
+    checks._named_street_gaps = with_side_unmeasured
+    try:
+        kinds, findings = _check(40, setbacks)  # 65 ft from Main passes
+    finally:
+        checks._named_street_gaps = real
+    row = _street_row(findings)
+    assert row.status == "not_checked" and "yards" not in kinds
+
+
+def test_nothing_measured_still_explains_the_rule():
+    from alx_zoning_illegal_homes.mapper import checks
+    real = checks._named_street_gaps
+    checks._named_street_gaps = lambda facts: ([], {"Main": FROM_CENTER["MAIN"]})
+    try:
+        _, findings = _check(40, FROM_CENTER)
+    finally:
+        checks._named_street_gaps = real
+    row = _street_row(findings)
+    assert row.status == "not_checked" and "7-1006(B)" in row.about
+
+
+def test_lots_judged_under_older_rules_still_get_a_row():
+    _, findings = _check(20, FROM_CENTER, zone="RC", year_built=1950)
+    row = _street_row(findings)
+    assert row.status == "not_checked" and row.name == "Setback from Main"
+    assert "rebuilt under the limits in force when it was built" in row.explanation
+    rules = [r.rule for r in findings.results]
+    assert rules.index("yard:front") < rules.index("yard:street") < rules.index("yard:left")

@@ -417,23 +417,33 @@ def named_street_setback_about(label: str, stretch: str, section: str) -> str:
 
 
 def named_street_setback_explanation(label: str, distance: float, required: float,
-                                     from_centerline: bool) -> str:
-    """How a home's distance from a named street was measured against section 7-1006."""
+                                     from_centerline: bool, what: str = "the home") -> str:
+    """How a building's distance from a named street was measured against section 7-1006.
+
+    `what` names the building: "the home", or an outbuilding such as "a garage or shed".
+    """
+    building = what[0].upper() + what[1:]
     if from_centerline:
-        return (f"The home is about {format_feet(distance)} from the center of {label}; "
+        return (f"{building} is about {format_feet(distance)} from the center of {label}; "
                 f"at least {format_feet(required)} is required. The ordinance measures from "
                 "the street's centerline as mapped in 1960. The map uses the centerline in "
                 "today's street map, which may differ where the street was widened or moved.")
-    return (f"The home is about {format_feet(distance)} from the front lot line along "
+    return (f"{building} is about {format_feet(distance)} from the front lot line along "
             f"{label}; at least {format_feet(required)} is required.")
 
 
 def named_street_setback_reason(label: str, distance: float, required: float,
-                                from_centerline: bool, stretch: str, section: str) -> str:
-    """The reason a home breaks a section 7-1006 setback, in one sentence."""
+                                from_centerline: bool, stretch: str, section: str,
+                                what: str = "the home") -> str:
+    """The reason a lot breaks a section 7-1006 setback, in one sentence.
+
+    `what` names the building that stands too close. A home is taken as read;
+    an outbuilding is named, since the home itself may stand far enough back.
+    """
     measured_from = "the center of the street" if from_centerline else "the front lot line"
     where = f"on {label} {stretch}".strip()
-    return (f"Too close to {label}: about {format_feet(distance)} from {measured_from}, but "
+    which = "" if what == "the home" else f"{what} on the lot is "
+    return (f"Too close to {label}: {which}about {format_feet(distance)} from {measured_from}, but "
             f"buildings {where} must stand at least {format_feet(required)} back from it "
             f"(section {section}).")
 

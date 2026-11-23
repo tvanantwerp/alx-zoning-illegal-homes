@@ -1058,6 +1058,10 @@ class NamedStreetSetback:
 # Where the cross streets that end each stretch meet the named street,
 # from the city's street map.
 DUKE_AT_DIAGONAL_LONGITUDE = -77.0633
+# Quaker Lane meets Duke Street at an offset crossing: North Quaker Lane at about
+# -77.0887 (its ramps reach -77.0891) and South Quaker Lane at about -77.0873. The
+# westernmost point is used, so lots in between get the smaller 60 ft setback. No
+# checked home facing Duke Street sits in that band.
 DUKE_AT_QUAKER_LONGITUDE = -77.0891
 KING_AT_BRADDOCK_LONGITUDE = -77.0875
 SEMINARY_AT_QUAKER_LONGITUDE = -77.0896
