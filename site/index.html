@@ -203,6 +203,20 @@
     font-size: 13px; z-index: 5;
   }
   #map-wrap { position: relative; }
+  #basemap-error {
+    position: absolute; top: 14px; left: 50%; transform: translateX(-50%); z-index: 5;
+    width: min(360px, calc(100% - 32px)); padding: 12px 14px;
+    background: var(--card); color: var(--ink); border: 1px solid var(--rule); border-radius: 8px;
+    box-shadow: 0 6px 20px -10px rgba(0, 0, 0, .35);
+  }
+  /* Sit below the "Loading lots…" notice while it is still showing. */
+  #loading + #basemap-error { top: 56px; }
+  #basemap-error p { margin: 0 0 8px; }
+  #basemap-error button {
+    font: inherit; padding: 5px 12px; cursor: pointer;
+    color: var(--ink); background: var(--paper); border: 1px solid var(--rule); border-radius: 6px;
+  }
+  #basemap-error button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   @media (max-width: 760px) {
     body { grid-template-columns: 1fr; grid-template-rows: 55vh auto; }
     #map-wrap { grid-row: 1; }
@@ -421,6 +435,10 @@
 
 <div id="map-wrap">
   <div id="loading">Loading lots…</div>
+  <div id="basemap-error" role="alert" hidden>
+    <p id="basemap-error-text">The background map couldn't be loaded.</p>
+    <button type="button">Try again</button>
+  </div>
   <div id="map"></div>
 </div>
 
@@ -480,6 +498,10 @@ map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-ri
 let lots = null;
 /** False while a new base map is loading. Lot layers can only be added once it's in. */
 let baseMapReady = false;
+/** Whether the base map has drawn fully at least once since its style was last set. */
+let baseMapSettled = false;
+/** Where the lot data is: "loading", "ready" or "failed". */
+let lotsState = "loading";
 
 /** Count of selected rule kinds a lot breaks, as a map style expression. */
 function problemCountExpression() {
@@ -741,6 +763,7 @@ function setTheme(theme, remember) {
   document.documentElement.dataset.theme = theme;
   updateThemeButton();
   baseMapReady = false;
+  baseMapSettled = false;
   map.setStyle(BASEMAPS[theme], { diff: false });
   drawing.refresh();
 }
@@ -763,12 +786,63 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", event => {
 });
 map.on("style.load", () => {
   baseMapReady = true;
+  document.getElementById("basemap-error").hidden = true;
   addLotLayers();
 });
 
-map.on("load", async () => {
-  lots = await (await fetch("lots.geojson")).json();
-  document.getElementById("loading").remove();
+map.on("idle", () => { baseMapSettled = true; });
+
+/** The base map failure banner's text, which only promises what has actually loaded. */
+function updateBaseMapError() {
+  const extra = {
+    ready: " Address search and the numbers in the side panel still work.",
+    loading: " Address search and the numbers in the side panel will work once the lots finish loading.",
+    failed: "",
+  }[lotsState];
+  document.getElementById("basemap-error-text").textContent = "The background map couldn't be loaded." + extra;
+}
+
+// MapLibre only prints errors itself when nothing listens for them, so print them here.
+// The base map has failed if its style fails, or if its own tiles fail before it has
+// drawn once. A missing tile after that is left alone, since the rest still shows.
+map.on("error", event => {
+  console.error(event.error);
+  const ownSource = event.sourceId === "lots" || event.sourceId === "picked";
+  const failed = !baseMapReady || (event.sourceId && !ownSource && !baseMapSettled);
+  if (!failed) return;
+  updateBaseMapError();
+  document.getElementById("basemap-error").hidden = false;
+});
+document.querySelector("#basemap-error button").addEventListener("click", () => {
+  document.getElementById("basemap-error").hidden = true;
+  // Hiding the banner drops focus from its button, so hand it to the map.
+  map.getCanvas().focus();
+  baseMapReady = false;
+  baseMapSettled = false;
+  map.setStyle(BASEMAPS[currentTheme()], { diff: false });
+});
+
+/**
+ * Loads the lots and sets up everything that uses them. This doesn't wait for
+ * the base map, so search and the side panel still work if the base map fails.
+ */
+async function loadLots() {
+  try {
+    const response = await fetch("lots.geojson");
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    lots = await response.json();
+  } catch {
+    lotsState = "failed";
+    updateBaseMapError();
+    document.getElementById("share-caption").textContent =
+      "The lot data couldn't be loaded. Try reloading the page.";
+    const loading = document.getElementById("loading");
+    if (loading) loading.textContent = "The lot data couldn't be loaded.";
+    return;
+  }
+  lotsState = "ready";
+  updateBaseMapError();
+  document.getElementById("loading")?.remove();
   addLotLayers();
 
   buildFilters();
@@ -792,7 +866,8 @@ map.on("load", async () => {
     // Rendered features are clipped to map tiles; use the whole original.
     select(lots.features[event.features[0].id]);
   });
-});
+}
+loadLots();
 </script>
 </body>
 </html>
