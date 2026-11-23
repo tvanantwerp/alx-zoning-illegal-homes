@@ -47,6 +47,10 @@
     --ink-soft: #3d362e;
     --lot-edge: #ffffff;
     --swatch-edge: rgba(0, 0, 0, .18);
+    --on-p1: #1f1b16;
+    --on-p2: #1f1b16;
+    --on-p3: #ffffff;
+    --on-p4: #ffffff;
     color-scheme: light;
   }
   :root[data-theme="dark"] {
@@ -75,6 +79,8 @@
     --p4: #a51f1f;
     --lot-edge: #1b1916;
     --swatch-edge: rgba(255, 255, 255, .2);
+    /* White on the dark theme's brighter --p3 falls just short of readable contrast. */
+    --on-p3: #000000;
     color-scheme: dark;
   }
   * { box-sizing: border-box; }
@@ -199,8 +205,9 @@
     font-size: 13px; z-index: 5;
   }
   #map-wrap { position: relative; }
+  /* Top-left, because the map's credits open across the bottom and would run under it. */
   #map-key {
-    position: absolute; left: 10px; bottom: 10px; z-index: 4;
+    position: absolute; left: 10px; top: 10px; z-index: 4; pointer-events: none;
     padding: 7px 9px 8px; font-size: 11.5px; line-height: 1.2;
     background: var(--card); color: var(--ink);
     border: 1px solid var(--rule); border-radius: 7px;
@@ -210,19 +217,26 @@
   #map-key .key-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
   #map-key .key-row + .key-row { margin-top: 5px; }
   #map-key .key-item { display: flex; gap: 4px; align-items: center; white-space: nowrap; }
+  /* No lot colors to explain until the lots have loaded. */
+  #loading ~ #map-key { display: none; }
   #map-key .swatch { width: 12px; height: 12px; border-radius: 2px; }
+  #map-key .swatch.ok { background: var(--ok); }
+  /* Unchecked lots are drawn faint on the map, so the swatch is too. */
+  #map-key .swatch.unchecked { background: color-mix(in srgb, var(--unchecked) 35%, var(--card)); }
   #map-key .steps { display: flex; gap: 2px; align-items: center; }
   #map-key .step {
     min-width: 20px; padding: 2px 3px; border-radius: 2px; text-align: center;
     font-weight: 600; font-variant-numeric: tabular-nums;
   }
+  #map-key .s1 { background: var(--p1); color: var(--on-p1); }
+  #map-key .s2 { background: var(--p2); color: var(--on-p2); }
+  #map-key .s3 { background: var(--p3); color: var(--on-p3); }
+  #map-key .s4 { background: var(--p4); color: var(--on-p4); }
   @media (max-width: 760px) {
     body { grid-template-columns: 1fr; grid-template-rows: 55vh auto; }
     #map-wrap { grid-row: 1; }
     #map { height: 55vh; }
     #panel { border-right: 0; border-top: 1px solid var(--rule); }
-    /* On phones the map's credits line opens across the bottom, so the key goes up top. */
-    #map-key { top: 10px; bottom: auto; }
   }
 
   /* The pop-up that draws one lot. */
@@ -437,18 +451,18 @@
   <div id="loading">Loading lots…</div>
   <div id="map"></div>
   <div id="map-key" role="group" aria-label="Map colors">
-    <div class="key-title">Kinds of selected rule broken</div>
+    <div class="key-title">Number of selected rules broken</div>
     <div class="key-row">
       <span class="steps">
-        <span class="step" style="background:var(--p1);color:#1f1b16">1</span>
-        <span class="step" style="background:var(--p2);color:#1f1b16">2</span>
-        <span class="step" style="background:var(--p3);color:#fff">3</span>
-        <span class="step" style="background:var(--p4);color:#fff">4+</span>
+        <span class="step s1">1</span>
+        <span class="step s2">2</span>
+        <span class="step s3">3</span>
+        <span class="step s4">4+</span>
       </span>
     </div>
     <div class="key-row">
-      <span class="key-item"><span class="swatch" style="background:var(--ok)"></span>None found</span>
-      <span class="key-item"><span class="swatch" style="background:var(--unchecked)"></span>Not checked</span>
+      <span class="key-item"><span class="swatch ok"></span>None found</span>
+      <span class="key-item"><span class="swatch unchecked"></span>Not checked</span>
     </div>
   </div>
 </div>
