@@ -775,8 +775,87 @@ function describe(properties, full) {
 }
 
 let selectedFeature = null;
+/**
+ * The properties of the lot whose report has loaded and is showing, if any. The page's
+ * web address names it, so the report can be shared. A lot still loading, or one whose
+ * report failed to load, isn't named, so a shared link never reproduces a load error.
+ */
+let reportLot = null;
 
-const drawing = setUpLotDrawing({ isOrdinary: () => ordinaryRules, setOrdinary: setOrdinaryRules });
+const drawing = setUpLotDrawing({
+  isOrdinary: () => ordinaryRules,
+  setOrdinary: setOrdinaryRules,
+  onReport: properties => { reportLot = properties; updateAddressBar(); },
+});
+
+/** The keys this page writes into its web address. Anything else there is left alone. */
+const ADDRESS_BAR_KEYS = ["address", "lot", "judge"];
+
+/**
+ * Keeps the web address in step with what's on screen, so copying it shares the same view:
+ * `?address=415+PRINCE+ST&lot=15940` while a lot's report is open, and `judge=ordinary`
+ * while planned districts are judged by ordinary zoning.
+ * Other parts of the address, such as a `#` part or tracking tags, are kept.
+ * It replaces the current address rather than adding to the browser's history.
+ */
+function updateAddressBar() {
+  const params = new URLSearchParams(location.search);
+  for (const key of ADDRESS_BAR_KEYS) params.delete(key);
+  if (reportLot) {
+    params.set("address", reportLot.address || "");
+    params.set("lot", reportLot.id);
+  }
+  if (ordinaryRules) params.set("judge", "ordinary");
+  const query = params.toString();
+  history.replaceState(null, "", (query ? "?" + query : location.pathname) + location.hash);
+}
+
+/** An address in capitals with single spaces, so small differences in typing still match. */
+const tidyAddress = text => String(text || "").trim().toUpperCase().replace(/\s+/g, " ");
+
+/**
+ * The lot a shared web address points to, as `{ feature }`, or `{ sharing }` when it
+ * can't tell: the number of lots with a report at the link's address.
+ *
+ * The lot number is tried first, as long as its address still matches the link's,
+ * even when both are blank. Lot numbers can change when the map data is rebuilt, so
+ * otherwise the lot is looked up by address, but only when exactly one lot with a
+ * report has it. When several do, guessing could quietly open the wrong one.
+ */
+function lotFromAddressBar(params) {
+  const id = params.get("lot");
+  const address = tidyAddress(params.get("address"));
+  const hasReport = f => f.properties.id != null;
+  const byId = id ? lots.features.find(f => hasReport(f) && String(f.properties.id) === id) : null;
+  if (byId && tidyAddress(byId.properties.address) === address) return { feature: byId };
+  if (!address) return { sharing: 0 };
+  const byAddress = lots.features.filter(f => hasReport(f) && tidyAddress(f.properties.address) === address);
+  return byAddress.length === 1 ? { feature: byAddress[0] } : { sharing: byAddress.length };
+}
+
+/** Opens the view a shared web address describes: the judging setting and the lot's report. */
+function openSharedView() {
+  const params = new URLSearchParams(location.search);
+  if (params.get("judge") === "ordinary") setOrdinaryRules(true);
+  if (!params.has("lot") && !params.has("address")) return;
+  const { feature, sharing } = lotFromAddressBar(params);
+  if (feature) {
+    zoomTo(feature);
+    select(feature);
+    return;
+  }
+  document.getElementById("search-status").textContent = sharing > 1
+    ? `The map data has changed since this link was made, and ${sharing} lots now share its address. Search for the address to pick one.`
+    : "The lot in this link wasn't found in the current map data.";
+  updateAddressBar();
+}
+
+/** Moves the map to show a lot up close. */
+function zoomTo(feature) {
+  const ring = feature.geometry.type === "Polygon" ? feature.geometry.coordinates[0] : feature.geometry.coordinates[0][0];
+  const bounds = ring.reduce((b, c) => b.extend(c), new maplibregl.LngLatBounds(ring[0], ring[0]));
+  map.fitBounds(bounds, { padding: 140, maxZoom: 18.5 });
+}
 
 /**
  * Shows a lot in the side panel and outlines it on the map, then opens its drawing.
@@ -784,6 +863,7 @@ const drawing = setUpLotDrawing({ isOrdinary: () => ordinaryRules, setOrdinary: 
  */
 function select(feature, returnFocus) {
   selectedFeature = feature;
+  document.getElementById("search-status").textContent = "";
   document.getElementById("detail").innerHTML = describe(feature.properties, true);
   map.getSource("picked")?.setData({ type: "FeatureCollection", features: [feature] });
   drawing.open(feature.properties, { returnFocus });
@@ -798,6 +878,7 @@ function setOrdinaryRules(value) {
   updateRuleCounts();
   if (selectedFeature) document.getElementById("detail").innerHTML = describe(selectedFeature.properties, true);
   drawing.refresh();
+  updateAddressBar();
 }
 
 /** How many matching addresses the search list shows at once. */
@@ -861,9 +942,7 @@ function setUpSearch() {
     const feature = lots.features[index];
     input.value = feature.properties.address;
     closeList();
-    const ring = feature.geometry.type === "Polygon" ? feature.geometry.coordinates[0] : feature.geometry.coordinates[0][0];
-    const bounds = ring.reduce((b, c) => b.extend(c), new maplibregl.LngLatBounds(ring[0], ring[0]));
-    map.fitBounds(bounds, { padding: 140, maxZoom: 18.5 });
+    zoomTo(feature);
     select(feature, input);
   };
 
@@ -1048,6 +1127,8 @@ async function loadLots() {
   plannedBox.addEventListener("change", () => setOrdinaryRules(plannedBox.checked));
   updateHeadline();
   setUpSearch();
+
+  openSharedView();
 
   const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 12 });
   map.on("mousemove", "lots-fill", event => {

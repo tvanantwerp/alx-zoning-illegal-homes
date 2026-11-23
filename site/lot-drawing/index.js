@@ -21,6 +21,8 @@ function loadScene() {
 
 /**
  * Wire up the pop-up. `isOrdinary()` reads the shared switch; `setOrdinary(bool)` changes it everywhere.
+ * `onReport(properties)`, if given, is told which lot's report is showing: the lot's
+ * properties once its report has loaded, and null when a new lot starts loading or the pop-up closes.
  *
  * Expects a `<dialog id="lot-drawing">` on the page holding `.ld-title`, `.ld-meta`,
  * `.ld-verdict`, `.ld-switch` (a label around a checkbox), `.ld-close` and `.ld-body`.
@@ -28,7 +30,7 @@ function loadScene() {
  * was opened, or else to the map's canvas.
  * Returns `{ open(properties, { returnFocus }), refresh(), close() }`.
  */
-export function setUpLotDrawing({ isOrdinary, setOrdinary }) {
+export function setUpLotDrawing({ isOrdinary, setOrdinary, onReport = () => {} }) {
   const dialog = document.getElementById("lot-drawing");
   const title = dialog.querySelector(".ld-title");
   const meta = dialog.querySelector(".ld-meta");
@@ -126,6 +128,7 @@ export function setUpLotDrawing({ isOrdinary, setOrdinary }) {
     clearDrawing();
     tips.hide();
     lot = null;
+    onReport(null);
     title.textContent = properties.address || "No address on record";
     meta.textContent = "";
     verdictLine.replaceChildren();
@@ -146,6 +149,7 @@ export function setUpLotDrawing({ isOrdinary, setOrdinary }) {
     if (mine !== latest) return;
     lot = data;
     render();
+    onReport(properties);
   };
 
   /** Redraws the open lot under the current switch, keeping the scroll position. */
@@ -192,6 +196,7 @@ export function setUpLotDrawing({ isOrdinary, setOrdinary }) {
     const target = returnFocusTo?.isConnected ? returnFocusTo : document.querySelector(".maplibregl-canvas");
     returnFocusTo = null;
     if (target) target.focus();
+    onReport(null);
   });
 
   return { open, refresh, close };
