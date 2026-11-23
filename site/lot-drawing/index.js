@@ -21,14 +21,15 @@ function loadScene() {
 
 /**
  * Wire up the pop-up. `isOrdinary()` reads the shared switch; `setOrdinary(bool)` changes it everywhere.
- * `onClose()`, if given, runs each time the pop-up closes.
+ * `onReport(properties)`, if given, is told which lot's report is showing: the lot's
+ * properties once its report has loaded, and null when a new lot starts loading or the pop-up closes.
  *
  * Expects a `<dialog id="lot-drawing">` on the page holding `.ld-title`, `.ld-meta`,
  * `.ld-switch` (a label around a checkbox), `.ld-close` and `.ld-body`.
  * Closing the pop-up hands focus back to the map's canvas.
  * Returns `{ open(properties), refresh(), close() }`.
  */
-export function setUpLotDrawing({ isOrdinary, setOrdinary, onClose = () => {} }) {
+export function setUpLotDrawing({ isOrdinary, setOrdinary, onReport = () => {} }) {
   const dialog = document.getElementById("lot-drawing");
   const title = dialog.querySelector(".ld-title");
   const meta = dialog.querySelector(".ld-meta");
@@ -120,6 +121,7 @@ export function setUpLotDrawing({ isOrdinary, setOrdinary, onClose = () => {} })
     clearDrawing();
     tips.hide();
     lot = null;
+    onReport(null);
     title.textContent = properties.address || "No address on record";
     meta.textContent = "";
     switchLabel.hidden = true;
@@ -139,6 +141,7 @@ export function setUpLotDrawing({ isOrdinary, setOrdinary, onClose = () => {} })
     if (mine !== latest) return;
     lot = data;
     render();
+    onReport(properties);
   };
 
   /** Redraws the open lot under the current switch, keeping the scroll position. */
@@ -174,7 +177,7 @@ export function setUpLotDrawing({ isOrdinary, setOrdinary, onClose = () => {} })
     body.innerHTML = "";
     const canvas = document.querySelector(".maplibregl-canvas");
     if (canvas) canvas.focus();
-    onClose();
+    onReport(null);
   });
 
   return { open, refresh, close };
