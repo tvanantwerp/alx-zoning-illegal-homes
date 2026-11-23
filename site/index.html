@@ -47,6 +47,10 @@
     --ink-soft: #3d362e;
     --lot-edge: #ffffff;
     --swatch-edge: rgba(0, 0, 0, .18);
+    --on-p1: #1f1b16;
+    --on-p2: #1f1b16;
+    --on-p3: #ffffff;
+    --on-p4: #ffffff;
     color-scheme: light;
   }
   :root[data-theme="dark"] {
@@ -75,6 +79,8 @@
     --p4: #a51f1f;
     --lot-edge: #1b1916;
     --swatch-edge: rgba(255, 255, 255, .2);
+    /* White on the dark theme's brighter --p3 falls just short of readable contrast. */
+    --on-p3: #000000;
     color-scheme: dark;
   }
   * { box-sizing: border-box; }
@@ -120,6 +126,10 @@
     font-variant-numeric: tabular-nums;
   }
   .headline .caption { margin-top: 6px; }
+  .headline .what-if {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--muted); margin-bottom: 4px;
+  }
   h2 {
     font-size: 11px;
     text-transform: uppercase;
@@ -150,6 +160,14 @@
     color: var(--ink);
   }
   #search-status { color: var(--muted); font-size: 12px; min-height: 18px; margin-top: 4px; }
+  #search-list {
+    margin: 4px 0 0; padding: 4px 0; list-style: none; max-height: 290px; overflow-y: auto;
+    background: var(--card); border: 1px solid var(--rule); border-radius: 6px;
+    box-shadow: 0 8px 24px -12px rgba(0, 0, 0, .35);
+  }
+  #search-list li { padding: 6px 10px; cursor: pointer; }
+  #search-list li[aria-selected="true"] { background: var(--accent-soft); }
+  #search-list .which { color: var(--muted); font-size: 12px; }
   #detail {
     border: 1px solid var(--rule);
     border-radius: 8px;
@@ -199,6 +217,47 @@
     font-size: 13px; z-index: 5;
   }
   #map-wrap { position: relative; }
+  /* Top-left, because the map's credits open across the bottom and would run under it. */
+  #map-key {
+    position: absolute; left: 10px; top: 10px; z-index: 4; pointer-events: none;
+    padding: 7px 9px 8px; font-size: 11.5px; line-height: 1.2;
+    background: var(--card); color: var(--ink);
+    border: 1px solid var(--rule); border-radius: 7px;
+    box-shadow: 0 4px 14px -8px rgba(0, 0, 0, .35);
+  }
+  #map-key .key-title { color: var(--muted); margin-bottom: 5px; }
+  #map-key .key-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  #map-key .key-row + .key-row { margin-top: 5px; }
+  #map-key .key-item { display: flex; gap: 4px; align-items: center; white-space: nowrap; }
+  /* No lot colors to explain until the lots have loaded. */
+  #loading ~ #map-key { display: none; }
+  #map-key .swatch { width: 12px; height: 12px; border-radius: 2px; }
+  #map-key .swatch.ok { background: var(--ok); }
+  /* Unchecked lots are drawn faint on the map, so the swatch is too. */
+  #map-key .swatch.unchecked { background: color-mix(in srgb, var(--unchecked) 35%, var(--card)); }
+  #map-key .steps { display: flex; gap: 2px; align-items: center; }
+  #map-key .step {
+    min-width: 20px; padding: 2px 3px; border-radius: 2px; text-align: center;
+    font-weight: 600; font-variant-numeric: tabular-nums;
+  }
+  #map-key .s1 { background: var(--p1); color: var(--on-p1); }
+  #map-key .s2 { background: var(--p2); color: var(--on-p2); }
+  #map-key .s3 { background: var(--p3); color: var(--on-p3); }
+  #map-key .s4 { background: var(--p4); color: var(--on-p4); }
+  #basemap-error {
+    position: absolute; top: 14px; left: 50%; transform: translateX(-50%); z-index: 5;
+    width: min(360px, calc(100% - 32px)); padding: 12px 14px;
+    background: var(--card); color: var(--ink); border: 1px solid var(--rule); border-radius: 8px;
+    box-shadow: 0 6px 20px -10px rgba(0, 0, 0, .35);
+  }
+  /* Sit below the "Loading lots…" notice while it is still showing. */
+  #loading + #basemap-error { top: 56px; }
+  #basemap-error p { margin: 0 0 8px; }
+  #basemap-error button {
+    font: inherit; padding: 5px 12px; cursor: pointer;
+    color: var(--ink); background: var(--paper); border: 1px solid var(--rule); border-radius: 6px;
+  }
+  #basemap-error button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   @media (max-width: 760px) {
     body { grid-template-columns: 1fr; grid-template-rows: 55vh auto; }
     #map-wrap { grid-row: 1; }
@@ -230,6 +289,13 @@
   }
   #lot-drawing .ld-title:focus { outline: none; }
   .ld-meta { color: var(--muted); font-size: 13px; margin-top: 2px; min-height: 1.45em; }
+  .ld-verdict { font-size: 13px; margin-top: 2px; min-height: 1.45em; }
+  .ld-verdict .jump-item { white-space: nowrap; }
+  .ld-verdict .jump {
+    font: inherit; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer;
+    text-decoration: underline; text-underline-offset: 2px;
+  }
+  .ld-verdict .jump:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
   .ld-switch { display: flex; gap: 7px; align-items: center; margin-top: 8px; font-size: 13px; cursor: pointer; }
   .ld-switch[hidden] { display: none; }
   .ld-switch input { margin: 0; accent-color: var(--accent); }
@@ -324,7 +390,40 @@
     .ld-head { padding: 12px 16px 10px; }
     .ld-body { padding: 12px 16px 16px; }
     .ld-three { height: 52dvh; }
-    .ld-table.has-extra .col-bar { display: none; }
+
+    /*
+     * The rules table as a stack of small cards, so nothing scrolls sideways:
+     *   Rule name ............ RESULT
+     *   Measured     Rule says
+     *   bar
+     *   Other set of rules: RESULT and its limit
+     */
+    /* Hidden from sight only, so screen readers still have the column names. */
+    table.report thead {
+      position: absolute; width: 1px; height: 1px; overflow: hidden;
+      clip-path: inset(50%); white-space: nowrap;
+    }
+    table.report, table.report tbody { display: block; }
+    table.report tbody tr {
+      display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 4px 12px; padding: 9px 6px; border-bottom: 1px solid var(--rule);
+    }
+    table.report td { display: block; padding: 0; border: 0; }
+    table.report .col-name { grid-column: 1; font-weight: 600; }
+    table.report .col-result { grid-column: 2; justify-self: end; }
+    table.report .col-measured { grid-column: 1; }
+    table.report .col-says { grid-column: 2; }
+    table.report .col-bar, table.report .col-summary, table.report .col-extra { grid-column: 1 / -1; }
+    table.report .col-bar:empty { display: none; }
+    table.report .col-bar .bar { margin: 3px 0 1px; }
+    table.report td[data-label]::before {
+      /* The second line keeps screen readers from reading the label on top of the column name. */
+      content: attr(data-label);
+      content: attr(data-label) / "";
+      display: block; margin-bottom: 1px;
+      font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted);
+    }
+    table.report .col-extra { border-left: 0; padding: 4px 0 0; white-space: normal; }
   }
   @media (prefers-reduced-motion: reduce) {
     .tag, .lot-squares { transition: none; }
@@ -341,13 +440,17 @@
     because they break the city's current zoning rules for new construction.</p>
 
   <div class="headline">
+    <div class="what-if" id="what-if" hidden>What-if: planned districts judged by ordinary zoning</div>
     <div class="big" id="share">–</div>
     <div class="caption" id="share-caption">Loading the map data…</div>
   </div>
 
-  <h2>Find an address</h2>
-  <input id="search" type="search" placeholder="e.g. 415 PRINCE ST" autocomplete="off">
-  <div id="search-status"></div>
+  <h2 id="search-heading">Find an address</h2>
+  <input id="search" type="search" placeholder="e.g. 415 PRINCE ST" autocomplete="off"
+    role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="search-list"
+    aria-labelledby="search-heading">
+  <ul id="search-list" role="listbox" aria-label="Matching addresses" hidden></ul>
+  <div id="search-status" aria-live="polite"></div>
 
   <h2>Selected lot</h2>
   <div id="detail"><span class="placeholder">Hover over a lot for a summary. Click one to keep it here.</span></div>
@@ -358,7 +461,7 @@
   <h2>Planned districts</h2>
   <div class="filters">
     <label>
-      <input type="checkbox" id="ordinary-rules">
+      <input type="checkbox" id="ordinary-rules" autocomplete="off">
       <span>Judge them by ordinary zoning instead<small>Cameron Station, Potomac Yard, Carlyle and others were each built under a plan approved by City Council, which replaces the ordinary zone rules there. They are judged by those plans. Tick this to judge them by the ordinary zone rules for that land instead.</small></span>
       <span class="count" id="planned-count"></span>
     </label>
@@ -416,7 +519,26 @@
 
 <div id="map-wrap">
   <div id="loading">Loading lots…</div>
+  <div id="basemap-error" role="alert" hidden>
+    <p id="basemap-error-text">The background map couldn't be loaded.</p>
+    <button type="button">Try again</button>
+  </div>
   <div id="map"></div>
+  <div id="map-key" role="group" aria-label="Map colors">
+    <div class="key-title">Number of selected rules broken</div>
+    <div class="key-row">
+      <span class="steps">
+        <span class="step s1">1</span>
+        <span class="step s2">2</span>
+        <span class="step s3">3</span>
+        <span class="step s4">4+</span>
+      </span>
+    </div>
+    <div class="key-row">
+      <span class="key-item"><span class="swatch ok"></span>None found</span>
+      <span class="key-item"><span class="swatch unchecked"></span>Not checked</span>
+    </div>
+  </div>
 </div>
 
 <dialog id="lot-drawing" aria-labelledby="lot-drawing-title">
@@ -424,6 +546,7 @@
     <div>
       <h2 class="ld-title" id="lot-drawing-title" tabindex="-1" autofocus></h2>
       <div class="ld-meta"></div>
+      <div class="ld-verdict"></div>
       <label class="ld-switch" hidden><input type="checkbox"> Judge by ordinary zoning instead</label>
     </div>
     <button type="button" class="ld-close" aria-label="Close">×</button>
@@ -434,6 +557,7 @@
 <script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
 <script type="module">
 import { setUpLotDrawing } from "./lot-drawing/index.js";
+import { normalizeAddress, findAddresses } from "./search.js";
 
 const KINDS = [
   ["lot_size", "Lot too small", "Less land than the zone requires"],
@@ -475,6 +599,10 @@ map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-ri
 let lots = null;
 /** False while a new base map is loading. Lot layers can only be added once it's in. */
 let baseMapReady = false;
+/** Whether the base map has drawn fully at least once since its style was last set. */
+let baseMapSettled = false;
+/** Where the lot data is: "loading", "ready" or "failed". */
+let lotsState = "loading";
 
 /** Count of selected rule kinds a lot breaks, as a map style expression. */
 function problemCountExpression() {
@@ -506,26 +634,55 @@ function breaksSelected(properties) {
   return [...selected].some(kind => properties[flagFor(kind, !!properties.district)]);
 }
 
+/**
+ * The share of checked home lots that break a selected rule. When planned
+ * districts are judged by ordinary zoning, a label above the number and the
+ * caption both say so, because that number is a what-if, not a finding about
+ * the approved plans.
+ */
 function updateHeadline() {
+  document.getElementById("what-if").hidden = !ordinaryRules;
+  const share = document.getElementById("share");
+  const caption = document.getElementById("share-caption");
+  if (!selected.size) {
+    share.textContent = "–";
+    caption.textContent = "No rules selected. Tick at least one rule below to count homes that break it.";
+    return;
+  }
   const checked = lots.features.filter(f => f.properties.status !== "not_checked");
   const failing = checked.filter(f => breaksSelected(f.properties));
-  const share = checked.length ? failing.length / checked.length : 0;
-  document.getElementById("share").textContent = Math.round(share * 100) + "%";
-  document.getElementById("share-caption").innerHTML =
+  const all = selected.size === KINDS.length;
+  const rules = all ? "rule" : "of the selected rules";
+  share.textContent = Math.round((checked.length ? failing.length / checked.length : 0) * 100) + "%";
+  caption.innerHTML =
     `<strong>${failing.length.toLocaleString()}</strong> of ${checked.length.toLocaleString()} ` +
-    `checked home lots break ` +
-    (selected.size === KINDS.length ? "at least one current rule." : "at least one of the selected rules.");
+    `checked home lots ` +
+    (ordinaryRules
+      ? `would break at least one ${rules} if ordinary zoning applied in planned districts.`
+      : `break at least one ${all ? "current rule" : rules}.`);
+}
+
+/**
+ * Puts each rule's lot count beside its checkbox. Counts follow the same
+ * planned-district setting as the headline and map, so with one rule ticked
+ * its count matches the headline.
+ */
+function updateRuleCounts() {
+  const checked = lots.features.filter(f => f.properties.status !== "not_checked");
+  for (const [kind] of KINDS) {
+    const total = checked.filter(f => f.properties[flagFor(kind, !!f.properties.district)]).length;
+    document.querySelector(`.count[data-kind="${kind}"]`).textContent = total.toLocaleString();
+  }
 }
 
 function buildFilters() {
   const box = document.getElementById("filters");
   for (const [kind, title, hint] of KINDS) {
-    const total = lots.features.filter(f => f.properties["has_" + kind]).length;
     const label = document.createElement("label");
     label.innerHTML =
       `<input type="checkbox" checked data-kind="${kind}">` +
       `<span>${title}<small>${hint}</small></span>` +
-      `<span class="count">${total.toLocaleString()}</span>`;
+      `<span class="count" data-kind="${kind}"></span>`;
     label.querySelector("input").addEventListener("change", event => {
       event.target.checked ? selected.add(kind) : selected.delete(kind);
       recolorLots();
@@ -533,6 +690,7 @@ function buildFilters() {
     });
     box.appendChild(label);
   }
+  updateRuleCounts();
 }
 
 /** Why a lot was left unchecked, keyed by the "skipped" value in the map data. */
@@ -699,13 +857,16 @@ function zoomTo(feature) {
   map.fitBounds(bounds, { padding: 140, maxZoom: 18.5 });
 }
 
-/** Shows a lot in the side panel and outlines it on the map, then opens its drawing. */
-function select(feature) {
+/**
+ * Shows a lot in the side panel and outlines it on the map, then opens its drawing.
+ * `returnFocus` is where keyboard focus goes when the drawing closes; the map by default.
+ */
+function select(feature, returnFocus) {
   selectedFeature = feature;
   document.getElementById("search-status").textContent = "";
   document.getElementById("detail").innerHTML = describe(feature.properties, true);
   map.getSource("picked")?.setData({ type: "FeatureCollection", features: [feature] });
-  drawing.open(feature.properties);
+  drawing.open(feature.properties, { returnFocus });
 }
 
 /** The one place the "judge planned districts by ordinary zoning" setting changes. Keeps every view of it in step. */
@@ -714,29 +875,122 @@ function setOrdinaryRules(value) {
   document.getElementById("ordinary-rules").checked = value;
   recolorLots();
   updateHeadline();
+  updateRuleCounts();
   if (selectedFeature) document.getElementById("detail").innerHTML = describe(selectedFeature.properties, true);
   drawing.refresh();
   updateAddressBar();
 }
 
+/** How many matching addresses the search list shows at once. */
+const SEARCH_LIST_SIZE = 8;
+
+/**
+ * The address search box. As the reader types, a list of matching addresses
+ * appears below it, which works with the arrow keys and Enter or with a pointer.
+ * Enter opens the lot right away when only one lot matches, or the typed address
+ * matches one exactly; otherwise it asks the reader to pick from the list.
+ */
 function setUpSearch() {
   const input = document.getElementById("search");
+  const list = document.getElementById("search-list");
   const status = document.getElementById("search-status");
+  const addresses = lots.features.map(f => f.properties.address || "");
+  const normalized = addresses.map(normalizeAddress);
+  const checked = index => lots.features[index].properties.status !== "not_checked";
+  const find = () => findAddresses(addresses, input.value, normalized, checked);
+  // Lots that share an address, so the list can tell them apart.
+  const sharing = new Map();
+  normalized.forEach((address, index) => {
+    if (checked(index)) sharing.set(address, [...(sharing.get(address) || []), index]);
+  });
+  const which = index => {
+    const group = sharing.get(normalized[index]) || [];
+    return group.length > 1 ? ` <span class="which">lot ${group.indexOf(index) + 1} of ${group.length}</span>` : "";
+  };
+  // Measure what the reader typed, since "West" shortens to a single letter.
+  const longEnough = () => input.value.trim().length >= 2;
+  let shown = [];
+  let active = -1;
+
+  const setActive = (n, scroll = true) => {
+    active = n;
+    [...list.children].forEach((item, i) => item.setAttribute("aria-selected", String(i === n)));
+    if (n < 0) { input.removeAttribute("aria-activedescendant"); return; }
+    input.setAttribute("aria-activedescendant", list.children[n].id);
+    if (scroll) list.children[n].scrollIntoView({ block: "nearest" });
+  };
+  const closeList = () => {
+    status.textContent = "";
+    shown = [];
+    list.replaceChildren();
+    list.hidden = true;
+    input.setAttribute("aria-expanded", "false");
+    setActive(-1);
+  };
+  const showList = matches => {
+    shown = matches.slice(0, SEARCH_LIST_SIZE).map(m => m.index);
+    list.innerHTML = shown.map((index, n) =>
+      `<li role="option" id="search-option-${n}" aria-selected="false">${escapeHtml(addresses[index])}${which(index)}</li>`).join("");
+    list.hidden = !shown.length;
+    input.setAttribute("aria-expanded", String(!list.hidden));
+    setActive(-1);
+    status.textContent = matches.length > SEARCH_LIST_SIZE
+      ? `Showing ${SEARCH_LIST_SIZE} of ${matches.length.toLocaleString()} matches. Keep typing to narrow them down.`
+      : "";
+  };
+  const choose = index => {
+    const feature = lots.features[index];
+    input.value = feature.properties.address;
+    closeList();
+    zoomTo(feature);
+    select(feature, input);
+  };
+
+  input.addEventListener("input", () => {
+    if (!longEnough()) { closeList(); return; }
+    showList(find());
+  });
   input.addEventListener("keydown", event => {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      if (list.hidden) {
+        if (longEnough()) showList(find());
+        return;
+      }
+      event.preventDefault();
+      const last = shown.length - 1;
+      if (event.key === "ArrowDown") setActive(active >= last ? 0 : active + 1);
+      else setActive(active <= 0 ? last : active - 1);
+      return;
+    }
+    if (event.key === "Escape" && !list.hidden) {
+      event.preventDefault();
+      closeList();
+      return;
+    }
     if (event.key !== "Enter") return;
     // The pop-up opens during this keypress; without this, the same Enter would press its close button.
     event.preventDefault();
-    const wanted = input.value.trim().toUpperCase().replace(/\s+/g, " ");
-    if (!wanted) return;
-    const tidy = f => (f.properties.address || "").toUpperCase().replace(/\s+/g, " ");
-    const match = lots.features.find(f => tidy(f) === wanted) ||
-      lots.features.find(f => tidy(f).startsWith(wanted)) ||
-      lots.features.find(f => tidy(f).includes(wanted));
-    if (!match) { status.textContent = "No lot found with that address."; return; }
-    status.textContent = "";
-    zoomTo(match);
-    select(match);
+    if (active >= 0) { choose(shown[active]); return; }
+    if (!normalizeAddress(input.value)) return;
+    const matches = find();
+    if (!matches.length) { closeList(); status.textContent = "No lot found with that address."; return; }
+    const exact = matches.filter(m => m.exact);
+    if (exact.length === 1 || matches.length === 1) { choose(matches[0].index); return; }
+    showList(matches);
+    if (matches.length <= SEARCH_LIST_SIZE) status.textContent = `${matches.length} lots match. Pick one from the list.`;
   });
+  // Keep focus in the box while the pointer picks an address, so the list doesn't close first.
+  list.addEventListener("mousedown", event => event.preventDefault());
+  // Follow the pointer with the same highlight the arrow keys move, so only one item looks picked.
+  list.addEventListener("mouseover", event => {
+    const item = event.target.closest("li");
+    if (item) setActive([...list.children].indexOf(item), false);
+  });
+  list.addEventListener("click", event => {
+    const item = event.target.closest("li");
+    if (item) choose(shown[[...list.children].indexOf(item)]);
+  });
+  input.addEventListener("blur", closeList);
 }
 
 /**
@@ -784,6 +1038,7 @@ function setTheme(theme, remember) {
   document.documentElement.dataset.theme = theme;
   updateThemeButton();
   baseMapReady = false;
+  baseMapSettled = false;
   map.setStyle(BASEMAPS[theme], { diff: false });
   drawing.refresh();
 }
@@ -806,12 +1061,63 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", event => {
 });
 map.on("style.load", () => {
   baseMapReady = true;
+  document.getElementById("basemap-error").hidden = true;
   addLotLayers();
 });
 
-map.on("load", async () => {
-  lots = await (await fetch("lots.geojson")).json();
-  document.getElementById("loading").remove();
+map.on("idle", () => { baseMapSettled = true; });
+
+/** The base map failure banner's text, which only promises what has actually loaded. */
+function updateBaseMapError() {
+  const extra = {
+    ready: " Address search and the numbers in the side panel still work.",
+    loading: " Address search and the numbers in the side panel will work once the lots finish loading.",
+    failed: "",
+  }[lotsState];
+  document.getElementById("basemap-error-text").textContent = "The background map couldn't be loaded." + extra;
+}
+
+// MapLibre only prints errors itself when nothing listens for them, so print them here.
+// The base map has failed if its style fails, or if its own tiles fail before it has
+// drawn once. A missing tile after that is left alone, since the rest still shows.
+map.on("error", event => {
+  console.error(event.error);
+  const ownSource = event.sourceId === "lots" || event.sourceId === "picked";
+  const failed = !baseMapReady || (event.sourceId && !ownSource && !baseMapSettled);
+  if (!failed) return;
+  updateBaseMapError();
+  document.getElementById("basemap-error").hidden = false;
+});
+document.querySelector("#basemap-error button").addEventListener("click", () => {
+  document.getElementById("basemap-error").hidden = true;
+  // Hiding the banner drops focus from its button, so hand it to the map.
+  map.getCanvas().focus();
+  baseMapReady = false;
+  baseMapSettled = false;
+  map.setStyle(BASEMAPS[currentTheme()], { diff: false });
+});
+
+/**
+ * Loads the lots and sets up everything that uses them. This doesn't wait for
+ * the base map, so search and the side panel still work if the base map fails.
+ */
+async function loadLots() {
+  try {
+    const response = await fetch("lots.geojson");
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    lots = await response.json();
+  } catch {
+    lotsState = "failed";
+    updateBaseMapError();
+    document.getElementById("share-caption").textContent =
+      "The lot data couldn't be loaded. Try reloading the page.";
+    const loading = document.getElementById("loading");
+    if (loading) loading.textContent = "The lot data couldn't be loaded.";
+    return;
+  }
+  lotsState = "ready";
+  updateBaseMapError();
+  document.getElementById("loading")?.remove();
   addLotLayers();
 
   buildFilters();
@@ -837,7 +1143,8 @@ map.on("load", async () => {
     // Rendered features are clipped to map tiles; use the whole original.
     select(lots.features[event.features[0].id]);
   });
-});
+}
+loadLots();
 </script>
 </body>
 </html>

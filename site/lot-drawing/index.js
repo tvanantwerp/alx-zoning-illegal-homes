@@ -1,5 +1,5 @@
 import { esc } from "./format.js";
-import { chooseResults, rulesTable, lotSquares, notesList } from "./table.js";
+import { chooseResults, rulesTable, lotSquares, notesList, verdict } from "./table.js";
 const LOAD_ERROR = "The drawing for this lot couldn't be loaded. Try reloading the page.";
 const NO_DRAWING = "The 3D drawing couldn't be shown here, but the rule results below are complete.";
 const CAPTION = "Measured from the city's map data, not a survey. Drag to turn it.";
@@ -25,14 +25,16 @@ function loadScene() {
  * properties once its report has loaded, and null when a new lot starts loading or the pop-up closes.
  *
  * Expects a `<dialog id="lot-drawing">` on the page holding `.ld-title`, `.ld-meta`,
- * `.ld-switch` (a label around a checkbox), `.ld-close` and `.ld-body`.
- * Closing the pop-up hands focus back to the map's canvas.
- * Returns `{ open(properties), refresh(), close() }`.
+ * `.ld-verdict`, `.ld-switch` (a label around a checkbox), `.ld-close` and `.ld-body`.
+ * Closing the pop-up hands focus to the element passed as `returnFocus` when it
+ * was opened, or else to the map's canvas.
+ * Returns `{ open(properties, { returnFocus }), refresh(), close() }`.
  */
 export function setUpLotDrawing({ isOrdinary, setOrdinary, onReport = () => {} }) {
   const dialog = document.getElementById("lot-drawing");
   const title = dialog.querySelector(".ld-title");
   const meta = dialog.querySelector(".ld-meta");
+  const verdictLine = dialog.querySelector(".ld-verdict");
   const switchLabel = dialog.querySelector(".ld-switch");
   const switchBox = switchLabel.querySelector("input");
   const body = dialog.querySelector(".ld-body");
@@ -41,6 +43,7 @@ export function setUpLotDrawing({ isOrdinary, setOrdinary, onReport = () => {} }
   let latest = 0;
   let lot = null;
   let view = null;
+  let returnFocusTo = null;
 
   const clearDrawing = () => {
     if (view) view.dispose();
@@ -82,10 +85,9 @@ export function setUpLotDrawing({ isOrdinary, setOrdinary, onReport = () => {} }
     tips.hide();
     const ordinary = isOrdinary();
     const { main, extra } = chooseResults(lot, ordinary);
-    const broken = main.rules.filter((row) => row.status === "fails").length;
-    const verdict = broken ? `Breaks ${broken} rule${broken === 1 ? "" : "s"}` : "Passes every rule the map checks";
     title.textContent = lot.address || "No address on record";
-    meta.textContent = [lot.zone_label, lot.home_type, verdict].filter(Boolean).join(" · ");
+    meta.textContent = [lot.zone_label, lot.home_type].filter(Boolean).join(" · ");
+    verdictLine.innerHTML = verdict(main);
     switchLabel.hidden = !(lot.district && lot.ordinary);
     switchBox.checked = ordinary;
 
@@ -111,12 +113,17 @@ export function setUpLotDrawing({ isOrdinary, setOrdinary, onReport = () => {} }
       row.addEventListener("focusin", () => show(row.dataset.rule));
     }
     table.addEventListener("mouseleave", () => show(null));
+    // Keyboard and touch users never trigger mouseleave, so also clear when focus leaves the table.
+    table.addEventListener("focusout", (event) => {
+      if (!table.contains(event.relatedTarget) && !table.matches(":hover")) show(null);
+    });
     drawScene(body.querySelector(".ld-three"), main, mine);
   };
 
   /** Shows the pop-up for a lot on the map. Lots without an id weren't checked, so there is nothing to draw. */
-  const open = async (properties) => {
+  const open = async (properties, { returnFocus = null } = {}) => {
     if (!properties || properties.id == null) return;
+    returnFocusTo = returnFocus;
     const mine = ++latest;
     clearDrawing();
     tips.hide();
@@ -124,6 +131,7 @@ export function setUpLotDrawing({ isOrdinary, setOrdinary, onReport = () => {} }
     onReport(null);
     title.textContent = properties.address || "No address on record";
     meta.textContent = "";
+    verdictLine.replaceChildren();
     switchLabel.hidden = true;
     body.innerHTML = `<p class="ld-status">Loading…</p>`;
     body.scrollTop = 0;
@@ -156,6 +164,16 @@ export function setUpLotDrawing({ isOrdinary, setOrdinary, onReport = () => {} }
     if (dialog.open) dialog.close();
   };
 
+  // A failing rule's name in the header scrolls to its row and focuses it, which also highlights it in the drawing.
+  verdictLine.addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-jump]");
+    if (!button) return;
+    const row = body.querySelector(`tr[data-rule="${CSS.escape(button.dataset.jump)}"]`);
+    if (!row) return;
+    const smooth = !matchMedia("(prefers-reduced-motion: reduce)").matches;
+    row.scrollIntoView({ block: "center", behavior: smooth ? "smooth" : "auto" });
+    row.focus({ preventScroll: true });
+  });
   switchBox.addEventListener("change", () => setOrdinary(switchBox.checked));
   dialog.querySelector(".ld-close").addEventListener("click", close);
 
@@ -175,8 +193,9 @@ export function setUpLotDrawing({ isOrdinary, setOrdinary, onReport = () => {} }
     tips.hide();
     lot = null;
     body.innerHTML = "";
-    const canvas = document.querySelector(".maplibregl-canvas");
-    if (canvas) canvas.focus();
+    const target = returnFocusTo?.isConnected ? returnFocusTo : document.querySelector(".maplibregl-canvas");
+    returnFocusTo = null;
+    if (target) target.focus();
     onReport(null);
   });
 
