@@ -820,7 +820,7 @@ def test_other_floor_space_rules_count_garages_in_full():
         _, findings = _house_with_garage(1300, **options)
         row = _rows(findings)["floor_area"]
         assert row.measured == 4300 and row.buildings == [0, 1]
-        assert "counts garages in full" in row.explanation
+        assert "counts garages" in row.explanation
     _, findings = _house_with_garage(1300, zone="RA")
     assert _rows(findings)["floor_area"].measured == 3700
 
@@ -829,6 +829,22 @@ def test_other_floor_space_rules_count_garages_in_full():
 def test_historic_townhouse_excludes_only_a_qualifying_small_shed(area, added):
     _, findings = _house_with_garage(area, zone="RB", home_type="townhouse", historic=True)
     assert _rows(findings)["floor_area"].measured == 3000 + added
+
+
+@pytest.mark.parametrize("zone", ["RM", "CL"])
+@pytest.mark.parametrize("area,added", [(90, 0), (100, 0), (101, 101)])
+def test_house_outside_historic_districts_excludes_a_shed_up_to_100_sq_ft(zone, area, added):
+    _, findings = _house_with_garage(area, zone=zone)
+    row = _rows(findings)["floor_area"]
+    assert row.measured == 3000 + added
+    assert "excludes up to 100 sq ft" in row.explanation
+
+
+def test_townhouse_outside_historic_districts_gets_no_shed_exclusion():
+    _, findings = _house_with_garage(50, zone="RM", home_type="townhouse")
+    row = _rows(findings)["floor_area"]
+    assert row.measured == 3050
+    assert "counts garages and sheds in full" in row.explanation
 
 
 def test_apartment_floor_area_includes_its_outbuildings():

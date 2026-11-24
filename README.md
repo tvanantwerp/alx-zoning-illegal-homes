@@ -105,10 +105,12 @@ CG, CD, CDX, OC, OCM, OCH, W-1, CRMU, KR) and in planned districts:
   (lots of 8,000 sq ft or more). Their floor space comes from their outlines,
   as one story unless the city's 3D data shows a building tall enough for
   more.
-  Elsewhere, section 2-145(B) counts garages in full and can exclude up
-  to 65 sq ft of qualifying small accessory buildings. City records group
-  garages and sheds together, so the map uses floor space to estimate
-  which structures qualify.
+  Elsewhere, section 2-145(B) counts garages in full. It leaves out small
+  sheds: up to 100 sq ft for houses and two-unit houses outside the
+  historic districts, and up to 65 sq ft for houses, two-unit houses and
+  townhouses inside them. Other homes get no shed exclusion. City records
+  group garages and sheds together, so the map uses floor space to
+  estimate which structures qualify.
 - **Height**, measured as the ordinance does: to the top of a flat roof, but
   only halfway between the eaves and the peak of a gable or hip roof. The
   city's 3D data gives only the peak, so the map guesses the roof's shape and

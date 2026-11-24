@@ -1336,22 +1336,32 @@ def _home_indexes(facts) -> list[int]:
     return found
 
 
-OTHER_SHED_ALLOWANCE = 65
+HOUSE_SHED_ALLOWANCE = 100
+HISTORIC_SHED_ALLOWANCE = 65
 
 
-def _shed_exclusion(facts: LotFacts) -> float:
-    """Estimate the small-accessory-building exclusion under section 2-145(B)."""
-    # Section 7-202(C)(2) covers houses and twins everywhere, and townhouses
-    # in the historic districts. The city's building type groups garages
-    # and sheds, so only a structure small enough to be a shed can qualify.
+def _shed_allowance(facts: LotFacts) -> float:
+    """The most shed floor space section 2-145(B) leaves out on this lot.
+
+    Section 2-145(B)(13) leaves out sheds that meet section 7-202(C)(2): up
+    to 100 sq ft for houses and two-unit houses outside the historic
+    districts, and up to 65 sq ft for those and townhouses inside them.
+    Other homes get no shed exclusion.
+    """
     is_house = facts.home_type in {"single", "semi", "two_unit"}
-    is_historic_townhouse = facts.home_type == "townhouse" and facts.in_historic_district
-    if not (is_house or is_historic_townhouse):
-        return 0.0
+    if facts.in_historic_district and (is_house or facts.home_type == "townhouse"):
+        return HISTORIC_SHED_ALLOWANCE
+    return HOUSE_SHED_ALLOWANCE if is_house else 0.0
+
+
+def _shed_exclusion(facts: LotFacts, allowance: float) -> float:
+    """Estimate the floor space section 2-145(B) leaves out for small sheds."""
+    # The city's building type groups garages and sheds, so only a structure
+    # small enough to be a shed can qualify.
     total = sum(building.floor_area for building in facts.outbuildings
                 if building.label == "garage or shed"
-                and building.floor_area <= OTHER_SHED_ALLOWANCE)
-    return total if total <= OTHER_SHED_ALLOWANCE else 0.0
+                and building.floor_area <= allowance)
+    return total if total <= allowance else 0.0
 
 
 def _check_floor_area(facts, findings, older_lot=False):
@@ -1390,8 +1400,8 @@ def _check_floor_area(facts, findings, older_lot=False):
                         if building.label == "garage or shed")
         exclusion = min(accessory, allowance)
     else:
-        allowance = OTHER_SHED_ALLOWANCE
-        exclusion = _shed_exclusion(facts)
+        allowance = _shed_allowance(facts)
+        exclusion = _shed_exclusion(facts, allowance)
     added = total - exclusion
     floor_area = sum(home.floor_area for home in facts.homes) + added
     ratio = floor_area / facts.area
