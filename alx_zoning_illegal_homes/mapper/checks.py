@@ -366,6 +366,7 @@ def _check_home_type(facts, findings) -> OlderHomeAllowance | None:
         ]))
     elif kind not in rules.allowed:
         status, summary = FAILS, f"{name} not allowed in the {rules.label}"
+        explanation = rules.home_type_restriction_note or None
         findings.reasons.append(Reason(
             "home_type",
             f"This kind of home ({name}) is not allowed in the "
@@ -449,7 +450,7 @@ def _check_lot_area(facts, findings, position):
     rules, kind = facts.rules, facts.home_type
     table = rules.corner_lot_area if position == "corner" else rules.lot_area
     required = table.get(kind, rules.lot_area.get(kind))
-    per_home = kind == "townhouse" and facts.units > 1
+    per_home = kind in rules.lot_area_per_home_for and facts.units > 1
     row = RuleResult("lot_area", "Land per home" if per_home else "Lot size",
                      NO_RULE, unit="sq ft",
                      about=TWO_UNIT_LOT if kind == "two_unit" else None)
@@ -973,7 +974,11 @@ def _contextual_front_row(facts, record, closest, home):
     """
     rules = facts.rules
     cap = rules.contextual_front_yard
-    fronts = _street_fronts(facts, home, facts.contextual_block_face)
+    neighbors = facts.contextual_block_face
+    if rules.screen_touching_front_neighbors:
+        neighbors = {street: [n for n in setbacks if n.distance >= TOUCHING_GAP]
+                     for street, setbacks in neighbors.items()}
+    fronts = _street_fronts(facts, home, neighbors)
     judged = [front for front in fronts if front.neighbors]
     alone = [front.label for front in fronts if not front.neighbors]
     if not judged:
@@ -1068,7 +1073,8 @@ def _side_rows(facts, record, gaps, shared, touching, parts, width):
                           parts, width) for key in (-1, 1)]
 
     measure = width if width is not None else lines.frontage
-    needed = 2 if measure >= 35 else 1 if measure >= 25 else 0
+    # Give an uncertain measurement just above either threshold the lower count.
+    needed = sum(measure > threshold * (1 + WIDTH_MARGIN) for threshold in (25, 35))
     # A shared wall is a side with no yard at all.
     have = sum(gaps[key].gap + DISTANCE_MARGIN >= 5 for key in (-1, 1) if key in gaps)
     short = not lines.is_corner and have < needed

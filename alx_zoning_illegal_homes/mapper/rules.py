@@ -145,12 +145,15 @@ class ZoneRules:
     # Homes near Eisenhower Avenue old enough to need no special permit
     # (OCH only), as an OlderHomeAllowance.
     eisenhower_older_homes: OlderHomeAllowance | None = None
+    # Why a residential use that fails the home type rule is restricted.
+    home_type_restriction_note: str = ""
     # How messages refer to these rules, after the word "the".
     described_as: str = ""
     # Largest apartment building allowed, counted in homes. None = no cap.
     max_multi_units: int | None = None
-    # Minimum lot area. For townhouses this is per home.
+    # Minimum lot area. For these home types, the area is per home.
     lot_area: dict = field(default_factory=dict)
+    lot_area_per_home_for: frozenset = frozenset({"townhouse"})
     corner_lot_area: dict = field(default_factory=dict)
     lot_width: dict = field(default_factory=dict)
     corner_lot_width: dict = field(default_factory=dict)
@@ -183,6 +186,9 @@ class ZoneRules:
     # neighbors' front yards, but once the shallowest of them is deeper than
     # this, a home needs only this much.
     contextual_front_yard: float | None = None
+    # In house zones, a neighbor's roof drawn on or across its front
+    # lot line is too uncertain to set the contextual range.
+    screen_touching_front_neighbors: bool = False
     # The RM and CD zones' rule: the front wall sits at the front lot line,
     # unless most other buildings on the same side of the block stand
     # further back, and then at their average distance from it.
@@ -296,6 +302,7 @@ def _low_density(name, area, corner_area, width, corner_width, frontage,
         curved_frontage={t: curved for t in types} if curved else {},
         width_measured_at=measured_at,
         contextual_front_yard=front,
+        screen_touching_front_neighbors=True,
         side_yard={t: Yard(yard, side_share) for t in types},
         split_twin_lots_allowed=bool(semi),
         rear_yard=Yard(yard, 1.0),
@@ -345,6 +352,7 @@ ZONES = {
                   "townhouse": 18},
         width_measured_at=20,
         contextual_front_yard=20,
+        screen_touching_front_neighbors=True,
         side_yard={
             "single": Yard(7, 1 / 3),
             "semi": Yard(7, 1 / 3),
@@ -360,21 +368,23 @@ ZONES = {
                     "multi": 45},
         min_open_space=0.35,
     ),
-    # The zone asks 1,980 sq ft of land for each home, apartments included.
-    # Apartments here are allowed only as older ones (see
-    # _RB_OLDER_APARTMENTS), and the map has no rule for land per apartment
-    # yet, so their lot size isn't checked.
+    # Section 3-705(B)(1) asks 1,980 sq ft per home, including apartments.
+    # The map has no records for the 1,600 sq ft exception on certain urban
+    # renewal land (section 3-707(C)).
     "RB": ZoneRules(
         name="RB",
         allowed=frozenset(HOUSE_LIKE),
         allowed_if_built_before={"multi": _RB_OLDER_APARTMENTS},
-        lot_area={"single": 1980, "semi": 1980, "two_unit": 3960, "townhouse": 1980},
-        lot_width={"single": 50, "semi": 25, "two_unit": 50, "townhouse": 18},
+        lot_area={"single": 1980, "semi": 1980, "two_unit": 3960, "townhouse": 1980,
+                  "multi": 1980},
+        lot_area_per_home_for=frozenset({"townhouse", "multi"}),
+        lot_width={"single": 50, "semi": 25, "two_unit": 50, "townhouse": 18, "multi": 50},
         end_lot_width={"townhouse": 26},
         corner_lot_width={"townhouse": 38},
-        frontage={"single": 50, "semi": 25, "two_unit": 50, "townhouse": 18},
+        frontage={"single": 50, "semi": 25, "two_unit": 50, "townhouse": 18, "multi": 50},
         width_measured_at=20,
         contextual_front_yard=20,
+        screen_touching_front_neighbors=True,
         side_yard={
             "single": Yard(8, 1 / 3),
             "semi": Yard(8, 1 / 3),
@@ -740,6 +750,29 @@ ZONES |= {
     # Industrial and utility zones do not allow homes at all.
     "I": ZoneRules(name="I (industrial)", allowed=frozenset()),
     "UT": ZoneRules(name="UT (utility)", allowed=frozenset()),
+    # Sections 4-700, 4-1400, 6-100 and 6-200.
+    "CR": ZoneRules(
+        name="CR", allowed=frozenset(),
+        home_type_restriction_note=(
+            "The CR zone provides for regional commercial uses, including shopping, "
+            "services and offices."),
+    ),
+    "NR": ZoneRules(
+        name="NR", allowed=frozenset(),
+        home_type_restriction_note=(
+            "The NR zone allows up to four homes above or behind shops and may allow "
+            "townhouses with a special use permit. The map checks ordinary home uses here."),
+    ),
+    "POS": ZoneRules(
+        name="POS", allowed=frozenset(),
+        home_type_restriction_note=(
+            "The POS zone is for public open space and community recreation."),
+    ),
+    "WPR": ZoneRules(
+        name="WPR", allowed=frozenset(),
+        home_type_restriction_note=(
+            "The WPR zone is for waterfront parks and recreation."),
+    ),
 }
 # No special permit may allow a row of more than eight townhouses here.
 ZONES |= {zone: replace(ZONES[zone], long_townhouse_rows="never")
@@ -1127,6 +1160,7 @@ RB_HISTORIC = ZoneRules(
     allowed=ZONES["RB"].allowed,
     allowed_if_built_before=ZONES["RB"].allowed_if_built_before,
     lot_area=ZONES["RB"].lot_area,
+    lot_area_per_home_for=ZONES["RB"].lot_area_per_home_for,
     lot_width=ZONES["RB"].lot_width,
     end_lot_width=ZONES["RB"].end_lot_width,
     corner_lot_width=ZONES["RB"].corner_lot_width,

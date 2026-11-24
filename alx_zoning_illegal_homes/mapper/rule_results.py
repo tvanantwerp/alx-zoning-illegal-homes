@@ -662,8 +662,9 @@ def side_count_explanation(zone_label: str, width: float, needed: int) -> str:
     ending = {0: "none.", 1: "a 5 ft yard on at least one side."}.get(
         needed, "a 5 ft yard on both sides.")
     return (f"In the {zone_label}, side yards depend on lot width: none on lots under "
-            "25 ft wide, one 5 ft side yard from 25 to 35 ft, and two at 35 ft or more. "
-            f"This lot is about {format_feet(width)} wide, so it needs {ending}")
+            "25 ft wide, one 5 ft side yard from 25 ft up to 35 ft, and two at "
+            "35 ft or more. With the 5% margin for measuring width, "
+            f"this lot measures about {format_feet(width)} wide and needs {ending}")
 
 
 def under_special_approval(results: list[RuleResult],
