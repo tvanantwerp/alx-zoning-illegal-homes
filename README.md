@@ -306,9 +306,8 @@ Other details that matter:
 - Front yards set by the neighbors are measured from building outlines
   traced from roofs, so a porch roof or overhang counts as part of the
   building, for a home and its neighbors alike. A home with a deep porch
-  next to homes without one can look closer to the street than it is. The
-  rule also says a home may stand no further back than its neighbors, which
-  the map doesn't check. Corner lots get judged on both streets, as the
+  next to homes without one can look closer to the street than it is.
+  Corner lots get judged on both streets, as the
   ordinance asks, and fail more often than other lots, mostly along the
   side street. Where the street map changes a street's name partway along a
   lot, the lot is treated as a corner lot.
