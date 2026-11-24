@@ -96,6 +96,11 @@ CG, CD, CDX, OC, OCM, OCH, W-1, CRMU, KR) and in planned districts:
   16 ft, and 1 ft for every 2 ft of height, counting half of an alley
   behind toward the second part). The map measures it to every lot line
   away from both streets that isn't along a shared wall.
+  Detached garages and sheds have a separate row for their own setbacks.
+  The map estimates whether they qualify for the small shed or rear garage
+  exception from their floor space, heights and placement. It leaves
+  garages within 1 to 3 ft of a lot line unchecked when the exception
+  depends on doors, windows or an alley.
 - **Floor space** compared with lot size. In the KR and OCH zones the limit
   is looser within 1,000 ft of a Metro station. In R-20 through R-2-5, and
   for houses and two-unit houses in RA and RB outside the historic

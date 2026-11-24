@@ -682,7 +682,8 @@ def _outbuilding(index: int, part) -> Outbuilding:
         index=index,
         floor_area=float(part["footprint"] * part["share"] * stories * OUTLINE_FLOOR_SHARE),
         label=("commercial building" if part.get("BUSE") == "Commercial"
-               else OUTBUILDING_LABELS.get(part["BTYPE"], "outbuilding")))
+               else OUTBUILDING_LABELS.get(part["BTYPE"], "outbuilding")),
+        height=float(part["height"]) if pd.notna(part["height"]) else None)
 
 
 def _main_buildings(placed) -> dict:
