@@ -8,7 +8,7 @@ from shapely.ops import unary_union
 
 from alx_zoning_illegal_homes.mapper.block_faces import BlockFaces, FrontSetback
 from alx_zoning_illegal_homes.mapper.checks import Home, LotFacts, check_lot
-from alx_zoning_illegal_homes.mapper.lot_lines import classify, front_for_yard
+from alx_zoning_illegal_homes.mapper.lot_lines import Street, classify, front_for_yard
 from alx_zoning_illegal_homes.mapper.rule_results import (
     FAILS, NOT_CHECKED, NOT_REQUIRED, PASSES)
 from alx_zoning_illegal_homes.mapper.rules import RB_HISTORIC, ZONES
@@ -84,6 +84,24 @@ def test_block_side_runs_along_the_whole_side_of_the_street():
     assert sorted(s.lot_id for s in side) == [1, 2, 4]
 
 
+def test_block_side_stops_at_a_different_street_with_the_same_short_name():
+    lots = [
+        box(0, 30, 40, 130),
+        box(40, 30, 80, 130),
+        box(80, 30, 120, 130),
+    ]
+    first = Street("MAIN", LineString([(0, 0), (39, 0)]), label="Main Court")
+    second = Street("MAIN", LineString([(40, 0), (140, 0)]), label="Main Street")
+
+    def lines_for(i):
+        return classify(lots[i], unary_union(lots[:i] + lots[i + 1:]), [first, second], "MAIN")
+
+    buildings = {1: [(box(50, 50, 70, 90), True)], 2: [(box(90, 50, 110, 90), True)]}
+    faces = BlockFaces(lots, lines_for, buildings)
+    assert faces.block_side(0, "MAIN") == []
+    assert [s.lot_id for s in faces.block_side(1, "MAIN")] == [2]
+
+
 LOT = box(0, 0, 60, 120)
 
 
@@ -115,6 +133,20 @@ def test_home_closer_than_every_neighbor_fails():
                for r in findings.reasons)
 
 
+@pytest.mark.parametrize("zone", ["R-8", "RA", "RB"])
+def test_neighbor_touching_front_line_does_not_set_house_zone_range(zone):
+    row, _ = _with_block_face(zone, box(10, 12, 50, 50), [0, 0.4, 20, 28])
+    assert row.status == FAILS and row.required == pytest.approx(20)
+
+
+def test_zero_setbacks_are_kept_where_buildings_may_stand_at_front_line():
+    row, _ = _with_block_face("CL", box(10, 12, 50, 50), [0, 20, 28])
+    assert row.status == PASSES and row.required == 0
+    row, _ = _with_block_face("RM", box(10, 10, 50, 50), [0, 0, 8],
+                              field="block_side")
+    assert row.required == 0
+
+
 def test_home_within_the_neighbors_range_passes():
     row, _ = _with_block_face("RA", box(10, 22, 50, 60), [20, 28])
     assert row.status == PASSES and row.required == pytest.approx(20)
@@ -135,9 +167,17 @@ def test_corner_street_without_neighbors_is_left_out():
     assert row.status == PASSES and row.required == pytest.approx(20)
 
 
-def test_home_set_back_further_than_its_neighbors_is_unverified():
-    row, _ = _with_block_face("R-8", box(10, 40, 50, 80), [20, 28])
-    assert row.status == NOT_CHECKED
+def test_home_set_back_further_than_its_neighbors_fails():
+    row, findings = _with_block_face("R-8", box(10, 40, 50, 80), [20, 28])
+    assert row.status == FAILS and row.required == 28 and row.limit == "max"
+    assert "strip" not in row.shapes and row.shapes["gap"]
+    assert any(reason.text.startswith("Too far back from Main")
+               for reason in findings.reasons)
+
+
+def test_a_little_further_back_than_the_neighbors_passes_on_the_margin():
+    row, _ = _with_block_face("R-8", box(10, 30, 50, 65), [20, 28])
+    assert row.status == PASSES and row.required == 28 and row.limit == "max"
 
 
 def test_a_little_short_of_the_neighbors_passes_on_the_margin():
@@ -191,6 +231,21 @@ def test_rm_front_yard_shows_the_average_of_a_block_that_stands_back():
                               home_type="townhouse")
     assert row.status == NOT_CHECKED and row.required == pytest.approx(10)
     assert "on average they stand about 10.0 ft back" in row.explanation
+
+
+@pytest.mark.parametrize("zone", ["RM", "CD"])
+def test_block_average_ignores_setbacks_deeper_than_the_subject_lot(zone):
+    row, _ = _with_block_face(zone, box(10, 1, 50, 50), [12, 16, 350],
+                              field="block_side", home_type="townhouse")
+    assert row.status == NOT_CHECKED and row.required == pytest.approx(14)
+    assert "leaves out buildings" in row.explanation
+
+
+def test_block_average_is_unknown_if_every_neighbor_is_too_far_away():
+    row, _ = _with_block_face("RM", box(10, 1, 50, 50), [350, 1650],
+                              field="block_side", home_type="townhouse")
+    assert row.status == NOT_CHECKED and row.required is None
+    assert "could not estimate" in row.explanation
 
 
 def test_rb_in_the_historic_districts_passes_at_the_lot_line_and_is_unjudged_behind_it():

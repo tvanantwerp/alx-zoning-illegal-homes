@@ -19,6 +19,7 @@ All coordinates are in feet.
 """
 from dataclasses import dataclass, field
 from functools import cached_property
+from itertools import combinations
 from typing import NamedTuple
 
 import numpy as np
@@ -52,6 +53,11 @@ MAX_DIVIDED_GAP = 150.0
 # Two pieces of one side of a divided road are joined end to end only where
 # the road bends less than this many degrees from one piece to the next.
 MAX_CARRIAGEWAY_BEND = 60.0
+# For the limit on townhouses in one building, homes join a row only where
+# their outlines run together, this close, for at least MIN_SHARED_WALL feet:
+# a shared wall, not two rows whose corners meet across an alley.
+WALL_GAP = 0.5
+MIN_SHARED_WALL = 4.0
 
 
 class Street(NamedTuple):
@@ -135,10 +141,23 @@ class LotLines:
     pieces: list[Piece]
     fronts: dict[str, MultiLineString] = field(default_factory=dict)
     primary_street: str | None = None
-    is_corner: bool = False
-    is_through: bool = False
     # The middle of each street in `fronts`, by the same names.
     centerlines: dict[str, StreetCenterline] = field(default_factory=dict)
+
+    @cached_property
+    def _front_pair_gaps(self) -> tuple[float, ...]:
+        return tuple(first.distance(second)
+                     for first, second in combinations(self.fronts.values(), 2))
+
+    @property
+    def is_corner(self) -> bool:
+        """A lot fronting on two or more streets at their intersection (section 2-167)."""
+        return any(gap < CORNER_GAP for gap in self._front_pair_gaps)
+
+    @property
+    def is_through(self) -> bool:
+        """A lot extending through a block from one street to another (section 2-171)."""
+        return any(gap >= CORNER_GAP for gap in self._front_pair_gaps)
 
     @cached_property
     def front_line(self):
@@ -152,16 +171,37 @@ class LotLines:
         return line.length if line is not None else None
 
     @cached_property
-    def front_is_curved(self) -> bool:
-        """True when the front line bends, as on a cul-de-sac."""
-        line = self.front_line
-        if line is None:
+    def front_is_curved_with_radial_sides(self) -> bool:
+        """Whether a curved street frontage has radial lot lines at both ends."""
+        if self.primary_street is None:
             return False
-        merged = linemerge(line)
-        longest = max(_lines(merged), key=lambda part: part.length)
-        start, end = longest.coords[0], longest.coords[-1]
-        chord = np.hypot(end[0] - start[0], end[1] - start[1])
-        return chord < 0.985 * longest.length
+        front = front_for_yard(self, self.primary_street)
+        longest = max(_lines(linemerge(front)), key=lambda part: part.length)
+        coords = np.asarray(longest.simplify(0.3).coords)
+        chord = np.linalg.norm(coords[-1] - coords[0])
+        if len(coords) < 4 or chord >= 0.985 * longest.length:
+            return False
+        edges = np.diff(coords, axis=0)
+        tangents = edges / np.linalg.norm(edges, axis=1)[:, None]
+        angles = np.unwrap(np.arctan2(tangents[:, 1], tangents[:, 0]))
+        turns = np.diff(angles)
+        if not (np.all(turns > 0) or np.all(turns < 0)):
+            return False
+        if np.max(np.abs(turns)) > np.radians(40):
+            return False
+
+        sides = []
+        for endpoint, tangent in ((coords[0], tangents[0]), (coords[-1], tangents[-1])):
+            side = next((piece for piece in self.pieces
+                         if piece.street != self.primary_street
+                         and tuple(endpoint) in (piece.line.coords[0], piece.line.coords[-1])),
+                        None)
+            if side is None or abs(side.direction @ tangent) > np.sin(np.radians(20)):
+                return False
+            sides.append(side.direction)
+        # Sides should fan out like radii, rather than run parallel through
+        # a lot whose frontage happens to be curved.
+        return abs(sides[0] @ sides[1]) < np.cos(np.radians(10))
 
     @cached_property
     def front_direction(self) -> np.ndarray | None:
@@ -206,6 +246,28 @@ def largest_polygon(geometry) -> Polygon:
     return max(geometry.geoms, key=lambda part: part.area)
 
 
+def _wall_segments(shape):
+    for polygon in shapely.get_parts(shape.simplify(0.1)):
+        coords = np.asarray(polygon.exterior.coords)[:, :2]
+        for start, end in zip(coords, coords[1:]):
+            length = np.linalg.norm(end - start)
+            if length >= MIN_SHARED_WALL:
+                yield (end - start) / length, shapely.LineString([start, end])
+
+
+def parallel_shared_walls(a, b):
+    """The parts of b's outer walls that run alongside the walls of a."""
+    other = list(_wall_segments(b))
+    for direction, wall in _wall_segments(a):
+        band = wall.buffer(WALL_GAP, cap_style="flat")
+        for facing, segment in other:
+            if abs(direction @ facing) < 0.97:
+                continue
+            overlap = segment.intersection(band)
+            if overlap.length >= MIN_SHARED_WALL:
+                yield overlap
+
+
 def cut_outline(lot: Polygon) -> list[Piece]:
     """Chop the outer ring of a lot into short pieces with outward normals."""
     ring = orient(lot.simplify(0.3), 1.0).exterior
@@ -221,7 +283,8 @@ def cut_outline(lot: Polygon) -> list[Piece]:
         outward = np.array([unit[1], -unit[0]])
         for i in range(steps):
             a = start + (end - start) * (i / steps)
-            b = start + (end - start) * ((i + 1) / steps)
+            # Keep the ring's original endpoint so adjacent pieces join exactly.
+            b = end if i + 1 == steps else start + (end - start) * ((i + 1) / steps)
             pieces.append(Piece(LineString([a, b]), (a + b) / 2, outward))
     return pieces
 
@@ -308,15 +371,6 @@ def classify(lot, neighbors, streets, address_street=None) -> LotLines:
     result.centerlines = {name: _centerline(name, result.fronts[name], group, streets)
                           for name, group in by_street.items()}
     result.primary_street = _choose_primary(result.fronts, address_street)
-    if len(result.fronts) > 1:
-        primary = result.fronts[result.primary_street]
-        touching = any(
-            line.distance(primary) < CORNER_GAP
-            for name, line in result.fronts.items()
-            if name != result.primary_street
-        )
-        result.is_corner = touching
-        result.is_through = not touching
     return result
 
 
