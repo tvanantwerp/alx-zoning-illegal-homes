@@ -1349,11 +1349,35 @@ def _counted_outbuildings(facts) -> list[Outbuilding]:
     return list(facts.outbuildings)
 
 
+def _eligible_outbuilding_floor_area(facts: LotFacts, outbuildings: list[Outbuilding]) -> float:
+    """Estimate the exclusions in sections 2-145(A)(6) and (11) from size.
+
+    City records put garages and sheds in the same category. Treat the
+    smallest ones as sheds, and larger ones as garage candidates. Garage
+    location, openings and the use of individual buildings aren't surveyed.
+    """
+    shed_limit = 100  # Section 7-202(C)(2)(a), total floor area across all sheds.
+    garage_limit = 500 if facts.area >= 8000 else 250 if facts.area >= 2500 else 0
+    shed_area = 0.0
+    garages = []
+    for building in outbuildings:
+        if building.label != "garage or shed":
+            continue
+        if building.floor_area <= shed_limit:
+            shed_area += building.floor_area
+        else:
+            garages.append(building.floor_area)
+    if shed_area > shed_limit or facts.home_type not in {"single", "semi", "two_unit"}:
+        shed_area = 0.0
+    garage_area = garages[0] if len(garages) == 1 and garages[0] <= garage_limit else 0.0
+    return shed_area + garage_area
+
+
 def _check_floor_area(facts, findings, older_lot=False):
     """Check floor space against the zone's limit, or the older-lot limit when `older_lot`.
 
-    Where the zone counts them, garages, sheds and other outbuildings add
-    whatever floor space they hold beyond the lot's allowance.
+    Oversized outbuildings count in full. Qualifying garages and sheds can
+    be excluded up to the lot's combined allowance.
     """
     kind = facts.home_type
     usual = facts.rules.floor_area_ratio_for(kind, facts.in_historic_district)
@@ -1378,8 +1402,7 @@ def _check_floor_area(facts, findings, older_lot=False):
     outbuildings = _counted_outbuildings(facts)
     allowance = outbuilding_allowance(facts.area)
     total = sum(building.floor_area for building in outbuildings)
-    accessory = sum(building.floor_area for building in outbuildings
-                    if building.label == "garage or shed")
+    accessory = _eligible_outbuilding_floor_area(facts, outbuildings)
     added = total - min(accessory, allowance)
     floor_area = sum(home.floor_area for home in facts.homes) + added
     ratio = floor_area / facts.area
