@@ -10,12 +10,12 @@ from dataclasses import dataclass, field, replace
 
 import numpy as np
 import shapely
-from shapely.geometry import LineString
+from shapely.geometry import LineString, MultiLineString
 from shapely.ops import nearest_points, substring, unary_union
 
 from .heights import FLAT, MIN_PART_AREA, BuildingHeight, RoofHeight, building_height
 from .lot_lines import (LotLines, StreetCenterline, front_for_yard, largest_polygon,
-                        lot_width, lot_width_line)
+                        lot_width, lot_width_line, street_pieces)
 from .rule_results import (
     CORNER_NO_REAR, CROSSES_LOT_LINE, FAILS, MAPPING_ERROR, NO_FLOOR_AREA, NO_HEIGHT,
     NO_OUTLINES, NO_REAR_FOUND, NO_RULE, NO_SIDE_LINE, NO_STREET, NOT_CHECKED, NOT_REQUIRED,
@@ -64,6 +64,12 @@ OPEN_SPACE_LEFT_OUT = ("once buildings, roads, driveways, parking and strips "
 # In every height district a building may be at most this many times as
 # tall as its distance from the center of the street it faces.
 STREET_HEIGHT_RATIO = 2.0
+# Section 7-202(E) allows an at-grade or first-floor single-story front
+# porch, up to 10 ft deep, that leaves 10 ft of front yard. The 3D layer
+# has no porch category, so use a low roof section as a proxy.
+MAX_FRONT_PORCH_HEIGHT = 16.0
+MAX_FRONT_PORCH_DEPTH = 10.0
+MIN_YARD_IN_FRONT_OF_PORCH = 10.0
 # Slack given to the distance from a building to the center of the street,
 # in feet: the roof overhangs and measuring error DISTANCE_MARGIN covers,
 # plus a few feet for a street map centerline that follows the middle of
@@ -917,13 +923,24 @@ def _front_row(facts, record, gap, home):
     if not rules.front_yard:
         return _yard_row(facts, "front", NOT_CHECKED, gap,
                          explanation=front_yard_explanation(rules))
+    porch = None
+    if home.sections and gap.gap + DISTANCE_MARGIN < rules.front_yard:
+        fronts = [_front_with_porch(facts, home, front, rules.front_yard)
+                  for front in _street_fronts(facts, home, {})]
+        if any(front.porch_depth for front in fronts):
+            governed = min(fronts, key=lambda front: front.gap.gap)
+            gap = governed.gap
+            porch = _front_porch_explanation(governed)
     fails = gap.gap + DISTANCE_MARGIN < rules.front_yard
     if fails:
         record("front", rules.front_yard - gap.gap,
                f"Too close to the street: front yard is about "
                f"{_feet(gap.gap)}, but {_feet(rules.front_yard)} is required.")
-    return _yard_row(facts, "front", FAILS if fails else PASSES, gap,
-                     rules.front_yard, detail="needs")
+    row = _yard_row(facts, "front", FAILS if fails else PASSES, gap,
+                    rules.front_yard, detail="needs")
+    if porch:
+        row.explanation = " ".join(filter(None, [porch, margin_explanation(row)]))
+    return row
 
 
 @dataclass
@@ -933,6 +950,8 @@ class StreetFront:
     label: str
     gap: YardGap
     neighbors: list
+    street: str
+    porch_depth: float = 0.0
 
 
 def _street_fronts(facts, home, neighbors_by_street) -> list[StreetFront]:
@@ -948,8 +967,56 @@ def _street_fronts(facts, home, neighbors_by_street) -> list[StreetFront]:
         gap = YardGap(front.distance(home.shape), False, _nearest_line(home, front),
                       list(front.geoms))
         found.append(StreetFront(center.label if center else street.title(), gap,
-                                 neighbors_by_street.get(street) or []))
+                                 neighbors_by_street.get(street) or [], street))
     return found
+
+
+def _front_with_porch(facts, home, front, minimum):
+    """Use the wall behind a likely porch if the porch meets section 7-202(E)."""
+    if (not home.sections or front.gap.gap + DISTANCE_MARGIN >= minimum
+            or front.gap.gap + DISTANCE_MARGIN < MIN_YARD_IN_FRONT_OF_PORCH):
+        return front
+    tall_roof = unary_union([shape for shape, height in home.sections
+                             if height > MAX_FRONT_PORCH_HEIGHT]).intersection(home.shape)
+    if tall_roof.area == 0:
+        return front
+    lot_line = MultiLineString(front.gap.lines)
+    pieces = street_pieces(facts.lines, front.street)
+    inward = -sum(piece.length * piece.outward for piece in pieces)
+    inward /= np.linalg.norm(inward) or 1.0
+    origin = np.asarray(lot_line.centroid.coords[0])
+    tall_setback = lot_line.distance(tall_roof)
+    likely_porches = []
+    for outline, height in home.sections:
+        if not 0 < height <= MAX_FRONT_PORCH_HEIGHT:
+            continue
+        visible = outline.intersection(home.shape).difference(tall_roof)
+        if (visible.area == 0 or visible.distance(tall_roof) > TOUCHING_GAP
+                or visible.distance(lot_line) >= tall_setback):
+            continue
+        depth = np.ptp((shapely.get_coordinates(visible) - origin) @ inward)
+        if depth <= MAX_FRONT_PORCH_DEPTH + 1e-7:
+            likely_porches.append(visible)
+    if not likely_porches:
+        return front
+    wall = home.shape.difference(unary_union(likely_porches))
+    nearest = LineString(nearest_points(wall, lot_line))
+    porch_depth = nearest.length - front.gap.gap
+    if 0 < porch_depth <= MAX_FRONT_PORCH_DEPTH + 1e-7:
+        gap = YardGap(nearest.length, False, nearest, front.gap.lines)
+        return replace(front, gap=gap, porch_depth=porch_depth)
+    return front
+
+
+def _front_porch_explanation(front):
+    if not front.porch_depth:
+        return None
+    clearance = front.gap.gap - front.porch_depth
+    return (f"The map estimates a one-story porch from the low roof at the front. "
+            f"It projects about {_feet(front.porch_depth)} from the wall and leaves "
+            f"about {_feet(clearance)} to the front lot line. Section 7-202(E) allows "
+            "a porch up to 10 ft deep with at least 10 ft of front yard, "
+            "with the map's measuring margin applied to the yard.")
 
 
 def _contextual_front_row(facts, record, closest, home):
@@ -983,6 +1050,7 @@ def _contextual_front_row(facts, record, closest, home):
     def needs(front):
         return min(min(n.distance for n in front.neighbors), cap)
 
+    judged = [_front_with_porch(facts, home, front, needs(front)) for front in judged]
     worst = min(judged, key=lambda front: front.gap.gap - needs(front))
     too_deep = [front for front in judged
                 if front.gap.gap > max(n.distance for n in front.neighbors) + DISTANCE_MARGIN
@@ -1004,7 +1072,7 @@ def _contextual_front_row(facts, record, closest, home):
         "The setback exceeds the measured range. Its upper bound is unverified." if too_deep and not fails else None,
         contextual_front_yard_explanation(worst.label, worst.gap.gap, distances, homes_only,
                                           rules.label, cap, len(judged) > 1, alone),
-        margin_explanation(row)]))
+        _front_porch_explanation(worst), margin_explanation(row)]))
     return row
 
 
