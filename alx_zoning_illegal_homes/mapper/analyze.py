@@ -851,7 +851,15 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
         record["home_type"] = HOME_TYPE_NAMES[home_type]
         record["year_built"] = int(years.min()) if len(years) else None
 
-        is_historic = bool(historic_shares.loc[lot_id] > 0.5)
+        historic_share = historic_shares.loc[lot_id]
+        is_historic = bool(historic_share > 0.5)
+        if 0 < historic_share < 1:
+            classification = "inside" if is_historic else "outside"
+            historic_note = (
+                f"A historic district boundary crosses this lot. About {historic_share:.1%} "
+                f"of the lot is inside. The map treats the lot as {classification} based "
+                "on which side contains more than half of its area. Ties count as outside.")
+            record["notes"].append(historic_note)
         label = lot["zoning_label"]
         zone = normalize_zone(label)
         district = fallback_rules = None
@@ -939,15 +947,7 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
         facts = _add_neighbors(facts, lot_id, block_faces, fallback_rules)
         label, home_type = lot["zoning_label"], facts.home_type
         findings = check_lot(facts)
-        historic_share = historic_shares.loc[lot_id]
-        historic_note = None
-        if 0 < historic_share < 1:
-            classification = "inside" if facts.in_historic_district else "outside"
-            historic_note = (
-                f"A historic district boundary crosses this lot. About {historic_share:.1%} "
-                f"of the lot is inside. The map treats the lot as {classification} based "
-                "on which side contains more than half of its area. Ties count as outside.")
-            findings.notes.append(historic_note)
+        findings.notes.extend(record["notes"])
         if lot["land_use"] == TWIN_LAND_USE and home_type in ("two_unit", "single"):
             findings.notes.append(
                 TWO_UNIT_NOTE if home_type == "two_unit" else LONE_HOUSE_NOTE)
@@ -957,8 +957,7 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
             # Second opinion: the same home under the ordinary zone that
             # would apply if the district's approved plan did not exist.
             ordinary = check_lot(replace(facts, rules=fallback_rules))
-            if historic_note:
-                ordinary.notes.append(historic_note)
+            ordinary.notes.extend(record["notes"])
             findings.results = under_special_approval(findings.results, district)
             project = _project_for(lot_points.loc[lot_id], projects, project_tree)
             record.update({
