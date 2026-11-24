@@ -11,6 +11,8 @@ from alx_zoning_illegal_homes.mapper.rule_results import (
     RULE_IDS, FAILS, NO_RULE, NOT_CHECKED, NOT_REQUIRED, PASSES, reason_kind, under_special_approval)
 from alx_zoning_illegal_homes.mapper.rules import ZONES, planned_district_rules
 
+from alx_zoning_illegal_homes.mapper.rules import rules_for
+
 from .helpers import between_neighbors, check
 
 
@@ -54,7 +56,7 @@ def test_no_street_leaves_frontage_and_width_unchecked():
                      lines=classify(lot, None, [], None), all_buildings=[box(20, 35, 60, 75)])
     r = rows(check_lot(facts))
     assert r["frontage"].status == r["width"].status == NOT_CHECKED
-    assert "public street" in r["frontage"].explanation
+    assert "street next to this lot" in r["frontage"].explanation
 
 
 def test_failing_rows_match_reasons_for_lot_rules():
@@ -250,9 +252,38 @@ def test_rm_corner_townhouse_with_a_tall_home_needs_a_deeper_yard():
 def test_rm_corner_townhouse_counts_half_an_alley_toward_the_setback_ratio():
     # 14 ft to the back line clears the 16 ft minimum (with the margin) but
     # not the 18 ft the home's height needs, unless half the alley behind counts.
-    assert rows(rm_corner(46, height=40, stories=3)[1])["yard:rear"].status == FAILS
+    rear = rows(rm_corner(46, height=40, stories=3)[1])["yard:rear"]
+    assert rear.status == FAILS and "alley" not in rear.detail
+    for behind in (True, False):
+        # The alley's own parcel can make the back line shared.
+        alley = box(0, 60, 40, 68)
+        rear = rows(rm_corner(46, behind=behind, height=40, stories=3, alleys=alley)[1])["yard:rear"]
+        assert rear.status == PASSES and "alley" in rear.detail
+        assert "adds 4.0 ft" in rear.explanation and "may run low" in rear.explanation
+
+
+def test_open_land_behind_without_mapped_paving_gets_the_typical_alley_credit():
+    # An unpaved or untraced alley: open land behind, no paving polygon.
     rear = rows(rm_corner(46, behind=False, height=40, stories=3)[1])["yard:rear"]
     assert rear.status == PASSES and "alley" in rear.detail
+    assert "traces no alley paving" in rear.explanation
+
+
+def test_rear_alley_credit_cannot_cover_the_fixed_minimum():
+    # The 12 ft rear yard is too small for the 16 ft minimum with or
+    # without a 12 ft alley beyond the lot line.
+    rear = rows(rm_corner(48, height=40, stories=3, alleys=box(0, 60, 40, 72))[1])["yard:rear"]
+    assert rear.status == FAILS and rear.required == 16
+
+
+def test_rear_yard_uses_the_actual_alley_width():
+    # The 14 ft rear yard can pass the 18 ft ratio with a 6 ft alley,
+    # but an alley only 2 ft wide adds too little.
+    rear = rows(rm_corner(46, height=40, stories=3, alleys=box(0, 60, 40, 62))[1])["yard:rear"]
+    assert rear.status == FAILS and rear.required == 18
+    assert "adds 1.0 ft" in rear.explanation
+    rear = rows(rm_corner(46, height=40, stories=3, alleys=box(0, 60, 40, 66))[1])["yard:rear"]
+    assert rear.status == PASSES and "adds 3.0 ft" in rear.explanation
 
 
 def test_rm_corner_townhouse_walled_in_at_the_back_is_not_judged():
@@ -282,6 +313,33 @@ def test_rm_corner_house_still_has_no_rear_yard():
                  streets=[SIDE_STREET])
     assert rows(f)["yard:rear"].status == NOT_CHECKED
     assert "no rear yard to check" in rows(f)["yard:rear"].explanation
+
+
+@pytest.mark.parametrize("zone", ["RM", "RB"])
+@pytest.mark.parametrize("back,expected", [(59, FAILS), (50, PASSES)])
+def test_counted_corner_side_yards_include_both_nonstreet_edges(zone, back, expected):
+    _, findings = check(RM_CORNER_LOT, box(10, 0.5, 30, back), zone,
+                        neighbors=unary_union([RM_CORNER_EAST, RM_CORNER_BEHIND]),
+                        streets=[SIDE_STREET], rules=rules_for(zone, True), historic=True)
+    result = rows(findings)
+    assert result["yard:left"].status == expected
+    assert result["yard:left"].measured == pytest.approx(60 - back)
+    assert result["yard:right"].status == PASSES
+    assert result["yard:right"].measured == pytest.approx(10)
+    assert result["yard:rear"].status == NOT_CHECKED
+
+
+def test_corner_lot_width_includes_a_cut_corner():
+    from shapely.geometry import Polygon
+    # A 40 ft wide historic RB corner lot with its corner cut back 12 ft.
+    lot = Polygon([(12, 0), (40, 0), (40, 60), (0, 60), (0, 12)])
+    _, findings = check(lot, box(10, 15, 30, 45), "RB",
+                        neighbors=unary_union([RM_CORNER_EAST, RM_CORNER_BEHIND]),
+                        streets=[SIDE_STREET], rules=rules_for("RB", True), historic=True)
+    assert findings.measurements["position"] == "corner"
+    assert findings.measurements["width"] == pytest.approx(40)
+    start, end = rows(findings)["width"].shapes["line"].coords
+    assert start[1] == pytest.approx(end[1])
 
 
 def test_front_yard_without_neighbors_is_not_checked_in_contextual_zone():
@@ -351,7 +409,7 @@ def test_no_street_leaves_yards_unchecked_but_measures_the_nearest_line():
                      lines=classify(lot, None, [], None), all_buildings=[box(3, 35, 43, 75)])
     f = check_lot(facts)
     r = rows(f)
-    assert r["yard:left"].status == NOT_CHECKED and "public street" in r["yard:left"].explanation
+    assert r["yard:left"].status == NOT_CHECKED and "street next to this lot" in r["yard:left"].explanation
     assert r["yard:nearest"].name == "Closest lot line"
     assert r["yard:nearest"].status == FAILS and r["yard:nearest"].required == 8
     assert r["yard:nearest"].shapes["gap"].length == pytest.approx(3)
@@ -694,12 +752,12 @@ def test_too_tall_pitched_roof_reason_names_the_peak():
         "Too tall: about 42 ft measured the ordinance's way (roof peak about 50 ft)")
 
 
-def test_apartment_building_roof_is_taken_as_flat():
+def test_tall_apartment_building_roof_is_taken_as_flat():
     lot = box(0, 0, 200, 200)
     rules = ZONES["RA"]
     limit = rules.max_height["multi"]
     _, f = check(lot, box(40, 40, 160, 160), "RA", home_type="multi", units=4,
-                 height=limit + 10, stories=2)
+                 height=limit + 10, stories=6)
     row = rows(f)["height"]
     assert row.status == FAILS and row.measured == limit + 10
     assert row.detail is None
@@ -796,3 +854,20 @@ def test_crmu_x_apartments_need_open_space_or_approved_amenities():
     _, findings = check(YARD_LOT, box(10, 10, 40, 40), "CRMU/X", home_type="multi")
     row = rows(findings)["open_space"]
     assert row.status == NOT_CHECKED and row.required == 0.25
+
+
+def test_undersized_house_lot_explains_special_permit():
+    kinds, found = check(box(0, 0, 30, 90), box(5, 20, 25, 55), "R-8")
+    assert "lot_size" in kinds
+    for rule in ("lot_area", "width", "frontage"):
+        result = rows(found)[rule]
+        assert result.status == FAILS
+        assert "City Council" in result.explanation
+
+
+def test_waterfront_home_type_explains_ground_floor_restriction():
+    _, found = check(BIG_LOT, box(20, 35, 60, 75), "W-1")
+    result = rows(found)["home_type"]
+    assert result.status == PASSES
+    assert "ground floor" in result.explanation
+    assert "June 28, 1988" in result.explanation

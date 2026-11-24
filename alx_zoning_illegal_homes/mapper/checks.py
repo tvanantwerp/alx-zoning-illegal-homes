@@ -13,14 +13,15 @@ import shapely
 from shapely.geometry import LineString
 from shapely.ops import nearest_points, substring, unary_union
 
+from . import lot_lines
 from .heights import FLAT, MIN_PART_AREA, BuildingHeight, RoofHeight, building_height
 from .lot_lines import (LotLines, StreetCenterline, front_for_yard, largest_polygon,
-                        lot_width, lot_width_line)
+                        lot_width, lot_width_line, parallel_shared_walls)
 from .rule_results import (
     CORNER_NO_REAR, CROSSES_LOT_LINE, FAILS, MAPPING_ERROR, NO_FLOOR_AREA, NO_HEIGHT,
     NO_OUTLINES, NO_REAR_FOUND, NO_RULE, NO_SIDE_LINE, NO_STREET, NOT_CHECKED, NOT_REQUIRED,
     OLDER_LOT, PASSES, RULE_IDS,
-    SHARED_LOT, SHARED_WALL, SIDE_COUNT_ON_CORNER, TOO_SHALLOW, TWO_UNIT_LOT, YARD_BENEFIT_OF_DOUBT,
+    SHARED_LOT, SHARED_WALL, TOO_SHALLOW, TWO_UNIT_LOT, YARD_BENEFIT_OF_DOUBT,
     CRMU_M_OLDER_LOT_NOTE, FLOOR_AREA_MEASURED, HEIGHT_MEASURED, HEIGHT_NEAR_STREET_ABOUT,
     RuleResult,
     eisenhower_older_home_note, eisenhower_special_permit_explanation,
@@ -45,7 +46,7 @@ from .rule_results import (
     yard_height_explanation)
 from .rules import (HOME_TYPE_NAMES, HOUSE_LIKE, MAX_TOWNHOUSE_ROW_LENGTH,
                     MAX_TOWNHOUSES_IN_ROW, OLDER_LOTS, HeightMapLimit, OlderHomeAllowance,
-                    ZoneRules, outbuilding_allowance)
+                    UNDERSIZED_LOT_PERMIT_ZONES, ZoneRules, outbuilding_allowance)
 
 # Slack given to distance measurements, in feet. Covers measuring error and
 # the 30 inches that eaves and roof overhangs may reach into a yard, since
@@ -69,11 +70,14 @@ STREET_HEIGHT_RATIO = 2.0
 # plus a few feet for a street map centerline that follows the middle of
 # the pavement rather than the middle of the public street.
 CENTERLINE_MARGIN = 5.0
-# Half of a typical alley, which the ordinance credits toward a rear yard.
-ALLEY_CREDIT = 5.0
+# Half of a typical alley. Credited toward a rear yard when the lot line
+# borders open land but the city's map traces no alley paving there.
+ESTIMATED_ALLEY_CREDIT = 5.0
 # Lot lines closer than this to both a home and its neighbor's home are
 # treated as a shared wall, where no yard is expected.
 SHARED_WALL_GAP = 3.0
+# A lot line within 45 degrees of the front runs along it, not down a side.
+ALONG_FRONT_DIRECTION = np.cos(np.radians(45))
 # A free-standing home drawn closer than this to a lot line is treated as
 # a mapping error, not a real zero-foot yard.
 TOUCHING_GAP = 0.5
@@ -151,6 +155,15 @@ class TownhouseRow:
                 self.homes, self.length)
 
 
+@dataclass(frozen=True)
+class TownhouseDevelopment:
+    """Net site area and dwelling count documented in a development approval."""
+
+    name: str
+    area: float
+    homes: int
+
+
 @dataclass
 class LotFacts:
     """Everything known about a lot before checking it."""
@@ -172,6 +185,8 @@ class LotFacts:
     outbuildings: list[Outbuilding] = field(default_factory=list)
     # Homes on other lots that touch this lot's homes.
     attached_neighbors: object = None
+    # Outlines of abutting residential lots, for the KR rear stepback.
+    residential_abutters: object = None
     in_historic_district: bool = False
     # Year the oldest home on the lot was built, from city records.
     year_built: int | None = None
@@ -181,6 +196,8 @@ class LotFacts:
     # Roads, alleys, driveways and parking lots on the lot, from the city's
     # map, or None. None of this counts as open space.
     paved: object = None
+    # Nearby alley paving polygons, used to estimate alley widths at rear lot lines.
+    alleys: object = None
     # The parking part of `paved`, for zones that count some parking as
     # open space (RD).
     parking: object = None
@@ -198,6 +215,7 @@ class LotFacts:
     # The extra setbacks along named streets (section 7-1006) that cover this
     # lot's location, as NamedStreetSetbacks keyed by street name.
     street_setbacks: dict = field(default_factory=dict)
+    townhouse_development: TownhouseDevelopment | None = None
 
 
 @dataclass
@@ -248,10 +266,13 @@ def check_lot(facts: LotFacts) -> Findings:
             findings.results.append(RuleResult(rule, name, NOT_CHECKED, explanation=note))
         findings.results.sort(key=lambda row: RULE_IDS.index(row.rule))
         return findings
-    _check_lot_area(facts, findings, position)
+    development_minimum = (facts.rules.townhouse_development_area_per_home
+                           if facts.home_type == "townhouse" else None)
+    if development_minimum is None:
+        _check_lot_area(facts, findings, position)
     width = _check_width_and_frontage(facts, findings, position)
     older_lot = _excuse_older_lot(facts, findings)
-    _check_yards(facts, findings, width)
+    _check_yards(facts, findings, width, position)
     _check_named_street_setbacks(facts, findings)
     marginal = (not older_lot and facts.rules.name in OLDER_LOTS.zones
                 and facts.home_type in HOUSE_LIKE and facts.home_type in facts.rules.allowed
@@ -270,10 +291,33 @@ def check_lot(facts: LotFacts) -> Findings:
                                    "margin. The outcome depends on whether the older-lot limit applies.")
                 findings.reasons = [reason for reason in findings.reasons if reason.kind != row.rule]
     _check_height_near_street(facts, findings)
+    if facts.rules.residential_rear_stepback:
+        _check_height_at_rear(facts, findings)
     _check_open_space(facts, findings)
+    if development_minimum is not None:
+        _check_townhouse_development(facts.townhouse_development, findings, development_minimum)
+    if facts.home_type in {"multi", "townhouse"}:
+        _note_site_plan_relief(findings.results)
     explain_margin(findings.results)
     findings.results.sort(key=lambda row: RULE_IDS.index(row.rule))
     return findings
+
+
+def _note_site_plan_relief(results):
+    """Note that a site plan may relax a failed minimum under section 11-416.
+
+    Section 11-416(A)(1) lets a site plan relax minimum frontage, yards, open
+    space and other minimums, but (A)(2) rules out maximums. Lot size is left
+    out because (A)(2) also rules out density rules that mix the two.
+    """
+    for row in results:
+        if row.status != FAILS or row.limit == "max":
+            continue
+        if (row.rule in {"frontage", "width", "open_space"}
+                or (row.rule.startswith("yard:") and row.rule != "yard:street")):
+            note = ("An approved site plan may relax this minimum under section 11-416. "
+                    "The map has no record of any change to the requirement.")
+            row.explanation = " ".join(filter(None, [row.explanation, note]))
 
 
 def _side_of(facts: LotFacts, point, home) -> int:
@@ -313,26 +357,51 @@ def _shared_line(line, shape, neighbor, min_run=4):
     return unary_union(shared)
 
 
+def _townhouse_side_walls(facts, home) -> dict:
+    """Identify townhouse side attachments directly from the building outlines."""
+    sides = {}
+    if facts.home_type != "townhouse" or facts.attached_neighbors is None:
+        return sides
+    along = facts.lines.front_direction
+    for neighbor in shapely.get_parts(facts.attached_neighbors):
+        for wall in parallel_shared_walls(home.shape, neighbor):
+            start, end = np.asarray(wall.coords)[[0, -1]]
+            # A wall running across the lot attaches at the back or front,
+            # where it does not exempt a side yard.
+            if abs((end - start) @ along) < wall.length / math.sqrt(2):
+                side = _side_of(facts, wall.centroid.coords[0], home)
+                sides.setdefault(side, []).append(wall)
+    return sides
+
+
 def _attached_sides(facts: LotFacts) -> set[int]:
-    """Which sides of the lot's homes share a wall with a neighbor."""
-    if facts.attached_neighbors is None or facts.lines.front_direction is None:
+    """Which left and right sides of the lot's homes share a wall."""
+    along = facts.lines.front_direction
+    if facts.attached_neighbors is None or along is None:
         return set()
     sides = set()
     for home in facts.homes:
+        sides.update(_townhouse_side_walls(facts, home))
         for piece in facts.lines.pieces:
-            if piece.kind == "street":
+            if piece.kind == "street" or abs(piece.direction @ along) > ALONG_FRONT_DIRECTION:
                 continue
-            if not _shared_line(piece.line, home.shape, facts.attached_neighbors).is_empty:
-                sides.add(_side_of(facts, piece.midpoint, home))
+            wall = _shared_line(piece.line, home.shape, facts.attached_neighbors)
+            if not wall.is_empty:
+                sides.add(_side_of(facts, wall.centroid.coords[0], home))
     return sides
 
 
 def _position(facts: LotFacts) -> str:
-    """Classify the lot as corner, end-of-row, or interior."""
+    """Classify the lot as corner, end-of-row, interior, or unknown.
+
+    A townhouse lot with no attached homes on other lots holds its whole row,
+    so it is judged as an interior lot and both side yards are checked. It is
+    "unknown" only when attached homes exist but no shared wall was placed.
+    """
     if facts.lines.is_corner:
         return "corner"
-    if facts.home_type == "townhouse" and len(_attached_sides(facts)) == 1:
-        return "end"
+    if facts.home_type == "townhouse" and facts.attached_neighbors is not None:
+        return ("unknown", "end", "interior")[len(_attached_sides(facts))]
     return "interior"
 
 
@@ -366,6 +435,10 @@ def _check_home_type(facts, findings) -> OlderHomeAllowance | None:
         ]))
     elif kind not in rules.allowed:
         status, summary = FAILS, f"{name} not allowed in the {rules.label}"
+        older = rules.allowed_if_built_before.get(kind)
+        explanation = " ".join(filter(None, [
+            older.rule if older else None, older.unconfirmed if older else None,
+            rules.home_type_restriction_note])) or None
         findings.reasons.append(Reason(
             "home_type",
             f"This kind of home ({name}) is not allowed in the "
@@ -396,6 +469,8 @@ def _check_home_type(facts, findings) -> OlderHomeAllowance | None:
             note = eisenhower_older_home_note(older, facts.year_built)
             explanation = f"{explanation} {note}"
             findings.notes.append(note)
+    if rules.home_type_note:
+        explanation = " ".join(filter(None, [explanation, rules.home_type_note]))
     findings.results.append(RuleResult(
         "home_type", "Home type", status, summary=summary, explanation=explanation))
     return allowance
@@ -449,7 +524,7 @@ def _check_lot_area(facts, findings, position):
     rules, kind = facts.rules, facts.home_type
     table = rules.corner_lot_area if position == "corner" else rules.lot_area
     required = table.get(kind, rules.lot_area.get(kind))
-    per_home = kind == "townhouse" and facts.units > 1
+    per_home = kind in rules.lot_area_per_home_for and facts.units > 1
     row = RuleResult("lot_area", "Land per home" if per_home else "Lot size",
                      NO_RULE, unit="sq ft",
                      about=TWO_UNIT_LOT if kind == "two_unit" else None)
@@ -471,6 +546,57 @@ def _check_lot_area(facts, findings, position):
             f"{rules.label} requires {_square_feet(required)}{corner}"
             f"{_for_whole_house(kind)}.",
         ))
+
+
+def _check_townhouse_development(development, findings, required):
+    """Section 5-404(A)(1) applies to development land, including common land."""
+    row = RuleResult(
+        "development_area", "Development land per home", NOT_CHECKED, required=required,
+        unit="sq ft", about="The CRMU-X zone measures land per home across "
+        "the whole townhouse development, including its common land.")
+    findings.results.append(row)
+    if development is None:
+        row.explanation = ("The map lacks a verified townhouse development boundary "
+                           "and home count for this lot.")
+        return
+    row.measured = development.area / development.homes
+    row.explanation = (f"The city's approval for {development.name} records "
+                       f"{_square_feet(development.area)} of land for "
+                       f"{development.homes} homes across the development.")
+    row.status = PASSES
+    if row.measured < required * (1 - AREA_MARGIN):
+        row.status = FAILS
+        findings.reasons.append(Reason(
+            "lot_size", f"{development.name} has {_square_feet(row.measured)} of "
+            f"land per home. The CRMU-X zone requires {_square_feet(required)} "
+            "per home across the townhouse development."))
+    else:
+        margin = margin_explanation(row)
+        if margin:
+            row.explanation += f" {margin}"
+
+
+def _corner_width_line(lines: LotLines) -> LineString:
+    """The width of a corner lot at the front, from the side lot line to the secondary front.
+
+    Section 2-170.2 measures this across the lot, so the width includes any
+    rounded or cut bend where the two streets meet. The line runs along the
+    primary front's direction, from the end of the primary front at the side
+    lot line out to the furthest reach of the secondary front.
+    """
+    # Take the direction from the front without its bend, which would tilt it.
+    straight = shapely.get_coordinates(front_for_yard(lines, lines.primary_street))
+    along = np.linalg.svd(straight - straight.mean(axis=0), full_matrices=False)[2][0]
+    primary = shapely.get_coordinates(lines.front_line)
+    secondary = min((front for name, front in lines.fronts.items()
+                     if name != lines.primary_street), key=lines.front_line.distance)
+    primary_offsets = primary @ along
+    secondary_offsets = shapely.get_coordinates(secondary) @ along
+    if secondary_offsets.mean() < primary_offsets.mean():
+        start, far = primary[primary_offsets.argmax()], secondary_offsets.min()
+    else:
+        start, far = primary[primary_offsets.argmin()], secondary_offsets.max()
+    return LineString([start, start + along * (far - start @ along)])
 
 
 def _check_width_and_frontage(facts, findings, position):
@@ -499,7 +625,7 @@ def _check_width_and_frontage(facts, findings, position):
         need_frontage = need_width
     else:
         need_frontage = rules.frontage.get(kind)
-    if lines.front_is_curved and kind in rules.curved_frontage:
+    if kind in rules.curved_frontage and lines.front_is_curved_with_radial_sides:
         need_frontage = rules.curved_frontage[kind]
 
     if not need_frontage:
@@ -511,7 +637,7 @@ def _check_width_and_frontage(facts, findings, position):
         if need_frontage:
             frontage_row.explanation = NO_STREET
         findings.notes.append(
-            "Could not find a public street next to this lot, so its width "
+            "Could not find a street next to this lot, so its width "
             "and street frontage were not checked."
         )
         return None
@@ -521,6 +647,10 @@ def _check_width_and_frontage(facts, findings, position):
     frontage_row.shapes["line"] = lines.front_line
     width_line = (lot_width_line(facts.shape, lines, measured_at) if measured_at > 0
                   else lines.front_line)
+    if position == "corner" and rules.side_yards_by_lot_width and measured_at == 0:
+        width_line = _corner_width_line(lines)
+        width = width_line.length
+        findings.measurements["width"] = width
     if width_line is not None:
         width_row.shapes["line"] = width_line
     # Several homes on one shared lot have no lot lines of their own.
@@ -583,6 +713,12 @@ def _excuse_older_lot(facts, findings) -> bool:
              if row.rule in LOT_RULES and row.status == FAILS]
     if not short or kind not in HOUSE_LIKE or kind not in rules.allowed:
         return False
+    if rules.name in UNDERSIZED_LOT_PERMIT_ZONES:
+        for row in short:
+            row.explanation = (
+                "City Council can allow a home on a qualifying older undersized lot "
+                "by special use permit under sections 12-401 and 12-402. "
+                "The map can't verify eligibility or count that permit.")
     if rules.name not in OLDER_LOTS.zones:
         if rules.name == "CRMU-M":
             findings.notes.append(CRMU_M_OLDER_LOT_NOTE)
@@ -615,17 +751,18 @@ class YardGap:
     """How far a home sits from one side of its lot, and where."""
 
     gap: float
-    # True when the closest lot line borders an alley or other open land.
-    on_open: bool
     # From the closest point on the home to the closest point on the lot line.
     nearest: LineString
-    # Every lot line on this side, and whether each borders open land.
+    # Every lot line on this side, and whether each borders an alley or other open land.
     lines: list[LineString]
     lines_open: list[bool] = field(default_factory=list)
     # The roof of the part of the home this gap is measured from, whose
     # height as the ordinance measures it sets the setback ratio's depth.
     roof: RoofHeight | None = None
     facing_only: bool = False
+    alley_credit: float = 0.0
+    # True when `alley_credit` is the typical-alley estimate, not a mapped width.
+    alley_estimated: bool = False
 
     @property
     def height(self) -> float:
@@ -651,32 +788,58 @@ def _facing_gap(shape, line):
     return LineString(nearest_points(facing, line))
 
 
-def _part_gaps(gap: YardGap, parts: list[RoofHeight]) -> list[YardGap]:
+def _lot_line_alley_credit(line, nearest, alleys) -> float:
+    """Half the mapped alley width on a perpendicular through this yard measurement."""
+    if alleys is None:
+        return 0.0
+    # Lot outline pieces run counterclockwise, so their outside is to the right.
+    (x0, y0), (x1, y1) = line.coords[0], line.coords[-1]
+    outward = np.array([y1 - y0, x0 - x1]) / line.length
+    # Stay on this piece at corners, where the nearest point can be its endpoint.
+    along = line.project(shapely.Point(nearest.coords[-1]))
+    inset = min(0.02, line.length / 2)
+    point = line.interpolate(max(inset, min(along, line.length - inset)))
+    anchor = np.array(point.coords[0])
+    inward_end = anchor - outward * lot_lines.MAX_STREET_DISTANCE
+    outward_end = anchor + outward * lot_lines.MAX_STREET_DISTANCE
+    cross_section = LineString([inward_end, outward_end])
+    runs = [run for run in shapely.get_parts(cross_section.intersection(alleys))
+            if run.geom_type == "LineString" and run.distance(point) <= DISTANCE_MARGIN
+            and max((np.asarray(coord) - anchor) @ outward for coord in run.coords) > 0
+            and run.length < lot_lines.MAX_STREET_DISTANCE]
+    closest = min(runs, key=point.distance, default=None)
+    return closest.length / 2 if closest is not None else 0.0
+
+
+def _part_gaps(gap: YardGap, parts: list[RoofHeight], alleys=None,
+               credit_alleys=False) -> list[YardGap]:
     """The same side's gap, measured again from each part of the home.
 
     The setback ratio pairs each part of a building with its own height
     (the ordinance's definition of setback ratio), so a low rear wing is
     judged by its own height and a taller block behind it by its own
-    distance. Each part's height is the one the ordinance measures: the top
-    of a flat roof, or halfway up a gable or hip roof (see `heights.py`).
+    distance. With `credit_alleys`, half the alley behind a lot line counts
+    toward this ratio (section 7-1003): half its mapped paving width, or
+    half a typical alley where the line borders open land with no mapped paving.
     """
     measured = []
+    lines_open = gap.lines_open or [False] * len(gap.lines)
     for roof in parts:
-        if gap.facing_only:
-            facing = [(_facing_gap(roof.outline, line), is_open)
-                      for line, is_open in zip(gap.lines, gap.lines_open)]
-            choices = [(g.length, g, is_open) for g, is_open in facing if g is not None]
-            if choices:
-                distance, segment, is_open = min(choices, key=lambda entry: entry[0])
-                measured.append(YardGap(distance, is_open, segment, gap.lines, gap.lines_open, roof))
-            continue
-        distance, line, is_open = min(
-            ((line.distance(roof.outline), line, is_open)
-             for line, is_open in zip(gap.lines, gap.lines_open)),
-            key=lambda found: found[0])
-        on_part, on_line = nearest_points(roof.outline, line)
-        measured.append(YardGap(distance, is_open, LineString([on_part, on_line]),
-                                gap.lines, gap.lines_open, roof))
+        choices = []
+        for line, is_open in zip(gap.lines, lines_open):
+            nearest = (_facing_gap(roof.outline, line) if gap.facing_only
+                       else LineString(nearest_points(roof.outline, line)))
+            if nearest is None:
+                continue
+            credit, estimated = 0.0, False
+            if credit_alleys:
+                credit = _lot_line_alley_credit(line, nearest, alleys)
+                if not credit and is_open:
+                    credit, estimated = ESTIMATED_ALLEY_CREDIT, True
+            choices.append(YardGap(nearest.length, nearest, gap.lines, gap.lines_open, roof,
+                                   alley_credit=credit, alley_estimated=estimated))
+        if choices:
+            measured.append(min(choices, key=lambda part: part.gap + part.alley_credit))
     return measured
 
 
@@ -723,14 +886,22 @@ def _yard_gaps(facts, home) -> tuple[dict, dict]:
     rear_starts = home_depth + 0.6 * (deepest - home_depth)
     has_rear = not (lines.is_corner or lines.is_through)
     remainder_is_rear = _corner_remainder_is_rear(facts)
+    corner_back_side = None
+    if lines.is_corner and facts.rules.side_yards_by_lot_width and not remainder_is_rear:
+        secondary = min((front for name, front in lines.fronts.items()
+                         if name != lines.primary_street), key=lines.front_line.distance)
+        # The non-street edge parallel to the primary front counts as a
+        # single side yard, even if it extends past both sides of the home.
+        corner_back_side = _side_of(facts, secondary.centroid.coords[0], home)
 
-    gaps, shared_wall = {}, {}
+    gaps = {}
+    shared_wall = {} if remainder_is_rear else _townhouse_side_walls(facts, home)
     for piece in lines.pieces:
         gap = piece.line.distance(home.shape)
         if piece.kind == "street":
             key = "front"
         else:
-            runs_along_front = abs(piece.direction @ along) > np.cos(np.radians(45))
+            runs_along_front = abs(piece.direction @ along) > ALONG_FRONT_DIRECTION
             behind_home = (piece.midpoint - front_anchor) @ inward > rear_starts
             wall = _shared_line(piece.line, home.shape, facts.attached_neighbors,
                                 min_run=0.01 if remainder_is_rear else 4)
@@ -743,15 +914,13 @@ def _yard_gaps(facts, home) -> tuple[dict, dict]:
                     nearest = _facing_gap(home.shape, line)
                     if nearest is None or _behind_neighbor(facts, nearest):
                         continue
-                    is_open = piece.kind == "open"
                     if "rear" not in gaps:
-                        gaps["rear"] = YardGap(nearest.length, is_open, nearest, [], [],
-                                              facing_only=True)
+                        gaps["rear"] = YardGap(nearest.length, nearest, [], facing_only=True)
                     entry = gaps["rear"]
                     entry.lines.append(line)
-                    entry.lines_open.append(is_open)
+                    entry.lines_open.append(piece.kind == "open")
                     if nearest.length < entry.gap:
-                        entry.gap, entry.on_open, entry.nearest = nearest.length, is_open, nearest
+                        entry.gap, entry.nearest = nearest.length, nearest
                 continue
             elif has_rear and runs_along_front and behind_home:
                 if on_shared_wall:
@@ -759,19 +928,19 @@ def _yard_gaps(facts, home) -> tuple[dict, dict]:
                     continue
                 key = "rear"
             else:
-                key = _side_of(facts, piece.midpoint, home)
+                key = (corner_back_side if corner_back_side is not None and runs_along_front
+                       else _side_of(facts, piece.midpoint, home))
                 if on_shared_wall:
                     shared_wall.setdefault(key, []).append(piece.line)
         if key not in gaps:
-            gaps[key] = YardGap(gap, piece.kind == "open",
-                                _nearest_line(home, piece.line), [piece.line],
+            gaps[key] = YardGap(gap, _nearest_line(home, piece.line), [piece.line],
                                 [piece.kind == "open"])
             continue
         entry = gaps[key]
         entry.lines.append(piece.line)
         entry.lines_open.append(piece.kind == "open")
         if gap < entry.gap:
-            entry.gap, entry.on_open = gap, piece.kind == "open"
+            entry.gap = gap
             entry.nearest = _nearest_line(home, piece.line)
     for key in shared_wall.keys() - {"rear"}:
         gaps.pop(key, None)
@@ -802,13 +971,15 @@ def _yard_row(facts, role, status, gap=None, required=None, **fields) -> RuleRes
     """One yard's row, with the gap and the required strip to draw when known.
 
     The strip is the required depth measured in from that side's lot lines.
+    A row whose limit is a maximum gets no strip, since the lot drawing shades
+    the strip as land the home reaches into.
     """
     row = RuleResult(f"yard:{role}", YARD_NAMES[role], status, unit="ft",
                      required=required, **fields)
     if gap is not None:
         row.measured = gap.gap
         row.shapes["gap"] = gap.nearest
-        if required:
+        if required and row.limit == "min":
             row.shapes["strip"] = _strip(facts, gap.lines, required)
     return row
 
@@ -832,7 +1003,7 @@ def _keep_worst(rows: dict, row: RuleResult):
         rows[row.rule] = row
 
 
-def _check_yards(facts, findings, width):
+def _check_yards(facts, findings, width, position):
     rules, lines = facts.rules, facts.lines
     lot = largest_polygon(facts.shape)
     homes, crossing = [], False
@@ -876,8 +1047,11 @@ def _check_yards(facts, findings, width):
         # Where side yards are simply counted (RM, historic RB), a wall on
         # the line is normal, so only the rear is screened there.
         screened = ("rear",) if rules.side_yards_by_lot_width else (-1, 1, "rear")
+        # A building can genuinely sit on its lot line in the historic
+        # districts. If the outline is local enough to measure, judge it.
         touching = [key for key in screened
-                    if key in gaps and gaps[key].gap < TOUCHING_GAP]
+                    if not facts.in_historic_district and key in gaps
+                    and gaps[key].gap < TOUCHING_GAP]
         for key in touching:
             del gaps[key]
         if touching:
@@ -889,7 +1063,7 @@ def _check_yards(facts, findings, width):
             )
 
         _keep_worst(rows, _front_row(facts, record, gaps["front"], home))
-        for row in _side_rows(facts, record, gaps, shared, touching, parts, width):
+        for row in _side_rows(facts, record, gaps, shared, touching, parts, width, position):
             _keep_worst(rows, row)
         _keep_worst(rows, _rear_row(facts, record, gaps.get("rear"), shared,
                                     touching, parts))
@@ -945,7 +1119,7 @@ def _street_fronts(facts, home, neighbors_by_street) -> list[StreetFront]:
     for street in lines.fronts:
         front = front_for_yard(lines, street)
         center = lines.centerlines.get(street)
-        gap = YardGap(front.distance(home.shape), False, _nearest_line(home, front),
+        gap = YardGap(front.distance(home.shape), _nearest_line(home, front),
                       list(front.geoms))
         found.append(StreetFront(center.label if center else street.title(), gap,
                                  neighbors_by_street.get(street) or []))
@@ -959,8 +1133,8 @@ def _contextual_front_row(facts, record, closest, home):
     the front yards within the contextual block face": the neighboring lots
     with buildings beside the lot and across the street (see
     `block_faces.py`). Once the shallowest of those is deeper than the zone's
-    cap, the cap is enough. So the home must stand back at least as far as
-    the closest neighbor, or the cap, whichever is less.
+    cap, the cap is enough. Otherwise the closest and furthest setbacks
+    mark the two ends of the allowed range.
 
     The lot's own home isn't counted in the range. The ordinance defines the
     block face as the "abutting property", and its cap clause, the one place
@@ -973,7 +1147,11 @@ def _contextual_front_row(facts, record, closest, home):
     """
     rules = facts.rules
     cap = rules.contextual_front_yard
-    fronts = _street_fronts(facts, home, facts.contextual_block_face)
+    neighbors = facts.contextual_block_face
+    if rules.screen_touching_front_neighbors:
+        neighbors = {street: [n for n in setbacks if n.distance >= TOUCHING_GAP]
+                     for street, setbacks in neighbors.items()}
+    fronts = _street_fronts(facts, home, neighbors)
     judged = [front for front in fronts if front.neighbors]
     alone = [front.label for front in fronts if not front.neighbors]
     if not judged:
@@ -983,25 +1161,32 @@ def _contextual_front_row(facts, record, closest, home):
     def needs(front):
         return min(min(n.distance for n in front.neighbors), cap)
 
-    worst = min(judged, key=lambda front: front.gap.gap - needs(front))
-    too_deep = [front for front in judged
-                if front.gap.gap > max(n.distance for n in front.neighbors) + DISTANCE_MARGIN
-                and min(n.distance for n in front.neighbors) <= cap]
-    if worst.gap.gap + DISTANCE_MARGIN >= needs(worst) and too_deep:
-        worst = too_deep[0]
-    required = needs(worst)
+    # A street contributes its closest boundary or the one it falls beyond.
+    # When all neighbors sit past the cap, the ordinance sets only a minimum.
+    def limiting_bound(front):
+        measured = front.gap.gap
+        lower = needs(front)
+        setbacks = [neighbor.distance for neighbor in front.neighbors]
+        upper = max(setbacks)
+        if min(setbacks) > cap or measured - lower <= upper - measured:
+            return measured - lower, lower, "min"
+        return upper - measured, upper, "max"
+
+    worst = min(judged, key=lambda front: limiting_bound(front)[0])
+    clearance, required, limit = limiting_bound(worst)
     distances = [n.distance for n in worst.neighbors]
     homes_only = all(n.is_home for n in worst.neighbors)
-    fails = worst.gap.gap + DISTANCE_MARGIN < required
-    if fails:
-        record("front", required - worst.gap.gap, contextual_front_yard_reason(
+    fails = clearance < -DISTANCE_MARGIN
+    if fails and limit == "min":
+        record("front", -clearance, contextual_front_yard_reason(
             worst.label, worst.gap.gap, distances, homes_only, rules.label, cap))
+    elif fails:
+        record("front", -clearance,
+               f"Too far back from {worst.label}: set back about {_feet(worst.gap.gap)}, "
+               f"but the deepest neighboring setback is {_feet(required)}.")
     row = _yard_row(facts, "front", FAILS if fails else PASSES, worst.gap, required,
-                    detail="needs")
-    if not fails and too_deep:
-        row.status = NOT_CHECKED
+                    limit=limit, detail="needs" if limit == "min" else "at most")
     row.explanation = " ".join(filter(None, [
-        "The setback exceeds the measured range. Its upper bound is unverified." if too_deep and not fails else None,
         contextual_front_yard_explanation(worst.label, worst.gap.gap, distances, homes_only,
                                           rules.label, cap, len(judged) > 1, alone),
         margin_explanation(row)]))
@@ -1027,18 +1212,31 @@ def _block_average_front_row(facts, home):
     corner lot (both streets count, the RM zone says) the street where the
     home is furthest off its line is shown.
     """
+    lot_vertices = shapely.points(shapely.get_coordinates(largest_polygon(facts.shape).exterior))
     found = []
-    for front in _street_fronts(facts, home, facts.block_side):
-        others = [n.distance for n in front.neighbors]
+    fronts = _street_fronts(facts, home, facts.block_side)
+    for front in fronts:
+        lot_depth = max(shapely.distance(unary_union(front.gap.lines), lot_vertices))
+        # A large parcel can meet this block while its buildings sit far
+        # away. Those distances cannot set a building line on this lot.
+        others = [n.distance for n in front.neighbors if n.distance <= lot_depth]
+        if not others and front.neighbors:
+            continue
         set_back = sum(distance > DISTANCE_MARGIN for distance in others)
         target = sum(others) / len(others) if set_back * 2 > len(others) else 0.0
-        found.append((front, target, set_back))
-    front, target, set_back = max(found, key=lambda each: abs(each[0].gap.gap - each[1]))
+        found.append((front, target, set_back, len(others)))
+    if not found:
+        return _yard_row(facts, "front", NOT_CHECKED, min(fronts, key=lambda f: f.gap.gap).gap,
+                         explanation=("The nearby buildings are set back farther than this lot "
+                                      "extends, so the map could not estimate a front building line."))
+    front, target, set_back, count = max(found, key=lambda each: abs(each[0].gap.gap - each[1]))
     row = _yard_row(facts, "front", NOT_CHECKED, front.gap, detail="should be about",
                     limit="max" if front.gap.gap > target else "min")
     row.required = target
     row.explanation = block_average_front_yard_explanation(
-        front.label, front.gap.gap, target, len(front.neighbors), set_back, facts.rules.label)
+        front.label, front.gap.gap, target, count, set_back, facts.rules.label)
+    if count < len(front.neighbors):
+        row.explanation += " The estimate leaves out buildings set back beyond this lot's depth."
     return row
 
 
@@ -1056,7 +1254,7 @@ def _historic_front_row(facts, gap):
                          facts.rules.label, gap.gap, at_line))
 
 
-def _side_rows(facts, record, gaps, shared, touching, parts, width):
+def _side_rows(facts, record, gaps, shared, touching, parts, width, position):
     """Judge both side yards. Returns the left and right rows.
 
     `parts` is the home split by roof height, each part's roof estimated
@@ -1065,13 +1263,14 @@ def _side_rows(facts, record, gaps, shared, touching, parts, width):
     rules, lines = facts.rules, facts.lines
     if not rules.side_yards_by_lot_width:
         return [_side_row(facts, record, key, gaps.get(key), shared, touching,
-                          parts, width) for key in (-1, 1)]
+                          parts, width, position) for key in (-1, 1)]
 
     measure = width if width is not None else lines.frontage
-    needed = 2 if measure >= 35 else 1 if measure >= 25 else 0
+    # Give an uncertain measurement just above either threshold the lower count.
+    needed = sum(measure > threshold * (1 + WIDTH_MARGIN) for threshold in (25, 35))
     # A shared wall is a side with no yard at all.
     have = sum(gaps[key].gap + DISTANCE_MARGIN >= 5 for key in (-1, 1) if key in gaps)
-    short = not lines.is_corner and have < needed
+    short = not _corner_remainder_is_rear(facts) and have < needed
     if short:
         record("side", needed - have,
                f"A lot this wide ({_feet(measure)}) needs "
@@ -1093,8 +1292,6 @@ def _counted_side_row(facts, key, gap, shared, measure, needed, short):
             return _yard_row(facts, role, NOT_REQUIRED, explanation=SHARED_WALL)
         return _yard_row(facts, role, NOT_CHECKED, explanation=(
             corner_side_as_rear_explanation(facts.rules.label)))
-    if facts.lines.is_corner:
-        return _yard_row(facts, role, NOT_CHECKED, gap, explanation=SIDE_COUNT_ON_CORNER)
     text = side_count_explanation(facts.rules.label, measure, needed)
     if needed == 0:
         return _yard_row(facts, role, NOT_REQUIRED, gap, explanation=text)
@@ -1111,16 +1308,21 @@ def _counted_side_row(facts, key, gap, shared, measure, needed, short):
     return _yard_row(facts, role, PASSES, gap, 5, detail="needs", explanation=text)
 
 
-def _side_row(facts, record, key, gap, shared, touching, parts, width):
+def _side_row(facts, record, key, gap, shared, touching, parts, width, position):
     """A side yard row where the zone sets a side yard depth."""
     rules, kind = facts.rules, facts.home_type
     role = _side_name(facts, key)
-    if rules.name in {"CRMU-L", "CRMU-M", "CRMU-H"} and kind == "townhouse":
-        explanation = "Only interior end lots wider than 25 ft require a townhouse side yard."
-        if _position(facts) != "end" or (width is not None and width <= 25):
+    if rules.townhouse_side_yard_on_interior_ends_only and kind == "townhouse":
+        exempt_through = rules.townhouse_side_yard_exempt_through_width
+        qualifier = (f" wider than {_feet(exempt_through)}"
+                     if exempt_through is not None else "")
+        explanation = f"Only interior end lots{qualifier} require a townhouse side yard."
+        if position in {"interior", "corner"}:
             return _yard_row(facts, role, NOT_REQUIRED, gap, explanation=explanation)
         if width is None:
             return _yard_row(facts, role, NOT_CHECKED, gap, explanation=explanation)
+        if exempt_through is not None and width <= exempt_through:
+            return _yard_row(facts, role, NOT_REQUIRED, gap, explanation=explanation)
     if key in touching:
         return _yard_row(facts, role, NOT_CHECKED, explanation=MAPPING_ERROR)
     if key in shared and kind == "semi" and not rules.split_twin_lots_allowed:
@@ -1134,6 +1336,10 @@ def _side_row(facts, record, key, gap, shared, touching, parts, width):
     if kind not in rules.side_yard:
         return _yard_row(facts, role, NO_RULE, gap, explanation=no_rule_explanation(
             rules.label, HOME_TYPE_NAMES[kind], "side yard rule"))
+    if kind == "townhouse" and position == "unknown":
+        return _yard_row(facts, role, NOT_CHECKED, gap, explanation=(
+            "The map could not tell whether this lot is at the end of the townhouse row, "
+            "so it could not determine which side needs a yard."))
     if gap is None:
         return _yard_row(facts, role, NOT_CHECKED, explanation=NO_SIDE_LINE)
     part_gaps = _part_gaps(gap, parts)
@@ -1191,20 +1397,24 @@ def _rear_row(facts, record, gap, shared, touching, parts):
     if not rear_yard:
         return _yard_row(facts, "rear", NO_RULE, gap, explanation=no_rule_explanation(
             rules.label, HOME_TYPE_NAMES[kind], "rear yard rule"))
-    part_gaps = _part_gaps(gap, parts)
-    fails, required, detail, shown = _judge_yard(
-        record, "rear", "Rear", gap, part_gaps, rear_yard, alley_credit=True)
+    part_gaps = _part_gaps(gap, parts, facts.alleys, credit_alleys=True)
+    fails, required, detail, shown = _judge_yard(record, "rear", "Rear", gap, part_gaps, rear_yard)
     explanation = None
-    if shown.on_open:
-        credited = _credited(shown, True)
+    if shown.alley_credit:
+        credited = shown.gap + shown.alley_credit
         detail += ", counting half the alley"
-        if not fails and shown.gap < required:
-            explanation = (
-                f"About {_feet(shown.gap)} to the back lot line. Half of the alley behind "
-                f"the lot also counts, which brings the rear yard to about "
-                f"{_feet(credited)} against the {_feet(required)} needed.")
-            if credited < required:
-                explanation += " " + YARD_BENEFIT_OF_DOUBT
+        if shown.alley_estimated:
+            source = ("The city's map traces no alley paving here, so the map counts half "
+                      f"a typical alley, {_feet(shown.alley_credit)}, toward the setback ratio")
+        else:
+            source = (f"Counting half the mapped alley paving adds {_feet(shown.alley_credit)} "
+                      "toward the setback ratio. Paving is often narrower than the alley "
+                      "itself, so this credit may run low")
+        explanation = (
+            f"About {_feet(shown.gap)} to the back lot line. {source}, "
+            f"for about {_feet(credited)} against the {_feet(required)} needed.")
+        if not fails and credited < required:
+            explanation += " " + YARD_BENEFIT_OF_DOUBT
     row = _yard_row(facts, "rear", FAILS if fails else PASSES, shown, required,
                     detail=detail, explanation=explanation)
     _explain_yard_height(row, rear_yard, shown, len(part_gaps) > 1)
@@ -1229,12 +1439,7 @@ def _explain_yard_height(row: RuleResult, yard, shown: YardGap, several: bool) -
         yard_height_explanation(yard.per_foot_of_height, shown.roof, several)]))
 
 
-def _credited(gap: YardGap, alley_credit: bool) -> float:
-    """A gap plus half the alley, when the line borders one and the yard allows it."""
-    return gap.gap + (ALLEY_CREDIT if alley_credit and gap.on_open else 0)
-
-
-def _judge_yard(record, name, label, gap, part_gaps, yard, alley_credit=False):
+def _judge_yard(record, name, label, gap, part_gaps, yard):
     """Judge one yard, recording it when it is too small.
 
     The fixed minimum is measured from the closest part of the home (`gap`).
@@ -1256,15 +1461,15 @@ def _judge_yard(record, name, label, gap, part_gaps, yard, alley_credit=False):
         return True, yard.minimum, "needs", gap
     if not part_gaps:
         return False, yard.minimum, "needs", gap
-    worst = max(part_gaps, key=lambda part: (yard.required(part.height)
-                                             - _credited(part, alley_credit)))
+    worst = max(part_gaps, key=lambda part: yard.required(part.height) - part.gap - part.alley_credit)
+    credited = worst.gap + worst.alley_credit
     required = yard.required(worst.height)
     if required <= yard.minimum:
         return False, yard.minimum, "needs", gap
     several = len(part_gaps) > 1
     detail = (f"its {_feet(worst.height)} tall part needs" if several
               else "a home this tall needs")
-    if _credited(worst, alley_credit) + DISTANCE_MARGIN < required:
+    if credited + DISTANCE_MARGIN < required:
         if several:
             text = (f"{label} yard is too small for the building's height: the part "
                     f"of the home roughly {_feet(worst.height)} tall is about "
@@ -1274,7 +1479,9 @@ def _judge_yard(record, name, label, gap, part_gaps, yard, alley_credit=False):
             text = (f"{label} yard is too small for the building's height: about "
                     f"{_feet(worst.gap)}, but a building this tall (roughly "
                     f"{_feet(worst.height)}) needs about {_feet(required)}.")
-        record(name, required - _credited(worst, alley_credit), text)
+        if worst.alley_credit:
+            text += f" With half the alley behind, the yard counts for about {_feet(credited)}."
+        record(name, required - credited, text)
         return True, required, detail, worst
     return False, required, detail, worst
 
@@ -1306,8 +1513,7 @@ def _check_yards_without_front(facts, findings, homes):
     gap, home, piece = min(((piece.line.distance(home.shape), home, piece)
                             for home in homes for piece in facts.lines.pieces),
                            key=lambda found: found[0])
-    nearest = YardGap(gap, piece.kind == "open", _nearest_line(home, piece.line),
-                      [piece.line])
+    nearest = YardGap(gap, _nearest_line(home, piece.line), [piece.line])
     if gap < TOUCHING_GAP:
         # Drawn on the line with no neighbor attached: a mapping error.
         findings.results.append(_yard_row(facts, "nearest", NOT_CHECKED, nearest,
@@ -1336,24 +1542,65 @@ def _home_indexes(facts) -> list[int]:
     return found
 
 
-def _counted_outbuildings(facts) -> list[Outbuilding]:
-    """The garages, sheds and other outbuildings that count toward this lot's floor space.
+HOUSE_SHED_ALLOWANCE = 100
+HISTORIC_SHED_ALLOWANCE = 65
 
-    Only where the zone's way of counting floor space takes them in: every
-    home in R-20 through R-2-5, and houses and two-unit houses in RA and RB,
-    outside the historic districts. Elsewhere none count.
+
+def _shed_allowance(facts: LotFacts) -> float:
+    """The most shed floor space section 2-145(B) leaves out on this lot.
+
+    Section 2-145(B)(13) leaves out sheds that meet section 7-202(C)(2): up
+    to 100 sq ft for houses and two-unit houses outside the historic
+    districts, and up to 65 sq ft for those and townhouses inside them.
+    Other homes get no shed exclusion.
     """
-    if (facts.in_historic_district
-            or facts.home_type not in facts.rules.outbuildings_counted_for):
-        return []
-    return list(facts.outbuildings)
+    is_house = facts.home_type in {"single", "semi", "two_unit"}
+    if facts.in_historic_district and (is_house or facts.home_type == "townhouse"):
+        return HISTORIC_SHED_ALLOWANCE
+    return HOUSE_SHED_ALLOWANCE if is_house else 0.0
+
+
+def _shed_exclusion(facts: LotFacts, allowance: float) -> float:
+    """Estimate the floor space section 2-145(B) leaves out for small sheds."""
+    # The city's building type groups garages and sheds, so only a structure
+    # small enough to be a shed can qualify.
+    total = sum(building.floor_area for building in facts.outbuildings
+                if building.label == "garage or shed"
+                and building.floor_area <= allowance)
+    return total if total <= allowance else 0.0
+
+
+def _eligible_outbuilding_floor_area(facts: LotFacts, outbuildings: list[Outbuilding]) -> float:
+    """Estimate the exclusions in sections 2-145(A)(6) and (11) from size.
+
+    City records put garages and sheds in the same category. Treat the
+    smallest ones as sheds, and larger ones as garage candidates. Garage
+    location, openings and the use of individual buildings aren't surveyed.
+    """
+    shed_limit = 100  # Section 7-202(C)(2)(a), total floor area across all sheds.
+    garage_limit = 500 if facts.area >= 8000 else 250 if facts.area >= 2500 else 0
+    shed_area = 0.0
+    garages = []
+    for building in outbuildings:
+        if building.label != "garage or shed":
+            continue
+        if building.floor_area <= shed_limit:
+            shed_area += building.floor_area
+        else:
+            garages.append(building.floor_area)
+    if shed_area > shed_limit or facts.home_type not in {"single", "semi", "two_unit"}:
+        shed_area = 0.0
+    garage_area = garages[0] if len(garages) == 1 and garages[0] <= garage_limit else 0.0
+    return shed_area + garage_area
 
 
 def _check_floor_area(facts, findings, older_lot=False):
     """Check floor space against the zone's limit, or the older-lot limit when `older_lot`.
 
-    Where the zone counts them, garages, sheds and other outbuildings add
-    whatever floor space they hold beyond the lot's allowance.
+    Count the floor space in both homes and outbuildings, applying the
+    outbuilding exclusions under the relevant part of section 2-145. Under
+    section 2-145(A), oversized outbuildings count in full, and qualifying
+    garages and sheds can be excluded up to the lot's combined allowance.
     """
     kind = facts.home_type
     usual = facts.rules.floor_area_ratio_for(kind, facts.in_historic_district)
@@ -1375,12 +1622,18 @@ def _check_floor_area(facts, findings, older_lot=False):
         if note:
             _add_older_lot_note(row, note)
         return
-    outbuildings = _counted_outbuildings(facts)
-    allowance = outbuilding_allowance(facts.area)
+    outbuildings = facts.outbuildings
+    house_allowance = (not facts.in_historic_district
+                       and kind in facts.rules.house_floor_area_allowance_for)
     total = sum(building.floor_area for building in outbuildings)
-    accessory = sum(building.floor_area for building in outbuildings
-                    if building.label == "garage or shed")
-    added = total - min(accessory, allowance)
+    if house_allowance:
+        allowance = outbuilding_allowance(facts.area)
+        accessory = _eligible_outbuilding_floor_area(facts, outbuildings)
+        exclusion = min(accessory, allowance)
+    else:
+        allowance = _shed_allowance(facts)
+        exclusion = _shed_exclusion(facts, allowance)
+    added = total - exclusion
     floor_area = sum(home.floor_area for home in facts.homes) + added
     ratio = floor_area / facts.area
     findings.measurements["floor_area_ratio"] = ratio
@@ -1401,7 +1654,7 @@ def _check_floor_area(facts, findings, older_lot=False):
         ))
     found = outbuildings_explanation(
         facts.rules.label, [(building.label, building.floor_area) for building in outbuildings],
-        allowance, added) if outbuildings else None
+        allowance, added, house_allowance=house_allowance) if outbuildings else None
     if note or found:
         row.explanation = " ".join(filter(None, [note, found, margin_explanation(row)]))
 
@@ -1715,7 +1968,7 @@ def _check_named_street_setbacks(facts, findings):
     Road, Beauregard Street and South Pickett Street, buildings must stand a
     set distance back: from the street's centerline, or on Mount Vernon Avenue
     from the front lot line. This holds in every zone, even where the zone
-    asks no front yard, but not under a planned district's approved plan.
+    asks no front yard, unless an approved district plan explicitly waives it.
     Only lots on one of those stretches get a row. The building closest to
     failing sets it, outbuildings included. When one of the streets couldn't
     be measured, a pass becomes "not checked", since that street might fail.
@@ -1811,6 +2064,75 @@ def _check_height_near_street(facts, findings):
                                        worst.street.far is not None, several),
         unplaced_note,
         margin_explanation(row)]))
+
+
+def _check_height_at_rear(facts: LotFacts, findings: Findings) -> None:
+    """Check the KR sloping plane above a rear boundary shared with a home lot."""
+    row = RuleResult(
+        "height_at_rear", "Height next to rear neighbors", NOT_CHECKED, unit="ft", limit="max",
+        about=("When a new development needs a site plan, section 6-705(E)(1) starts "
+               "the height limit at 5 ft along the rear lot line shared with residential "
+               "use. The limit rises 1 ft for every 1.5 ft away from that line."))
+    findings.results.append(row)
+    if facts.units < 3:
+        row.explanation = ("The map checks this site-plan rule when city records show "
+                           "at least three homes on the lot.")
+        return
+    if facts.lines.front_line is None:
+        row.explanation = NO_STREET
+        return
+    if facts.residential_abutters is None:
+        row.status = NOT_REQUIRED
+        row.explanation = "The city's parcel map shows no abutting residential lots."
+        return
+    shape = unary_union([home.shape for home in facts.homes])
+    gaps, shared = _yard_gaps(facts, Home(shape))
+    rear = gaps.get("rear")
+    lines = [*(rear.lines if rear else []), *shared.get("rear", [])]
+    line = unary_union(lines).intersection(facts.residential_abutters)
+    if not line.length:
+        row.status = NOT_REQUIRED
+        row.explanation = "The city's parcel map shows no rear lot line shared with a residential lot."
+        return
+    # The sloping plane applies to the building envelope, including the peak of
+    # a pitched roof. Use the 3D layer's peak for each part as its height.
+    candidates = []
+    incomplete = False
+    for home in facts.homes:
+        parts = [(outline.intersection(home.shape), peak) for outline, peak in home.sections]
+        parts = [(outline, peak) for outline, peak in parts
+                 if outline.area >= MIN_PART_AREA and peak > 0]
+        if home.shape.difference(unary_union([outline for outline, _ in parts])).area >= MIN_PART_AREA:
+            incomplete = True
+        for outline, peak in parts:
+            distance = outline.distance(line)
+            limit = 5 + distance / 1.5
+            candidates.append((peak - limit, peak, limit, distance, outline, home))
+    if not candidates:
+        row.explanation = NO_HEIGHT
+        return
+    over, peak, limit, distance, outline, home = max(candidates, key=lambda part: part[0])
+    row.measured, row.required = peak, limit
+    row.detail = f"{_feet(distance)} from the shared rear lot line"
+    row.shapes = {"gap": LineString(nearest_points(outline, line)), "part": outline}
+    row.buildings = [i for i, building in enumerate(facts.all_buildings)
+                     if building.equals(home.shape)][:1]
+    row.explanation = (
+        f"The roof part closest to or furthest over its height limit was about {_feet(peak)} "
+        f"tall and {_feet(distance)} from the shared rear lot line. "
+        f"The sloping limit there is {_feet(limit)}.")
+    if incomplete:
+        row.explanation += " The city has no roof height for some parts of the home."
+    if over > HEIGHT_MARGIN:
+        row.status = FAILS
+        findings.reasons.append(Reason(
+            "height", f"Too tall near a residential rear lot line: a roof part about "
+            f"{_feet(distance)} from the line is {_feet(peak)} tall, where the "
+            f"height limit is {_feet(limit)}."))
+    elif not incomplete:
+        row.status = PASSES
+        if explanation := margin_explanation(row):
+            row.explanation += f" {explanation}"
 
 
 def _polygons(shape):
