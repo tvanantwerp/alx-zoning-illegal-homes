@@ -95,7 +95,12 @@ CG, CD, CDX, OC, OCM, OCH, W-1, CRMU, KR) and in planned districts:
   RM zone, where the yard left over must meet the rear yard rule (at least
   16 ft, and 1 ft for every 2 ft of height, counting half of an alley
   behind toward the second part). The map measures it to every lot line
-  away from both streets that isn't along a shared wall.
+  away from both streets that isn't along a shared wall. Half the alley's
+  width comes from the paving the city's map traces behind the lot. Paving
+  is often narrower than the alley itself, so this credit may run low.
+  Where the lot backs onto open land but the map traces no paving there,
+  as with a gravel, grass or untraced alley, the map counts half a typical
+  alley, 5 ft.
 - **Floor space** compared with lot size. In the KR and OCH zones the limit
   is looser within 1,000 ft of a Metro station. In R-20 through R-2-5, and
   for houses and two-unit houses in RA and RB outside the historic

@@ -250,14 +250,21 @@ def test_rm_corner_townhouse_with_a_tall_home_needs_a_deeper_yard():
 def test_rm_corner_townhouse_counts_half_an_alley_toward_the_setback_ratio():
     # 14 ft to the back line clears the 16 ft minimum (with the margin) but
     # not the 18 ft the home's height needs, unless half the alley behind counts.
+    rear = rows(rm_corner(46, height=40, stories=3)[1])["yard:rear"]
+    assert rear.status == FAILS and "alley" not in rear.detail
     for behind in (True, False):
-        rear = rows(rm_corner(46, behind=behind, height=40, stories=3)[1])["yard:rear"]
-        assert rear.status == FAILS and "alley" not in rear.detail
         # The alley's own parcel can make the back line shared.
         alley = box(0, 60, 40, 68)
         rear = rows(rm_corner(46, behind=behind, height=40, stories=3, alleys=alley)[1])["yard:rear"]
         assert rear.status == PASSES and "alley" in rear.detail
-        assert "adds 4.0 ft" in rear.explanation
+        assert "adds 4.0 ft" in rear.explanation and "may run low" in rear.explanation
+
+
+def test_open_land_behind_without_mapped_paving_gets_the_typical_alley_credit():
+    # An unpaved or untraced alley: open land behind, no paving polygon.
+    rear = rows(rm_corner(46, behind=False, height=40, stories=3)[1])["yard:rear"]
+    assert rear.status == PASSES and "alley" in rear.detail
+    assert "traces no alley paving" in rear.explanation
 
 
 def test_rear_alley_credit_cannot_cover_the_fixed_minimum():

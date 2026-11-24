@@ -70,6 +70,9 @@ STREET_HEIGHT_RATIO = 2.0
 # plus a few feet for a street map centerline that follows the middle of
 # the pavement rather than the middle of the public street.
 CENTERLINE_MARGIN = 5.0
+# Half of a typical alley. Credited toward a rear yard when the lot line
+# borders open land but the city's map traces no alley paving there.
+ESTIMATED_ALLEY_CREDIT = 5.0
 # Lot lines closer than this to both a home and its neighbor's home are
 # treated as a shared wall, where no yard is expected.
 SHARED_WALL_GAP = 3.0
@@ -618,13 +621,16 @@ class YardGap:
     gap: float
     # From the closest point on the home to the closest point on the lot line.
     nearest: LineString
-    # Every lot line on this side.
+    # Every lot line on this side, and whether each borders an alley or other open land.
     lines: list[LineString]
+    lines_open: list[bool] = field(default_factory=list)
     # The roof of the part of the home this gap is measured from, whose
     # height as the ordinance measures it sets the setback ratio's depth.
     roof: RoofHeight | None = None
     facing_only: bool = False
     alley_credit: float = 0.0
+    # True when `alley_credit` is the typical-alley estimate, not a mapped width.
+    alley_estimated: bool = False
 
     @property
     def height(self) -> float:
@@ -673,31 +679,33 @@ def _lot_line_alley_credit(line, nearest, alleys) -> float:
     return closest.length / 2 if closest is not None else 0.0
 
 
-def _part_gaps(gap: YardGap, parts: list[RoofHeight], alleys=None) -> list[YardGap]:
+def _part_gaps(gap: YardGap, parts: list[RoofHeight], alleys=None,
+               credit_alleys=False) -> list[YardGap]:
     """The same side's gap, measured again from each part of the home.
 
     The setback ratio pairs each part of a building with its own height
     (the ordinance's definition of setback ratio), so a low rear wing is
     judged by its own height and a taller block behind it by its own
-    distance. Where mapped alleys abut the rear lot line, half the local
-    alley width counts toward this ratio (section 7-1003).
+    distance. With `credit_alleys`, half the alley behind a lot line counts
+    toward this ratio (section 7-1003): half its mapped paving width, or
+    half a typical alley where the line borders open land with no mapped paving.
     """
     measured = []
+    lines_open = gap.lines_open or [False] * len(gap.lines)
     for roof in parts:
-        if not gap.facing_only and alleys is None:
-            line = min(gap.lines, key=roof.outline.distance)
-            nearest = LineString(nearest_points(roof.outline, line))
-            measured.append(YardGap(nearest.length, nearest, gap.lines, roof))
-            continue
         choices = []
-        for line in gap.lines:
+        for line, is_open in zip(gap.lines, lines_open):
             nearest = (_facing_gap(roof.outline, line) if gap.facing_only
                        else LineString(nearest_points(roof.outline, line)))
             if nearest is None:
                 continue
-            credit = _lot_line_alley_credit(line, nearest, alleys)
-            choices.append(YardGap(nearest.length, nearest, gap.lines, roof,
-                                   alley_credit=credit))
+            credit, estimated = 0.0, False
+            if credit_alleys:
+                credit = _lot_line_alley_credit(line, nearest, alleys)
+                if not credit and is_open:
+                    credit, estimated = ESTIMATED_ALLEY_CREDIT, True
+            choices.append(YardGap(nearest.length, nearest, gap.lines, gap.lines_open, roof,
+                                   alley_credit=credit, alley_estimated=estimated))
         if choices:
             measured.append(min(choices, key=lambda part: part.gap + part.alley_credit))
     return measured
@@ -770,6 +778,7 @@ def _yard_gaps(facts, home) -> tuple[dict, dict]:
                         gaps["rear"] = YardGap(nearest.length, nearest, [], facing_only=True)
                     entry = gaps["rear"]
                     entry.lines.append(line)
+                    entry.lines_open.append(piece.kind == "open")
                     if nearest.length < entry.gap:
                         entry.gap, entry.nearest = nearest.length, nearest
                 continue
@@ -783,10 +792,12 @@ def _yard_gaps(facts, home) -> tuple[dict, dict]:
                 if on_shared_wall:
                     shared_wall.setdefault(key, []).append(piece.line)
         if key not in gaps:
-            gaps[key] = YardGap(gap, _nearest_line(home, piece.line), [piece.line])
+            gaps[key] = YardGap(gap, _nearest_line(home, piece.line), [piece.line],
+                                [piece.kind == "open"])
             continue
         entry = gaps[key]
         entry.lines.append(piece.line)
+        entry.lines_open.append(piece.kind == "open")
         if gap < entry.gap:
             entry.gap = gap
             entry.nearest = _nearest_line(home, piece.line)
@@ -1208,15 +1219,21 @@ def _rear_row(facts, record, gap, shared, touching, parts):
     if not rear_yard:
         return _yard_row(facts, "rear", NO_RULE, gap, explanation=no_rule_explanation(
             rules.label, HOME_TYPE_NAMES[kind], "rear yard rule"))
-    part_gaps = _part_gaps(gap, parts, facts.alleys)
+    part_gaps = _part_gaps(gap, parts, facts.alleys, credit_alleys=True)
     fails, required, detail, shown = _judge_yard(record, "rear", "Rear", gap, part_gaps, rear_yard)
     explanation = None
     if shown.alley_credit:
         credited = shown.gap + shown.alley_credit
         detail += ", counting half the alley"
+        if shown.alley_estimated:
+            source = ("The city's map traces no alley paving here, so the map counts half "
+                      f"a typical alley, {_feet(shown.alley_credit)}, toward the setback ratio")
+        else:
+            source = (f"Counting half the mapped alley paving adds {_feet(shown.alley_credit)} "
+                      "toward the setback ratio. Paving is often narrower than the alley "
+                      "itself, so this credit may run low")
         explanation = (
-            f"About {_feet(shown.gap)} to the back lot line. Counting half the mapped "
-            f"alley width adds {_feet(shown.alley_credit)} toward the setback ratio, "
+            f"About {_feet(shown.gap)} to the back lot line. {source}, "
             f"for about {_feet(credited)} against the {_feet(required)} needed.")
         if not fails and credited < required:
             explanation += " " + YARD_BENEFIT_OF_DOUBT
@@ -1285,7 +1302,7 @@ def _judge_yard(record, name, label, gap, part_gaps, yard):
                     f"{_feet(worst.gap)}, but a building this tall (roughly "
                     f"{_feet(worst.height)}) needs about {_feet(required)}.")
         if worst.alley_credit:
-            text += f" With half the mapped alley, the yard counts for about {_feet(credited)}."
+            text += f" With half the alley behind, the yard counts for about {_feet(credited)}."
         record(name, required - credited, text)
         return True, required, detail, worst
     return False, required, detail, worst
