@@ -145,6 +145,8 @@ class ZoneRules:
     # Homes near Eisenhower Avenue old enough to need no special permit
     # (OCH only), as an OlderHomeAllowance.
     eisenhower_older_homes: OlderHomeAllowance | None = None
+    # Why a residential use that fails the home type rule is restricted.
+    home_type_restriction_note: str = ""
     # How messages refer to these rules, after the word "the".
     described_as: str = ""
     # Largest apartment building allowed, counted in homes. None = no cap.
@@ -742,6 +744,29 @@ ZONES |= {
     # Industrial and utility zones do not allow homes at all.
     "I": ZoneRules(name="I (industrial)", allowed=frozenset()),
     "UT": ZoneRules(name="UT (utility)", allowed=frozenset()),
+    # Sections 4-700, 4-1400, 6-100 and 6-200.
+    "CR": ZoneRules(
+        name="CR", allowed=frozenset(),
+        home_type_restriction_note=(
+            "The CR zone provides for regional commercial uses, including shopping, "
+            "services and offices."),
+    ),
+    "NR": ZoneRules(
+        name="NR", allowed=frozenset(),
+        home_type_restriction_note=(
+            "The NR zone allows up to four homes above or behind shops and may allow "
+            "townhouses with a special use permit. The map checks ordinary home uses here."),
+    ),
+    "POS": ZoneRules(
+        name="POS", allowed=frozenset(),
+        home_type_restriction_note=(
+            "The POS zone is for public open space and community recreation."),
+    ),
+    "WPR": ZoneRules(
+        name="WPR", allowed=frozenset(),
+        home_type_restriction_note=(
+            "The WPR zone is for waterfront parks and recreation."),
+    ),
 }
 # No special permit may allow a row of more than eight townhouses here.
 ZONES |= {zone: replace(ZONES[zone], long_townhouse_rows="never")

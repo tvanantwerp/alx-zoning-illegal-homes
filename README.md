@@ -188,6 +188,12 @@ Housing" changes.
 The test is always: *if the buildings vanished, could you legally put them
 back today?*
 
+### Zones that restrict ordinary homes
+
+The map flags ordinary home uses in I, UT, CR, NR, POS and WPR. NR allows
+up to four auxiliary dwellings associated with a commercial use and may
+allow townhouses with a special use permit.
+
 ### Planned districts
 
 Zones starting with CDD (Cameron Station, Potomac Yard, Carlyle and others)
