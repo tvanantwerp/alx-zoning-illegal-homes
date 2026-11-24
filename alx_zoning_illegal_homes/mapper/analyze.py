@@ -9,10 +9,10 @@ import shapely
 import shapely.ops
 from shapely.ops import unary_union
 
-from . import loader
+from . import checks, loader
 from .block_faces import BlockFaces
 from .places import near_a_station, near_eisenhower_avenue, station_points
-from .checks import DISTANCE_MARGIN, Home, LotFacts, Outbuilding, TownhouseRow, check_lot
+from .checks import Home, LotFacts, Outbuilding, TownhouseRow, check_lot
 from .lot_lines import MAX_DIVIDED_GAP, MAX_STREET_DISTANCE, Street, classify
 from .rule_results import under_special_approval
 from .rules import (HOME_TYPE_NAMES, MAX_TOWNHOUSES_IN_ROW, PLANNED_DISTRICTS,
@@ -878,7 +878,7 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
         attached = [home_shapes[i] for i in touching if home_lots[i] != lot_id]
 
         paved, parking = _paving_on(shape, paving_tree, paving_shapes, paving_is_parking)
-        near_alleys = alley_tree.query(shape, predicate="dwithin", distance=DISTANCE_MARGIN)
+        near_alleys = alley_tree.query(shape, predicate="dwithin", distance=checks.DISTANCE_MARGIN)
         alleys = unary_union(alley_shapes[near_alleys]) if len(near_alleys) else None
 
         units = len(homes)

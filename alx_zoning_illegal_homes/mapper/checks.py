@@ -13,8 +13,9 @@ import shapely
 from shapely.geometry import LineString
 from shapely.ops import nearest_points, substring, unary_union
 
+from . import lot_lines
 from .heights import FLAT, MIN_PART_AREA, BuildingHeight, RoofHeight, building_height
-from .lot_lines import (MAX_STREET_DISTANCE, LotLines, StreetCenterline, front_for_yard, largest_polygon,
+from .lot_lines import (LotLines, StreetCenterline, front_for_yard, largest_polygon,
                         lot_width, lot_width_line)
 from .rule_results import (
     CORNER_NO_REAR, CROSSES_LOT_LINE, FAILS, MAPPING_ERROR, NO_FLOOR_AREA, NO_HEIGHT,
@@ -661,13 +662,13 @@ def _lot_line_alley_credit(line, nearest, alleys) -> float:
     inset = min(0.02, line.length / 2)
     point = line.interpolate(max(inset, min(along, line.length - inset)))
     anchor = np.array(point.coords[0])
-    inward_end = anchor - outward * MAX_STREET_DISTANCE
-    outward_end = anchor + outward * MAX_STREET_DISTANCE
+    inward_end = anchor - outward * lot_lines.MAX_STREET_DISTANCE
+    outward_end = anchor + outward * lot_lines.MAX_STREET_DISTANCE
     cross_section = LineString([inward_end, outward_end])
     runs = [run for run in shapely.get_parts(cross_section.intersection(alleys))
             if run.geom_type == "LineString" and run.distance(point) <= DISTANCE_MARGIN
             and max((np.asarray(coord) - anchor) @ outward for coord in run.coords) > 0
-            and run.length < MAX_STREET_DISTANCE]
+            and run.length < lot_lines.MAX_STREET_DISTANCE]
     closest = min(runs, key=point.distance, default=None)
     return closest.length / 2 if closest is not None else 0.0
 
