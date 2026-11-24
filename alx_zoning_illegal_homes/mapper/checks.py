@@ -14,7 +14,7 @@ from shapely.geometry import LineString
 from shapely.ops import nearest_points, substring, unary_union
 
 from .heights import FLAT, MIN_PART_AREA, BuildingHeight, RoofHeight, building_height
-from .lot_lines import (LotLines, StreetCenterline, front_for_yard, largest_polygon,
+from .lot_lines import (MAX_STREET_DISTANCE, LotLines, StreetCenterline, front_for_yard, largest_polygon,
                         lot_width, lot_width_line)
 from .rule_results import (
     CORNER_NO_REAR, CROSSES_LOT_LINE, FAILS, MAPPING_ERROR, NO_FLOOR_AREA, NO_HEIGHT,
@@ -69,8 +69,6 @@ STREET_HEIGHT_RATIO = 2.0
 # plus a few feet for a street map centerline that follows the middle of
 # the pavement rather than the middle of the public street.
 CENTERLINE_MARGIN = 5.0
-# Half of a typical alley, which the ordinance credits toward a rear yard.
-ALLEY_CREDIT = 5.0
 # Lot lines closer than this to both a home and its neighbor's home are
 # treated as a shared wall, where no yard is expected.
 SHARED_WALL_GAP = 3.0
@@ -181,6 +179,8 @@ class LotFacts:
     # Roads, alleys, driveways and parking lots on the lot, from the city's
     # map, or None. None of this counts as open space.
     paved: object = None
+    # Nearby alley paving polygons, used to estimate alley widths at rear lot lines.
+    alleys: object = None
     # The parking part of `paved`, for zones that count some parking as
     # open space (RD).
     parking: object = None
@@ -615,17 +615,15 @@ class YardGap:
     """How far a home sits from one side of its lot, and where."""
 
     gap: float
-    # True when the closest lot line borders an alley or other open land.
-    on_open: bool
     # From the closest point on the home to the closest point on the lot line.
     nearest: LineString
-    # Every lot line on this side, and whether each borders open land.
+    # Every lot line on this side.
     lines: list[LineString]
-    lines_open: list[bool] = field(default_factory=list)
     # The roof of the part of the home this gap is measured from, whose
     # height as the ordinance measures it sets the setback ratio's depth.
     roof: RoofHeight | None = None
     facing_only: bool = False
+    alley_credit: float = 0.0
 
     @property
     def height(self) -> float:
@@ -651,32 +649,56 @@ def _facing_gap(shape, line):
     return LineString(nearest_points(facing, line))
 
 
-def _part_gaps(gap: YardGap, parts: list[RoofHeight]) -> list[YardGap]:
+def _lot_line_alley_credit(line, nearest, alleys) -> float:
+    """Half the mapped alley width on a perpendicular through this yard measurement."""
+    if alleys is None:
+        return 0.0
+    # Lot outline pieces run counterclockwise, so their outside is to the right.
+    (x0, y0), (x1, y1) = line.coords[0], line.coords[-1]
+    outward = np.array([y1 - y0, x0 - x1]) / line.length
+    # Stay on this piece at corners, where the nearest point can be its endpoint.
+    along = line.project(shapely.Point(nearest.coords[-1]))
+    inset = min(0.02, line.length / 2)
+    point = line.interpolate(max(inset, min(along, line.length - inset)))
+    anchor = np.array(point.coords[0])
+    inward_end = anchor - outward * MAX_STREET_DISTANCE
+    outward_end = anchor + outward * MAX_STREET_DISTANCE
+    cross_section = LineString([inward_end, outward_end])
+    runs = [run for run in shapely.get_parts(cross_section.intersection(alleys))
+            if run.geom_type == "LineString" and run.distance(point) <= DISTANCE_MARGIN
+            and max((np.asarray(coord) - anchor) @ outward for coord in run.coords) > 0
+            and run.length < MAX_STREET_DISTANCE]
+    closest = min(runs, key=point.distance, default=None)
+    return closest.length / 2 if closest is not None else 0.0
+
+
+def _part_gaps(gap: YardGap, parts: list[RoofHeight], alleys=None) -> list[YardGap]:
     """The same side's gap, measured again from each part of the home.
 
     The setback ratio pairs each part of a building with its own height
     (the ordinance's definition of setback ratio), so a low rear wing is
     judged by its own height and a taller block behind it by its own
-    distance. Each part's height is the one the ordinance measures: the top
-    of a flat roof, or halfway up a gable or hip roof (see `heights.py`).
+    distance. Where mapped alleys abut the rear lot line, half the local
+    alley width counts toward this ratio (section 7-1003).
     """
     measured = []
     for roof in parts:
-        if gap.facing_only:
-            facing = [(_facing_gap(roof.outline, line), is_open)
-                      for line, is_open in zip(gap.lines, gap.lines_open)]
-            choices = [(g.length, g, is_open) for g, is_open in facing if g is not None]
-            if choices:
-                distance, segment, is_open = min(choices, key=lambda entry: entry[0])
-                measured.append(YardGap(distance, is_open, segment, gap.lines, gap.lines_open, roof))
+        if not gap.facing_only and alleys is None:
+            line = min(gap.lines, key=roof.outline.distance)
+            nearest = LineString(nearest_points(roof.outline, line))
+            measured.append(YardGap(nearest.length, nearest, gap.lines, roof))
             continue
-        distance, line, is_open = min(
-            ((line.distance(roof.outline), line, is_open)
-             for line, is_open in zip(gap.lines, gap.lines_open)),
-            key=lambda found: found[0])
-        on_part, on_line = nearest_points(roof.outline, line)
-        measured.append(YardGap(distance, is_open, LineString([on_part, on_line]),
-                                gap.lines, gap.lines_open, roof))
+        choices = []
+        for line in gap.lines:
+            nearest = (_facing_gap(roof.outline, line) if gap.facing_only
+                       else LineString(nearest_points(roof.outline, line)))
+            if nearest is None:
+                continue
+            credit = _lot_line_alley_credit(line, nearest, alleys)
+            choices.append(YardGap(nearest.length, nearest, gap.lines, roof,
+                                   alley_credit=credit))
+        if choices:
+            measured.append(min(choices, key=lambda part: part.gap + part.alley_credit))
     return measured
 
 
@@ -743,15 +765,12 @@ def _yard_gaps(facts, home) -> tuple[dict, dict]:
                     nearest = _facing_gap(home.shape, line)
                     if nearest is None or _behind_neighbor(facts, nearest):
                         continue
-                    is_open = piece.kind == "open"
                     if "rear" not in gaps:
-                        gaps["rear"] = YardGap(nearest.length, is_open, nearest, [], [],
-                                              facing_only=True)
+                        gaps["rear"] = YardGap(nearest.length, nearest, [], facing_only=True)
                     entry = gaps["rear"]
                     entry.lines.append(line)
-                    entry.lines_open.append(is_open)
                     if nearest.length < entry.gap:
-                        entry.gap, entry.on_open, entry.nearest = nearest.length, is_open, nearest
+                        entry.gap, entry.nearest = nearest.length, nearest
                 continue
             elif has_rear and runs_along_front and behind_home:
                 if on_shared_wall:
@@ -763,15 +782,12 @@ def _yard_gaps(facts, home) -> tuple[dict, dict]:
                 if on_shared_wall:
                     shared_wall.setdefault(key, []).append(piece.line)
         if key not in gaps:
-            gaps[key] = YardGap(gap, piece.kind == "open",
-                                _nearest_line(home, piece.line), [piece.line],
-                                [piece.kind == "open"])
+            gaps[key] = YardGap(gap, _nearest_line(home, piece.line), [piece.line])
             continue
         entry = gaps[key]
         entry.lines.append(piece.line)
-        entry.lines_open.append(piece.kind == "open")
         if gap < entry.gap:
-            entry.gap, entry.on_open = gap, piece.kind == "open"
+            entry.gap = gap
             entry.nearest = _nearest_line(home, piece.line)
     for key in shared_wall.keys() - {"rear"}:
         gaps.pop(key, None)
@@ -945,7 +961,7 @@ def _street_fronts(facts, home, neighbors_by_street) -> list[StreetFront]:
     for street in lines.fronts:
         front = front_for_yard(lines, street)
         center = lines.centerlines.get(street)
-        gap = YardGap(front.distance(home.shape), False, _nearest_line(home, front),
+        gap = YardGap(front.distance(home.shape), _nearest_line(home, front),
                       list(front.geoms))
         found.append(StreetFront(center.label if center else street.title(), gap,
                                  neighbors_by_street.get(street) or []))
@@ -1191,20 +1207,18 @@ def _rear_row(facts, record, gap, shared, touching, parts):
     if not rear_yard:
         return _yard_row(facts, "rear", NO_RULE, gap, explanation=no_rule_explanation(
             rules.label, HOME_TYPE_NAMES[kind], "rear yard rule"))
-    part_gaps = _part_gaps(gap, parts)
-    fails, required, detail, shown = _judge_yard(
-        record, "rear", "Rear", gap, part_gaps, rear_yard, alley_credit=True)
+    part_gaps = _part_gaps(gap, parts, facts.alleys)
+    fails, required, detail, shown = _judge_yard(record, "rear", "Rear", gap, part_gaps, rear_yard)
     explanation = None
-    if shown.on_open:
-        credited = _credited(shown, True)
+    if shown.alley_credit:
+        credited = shown.gap + shown.alley_credit
         detail += ", counting half the alley"
-        if not fails and shown.gap < required:
-            explanation = (
-                f"About {_feet(shown.gap)} to the back lot line. Half of the alley behind "
-                f"the lot also counts, which brings the rear yard to about "
-                f"{_feet(credited)} against the {_feet(required)} needed.")
-            if credited < required:
-                explanation += " " + YARD_BENEFIT_OF_DOUBT
+        explanation = (
+            f"About {_feet(shown.gap)} to the back lot line. Counting half the mapped "
+            f"alley width adds {_feet(shown.alley_credit)} toward the setback ratio, "
+            f"for about {_feet(credited)} against the {_feet(required)} needed.")
+        if not fails and credited < required:
+            explanation += " " + YARD_BENEFIT_OF_DOUBT
     row = _yard_row(facts, "rear", FAILS if fails else PASSES, shown, required,
                     detail=detail, explanation=explanation)
     _explain_yard_height(row, rear_yard, shown, len(part_gaps) > 1)
@@ -1229,12 +1243,7 @@ def _explain_yard_height(row: RuleResult, yard, shown: YardGap, several: bool) -
         yard_height_explanation(yard.per_foot_of_height, shown.roof, several)]))
 
 
-def _credited(gap: YardGap, alley_credit: bool) -> float:
-    """A gap plus half the alley, when the line borders one and the yard allows it."""
-    return gap.gap + (ALLEY_CREDIT if alley_credit and gap.on_open else 0)
-
-
-def _judge_yard(record, name, label, gap, part_gaps, yard, alley_credit=False):
+def _judge_yard(record, name, label, gap, part_gaps, yard):
     """Judge one yard, recording it when it is too small.
 
     The fixed minimum is measured from the closest part of the home (`gap`).
@@ -1256,15 +1265,15 @@ def _judge_yard(record, name, label, gap, part_gaps, yard, alley_credit=False):
         return True, yard.minimum, "needs", gap
     if not part_gaps:
         return False, yard.minimum, "needs", gap
-    worst = max(part_gaps, key=lambda part: (yard.required(part.height)
-                                             - _credited(part, alley_credit)))
+    worst = max(part_gaps, key=lambda part: yard.required(part.height) - part.gap - part.alley_credit)
+    credited = worst.gap + worst.alley_credit
     required = yard.required(worst.height)
     if required <= yard.minimum:
         return False, yard.minimum, "needs", gap
     several = len(part_gaps) > 1
     detail = (f"its {_feet(worst.height)} tall part needs" if several
               else "a home this tall needs")
-    if _credited(worst, alley_credit) + DISTANCE_MARGIN < required:
+    if credited + DISTANCE_MARGIN < required:
         if several:
             text = (f"{label} yard is too small for the building's height: the part "
                     f"of the home roughly {_feet(worst.height)} tall is about "
@@ -1274,7 +1283,9 @@ def _judge_yard(record, name, label, gap, part_gaps, yard, alley_credit=False):
             text = (f"{label} yard is too small for the building's height: about "
                     f"{_feet(worst.gap)}, but a building this tall (roughly "
                     f"{_feet(worst.height)}) needs about {_feet(required)}.")
-        record(name, required - _credited(worst, alley_credit), text)
+        if worst.alley_credit:
+            text += f" With half the mapped alley, the yard counts for about {_feet(credited)}."
+        record(name, required - credited, text)
         return True, required, detail, worst
     return False, required, detail, worst
 
@@ -1306,8 +1317,7 @@ def _check_yards_without_front(facts, findings, homes):
     gap, home, piece = min(((piece.line.distance(home.shape), home, piece)
                             for home in homes for piece in facts.lines.pieces),
                            key=lambda found: found[0])
-    nearest = YardGap(gap, piece.kind == "open", _nearest_line(home, piece.line),
-                      [piece.line])
+    nearest = YardGap(gap, _nearest_line(home, piece.line), [piece.line])
     if gap < TOUCHING_GAP:
         # Drawn on the line with no neighbor attached: a mapping error.
         findings.results.append(_yard_row(facts, "nearest", NOT_CHECKED, nearest,
