@@ -64,7 +64,8 @@ HEIGHT_MEASURED = (
     "3D building data gives only the peak, so the map guesses the roof's shape and "
     "where its eaves are from the number of stories in city records. It can't see "
     "gambrel or mansard roofs, which the rules measure higher up, or wide dormers, "
-    "which in most house zones move the measurement up to the dormers.")
+    "which in most house zones move the measurement up to the dormers. Rooftop equipment "
+    "drawn as part of the same roof section may also be included in the mapped height.")
 HEIGHT_NEAR_STREET_ABOUT = (
     "In every height district, a building may be at most twice as tall at any point as "
     "the distance from its wall there to the center of the street it faces. A wall 25 ft "

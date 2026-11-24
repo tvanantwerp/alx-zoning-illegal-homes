@@ -763,6 +763,19 @@ def test_tall_apartment_building_roof_is_taken_as_flat():
     assert row.detail is None
 
 
+def test_height_row_explains_when_it_leaves_out_likely_rooftop_equipment():
+    lot, shape = box(0, 0, 200, 200), box(40, 40, 160, 160)
+    upper = box(75, 65, 125, 120)
+    limit = ZONES["RA"].max_height["multi"]
+    _, findings = check(lot, shape, "RA", home_type="multi", units=6,
+                        height=limit + 12, sections=[
+                            (shape.difference(upper), limit), (upper, limit + 12),
+                        ])
+    row = rows(findings)["height"]
+    assert row.status == PASSES and row.measured == limit
+    assert "rooftop structures" in row.explanation
+
+
 def test_side_yard_short_by_a_roof_overhang_passes_and_says_why():
     # R-5 needs a 7 ft side yard. A wall right at 7 ft with a 30 inch overhang
     # is drawn about 4.5 ft from the line.

@@ -34,8 +34,9 @@ dormers, which in some zones move the measurement up, can't be seen in the
 data. Every pitched roof is treated as a gable or hip roof.
 """
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
+import shapely
 from shapely.ops import unary_union
 
 # Roof pieces smaller than this, in square feet, are dropped as slivers.
@@ -57,6 +58,12 @@ MAX_ROOF_RISE = 15.0
 # With nothing better known, a pitched roof's height is taken as this share
 # of its peak.
 PITCHED_SHARE = 0.85
+# Section 6-403(B)(3) permits up to three 15-foot rooftop penthouses by right.
+MAX_ROOFTOP_RISE = 15.0
+MAX_ROOFTOP_PARTS = 3
+# Geometry used to identify likely rooftop equipment in the 3D layer.
+MAX_ROOFTOP_SHARE = 0.25
+ROOF_EDGE_TOLERANCE = 1.0
 
 FLAT, PITCHED, UNKNOWN = "flat", "pitched", "unknown"
 
@@ -220,7 +227,9 @@ def building_height(home, apartment: bool = False) -> BuildingHeight | None:
     height (see `roof_parts`) and each part is estimated with `roof_height`.
     A part taller than the home's own height is a chimney, stair tower or
     similar small piece the home's height already leaves out, so it is
-    lowered to that height. Returns None when the home's height is unknown.
+    lowered to that height. On an apartment building, small raised parts
+    enclosed by the main flat roof are taken as rooftop appurtenances (see
+    `_exclude_rooftop_parts`). Returns None when the home's height is unknown.
     """
     estimated = []
     for shape, peak in roof_parts(home.shape, home.sections, home.height or 0):
@@ -233,4 +242,47 @@ def building_height(home, apartment: bool = False) -> BuildingHeight | None:
             estimated.append(RoofHeight(height, height, UNKNOWN,
                                         "Height is estimated from the recorded stories. "
                                         "The roof height and shape are unknown.", outline=shape))
-    return BuildingHeight(estimated) if estimated else None
+    if not estimated:
+        return None
+    # On a flat-roofed house or townhouse, a raised part this size is as likely
+    # a rooftop room as a stair or elevator penthouse, and a room counts toward height.
+    return BuildingHeight(_exclude_rooftop_parts(estimated, home.shape) if apartment
+                          else estimated)
+
+
+def _exclude_rooftop_parts(parts: list[RoofHeight], footprint) -> list[RoofHeight]:
+    """Estimate the rooftop appurtenance exclusion under section 6-403(B).
+
+    The city maps heights and outlines without identifying use or construction.
+    A likely appurtenance is a small raised section surrounded by the largest
+    flat roof. Higher roof sections that extend to a wall count at full height.
+    """
+    if len(parts) < 2:
+        return parts
+    base = max(parts, key=lambda part: part.outline.area)
+    if base.shape != FLAT:
+        return parts
+    candidates = {}
+    max_area = MAX_ROOFTOP_SHARE * footprint.area
+    boundary = footprint.boundary
+    base_with_slack = base.outline.buffer(ROOF_EDGE_TOLERANCE)
+    for index, part in enumerate(parts):
+        rise = part.peak - base.peak
+        if not 0 < rise <= MAX_ROOFTOP_RISE or part.outline.area > max_area:
+            continue
+        islands = shapely.get_parts(part.outline)
+        if all(
+            island.distance(boundary) > ROOF_EDGE_TOLERANCE
+            and base_with_slack.covers(island.buffer(2 * ROOF_EDGE_TOLERANCE).difference(island))
+            for island in islands
+        ):
+            candidates[index] = part
+    count = sum(shapely.get_num_geometries(part.outline) for part in candidates.values())
+    area = sum(part.outline.area for part in candidates.values())
+    if not candidates or count > MAX_ROOFTOP_PARTS or area > max_area:
+        return parts
+    combined = replace(
+        base, outline=unary_union([base.outline, *(part.outline for part in candidates.values())]),
+        why=base.why + " The map treats small raised parts surrounded by this roof as "
+        "rooftop structures, which section 6-403(B) allows above the roofline.")
+    return [combined if part is base else part for i, part in enumerate(parts) if i not in candidates]

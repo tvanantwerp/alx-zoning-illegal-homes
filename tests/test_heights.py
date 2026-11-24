@@ -41,6 +41,35 @@ def test_apartment_roof_defaults_to_flat_with_many_or_unknown_stories(stories):
     assert roof.shape == FLAT and roof.height == 125 and roof.eaves is None
 
 
+def test_flat_roof_ignores_small_raised_equipment_surrounded_by_roof():
+    shape = box(0, 0, 100, 100)
+    upper = box(30, 25, 70, 75)
+    home = Home(shape, height=100, sections=[(shape.difference(upper), 88), (upper, 100)])
+    estimate = building_height(home, apartment=True)
+    assert estimate.height == estimate.peak == 88
+    assert estimate.tallest.outline.equals(shape)
+    assert "section 6-403(B)" in estimate.why
+
+
+def test_flat_roofed_house_keeps_a_raised_rooftop_room():
+    # A 3-story flat-roofed rowhouse with a 10 ft rooftop room set back from every wall.
+    shape = box(0, 0, 20, 60)
+    room = box(4, 20, 16, 34)
+    home = Home(shape, height=43, sections=[(shape.difference(room), 33), (room, 43)], stories=3)
+    assert building_height(home).peak == 43
+
+
+@pytest.mark.parametrize("upper,base_height", [
+    (box(0, 25, 40, 75), 88),  # Against an outer wall.
+    (box(25, 20, 75, 80), 88),  # Too large.
+    (box(30, 25, 70, 75), 80),  # Too tall.
+])
+def test_larger_or_unsurrounded_roof_parts_keep_their_height(upper, base_height):
+    shape = box(0, 0, 100, 100)
+    home = Home(shape, height=100, sections=[(shape.difference(upper), base_height), (upper, 100)])
+    assert building_height(home, apartment=True).height == 100
+
+
 def test_unknown_stories_fall_back_to_a_share_of_the_peak():
     roof = roof_height(40)
     assert roof.shape == PITCHED and roof.height == pytest.approx(PITCHED_SHARE * 40)
