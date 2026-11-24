@@ -297,6 +297,15 @@ apartments over or behind shops. Many buildings in these zones were approved
 with individual special permits that this project does not know about, so
 findings here are the least reliable.
 
+In CL, CC, CSL, CG, CD and CD-X, a building with ground-floor shops and up to
+four recorded homes is checked under the nonresidential area and bulk rules
+for auxiliary dwellings. On Mount Vernon Avenue in CL, the limit is eight
+for lots with frontage between Nelson and Commonwealth avenues. The map uses
+the frontage midpoint and the street centerlines to approximate the overlay.
+The city's records identify ground-floor shops but cannot verify the homes'
+positions relative to the shops. The named-street and height district rules
+still apply.
+
 ## How lots are measured
 
 The parcel map is only a set of polygons, so `lot_lines.py` works out each

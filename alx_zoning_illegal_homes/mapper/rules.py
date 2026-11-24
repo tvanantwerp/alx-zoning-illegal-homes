@@ -144,6 +144,25 @@ UNDERSIZED_LOT_PERMIT_ZONES = frozenset({"R-20", "R-12", "R-8", "R-5", "R-2-5"})
 
 
 @dataclass(frozen=True)
+class AuxiliaryDwellingRule:
+    """Nonresidential bulk limits for a commercial building with auxiliary dwellings."""
+
+    max_units: int
+    floor_area_ratio: float
+    # An inclusive lot-area ceiling and the FAR below it, where the zone sets one.
+    small_lot_far: tuple[float, float] | None = None
+    mount_vernon_max_units: int | None = None
+
+    def far_for(self, lot_area: float) -> float:
+        """The nonresidential FAR, including a separate small-lot limit."""
+        if self.small_lot_far is not None:
+            ceiling, limit = self.small_lot_far
+            if lot_area <= ceiling:
+                return limit
+        return self.floor_area_ratio
+
+
+@dataclass(frozen=True)
 class ZoneRules:
     """Everything we check for one zone. Dicts are keyed by home type."""
 
@@ -162,6 +181,8 @@ class ZoneRules:
     home_type_restriction_note: str = ""
     # How messages refer to these rules, after the word "the".
     described_as: str = ""
+    # Units in a commercial building checked under the nonresidential bulk rules.
+    auxiliary_dwellings: AuxiliaryDwellingRule | None = None
     # Use restrictions the home-type row can explain but the map cannot measure.
     home_type_note: str = ""
     # Largest apartment building allowed, counted in homes. None = no cap.
@@ -674,15 +695,28 @@ _OCH_OLDER_HOMES = OlderHomeAllowance(
           "building permit or site plan filed by then, stay without a special permit."),
 )
 
+# Standard by-right auxiliary dwelling FARs in the commercial zones.
+_AUXILIARY_HALF_FAR = AuxiliaryDwellingRule(max_units=4, floor_area_ratio=0.5)
+_AUXILIARY_DOWNTOWN = AuxiliaryDwellingRule(max_units=4, floor_area_ratio=1.5)
+
 ZONES |= {
-    "CL": _commercial("CL", 1980, 0.75, 35, historic_far=True),
-    "CC": _commercial("CC", 1980, 0.75, 35),
-    "CSL": _commercial("CSL", 1980, 0.75, 50, historic_far=True),
-    "CG": _commercial("CG", 1980, 0.75, 50),
+    # Sections 4-106(B)(1), 4-108 and 6-603(E).
+    "CL": _commercial(
+        "CL", 1980, 0.75, 35, historic_far=True,
+        auxiliary_dwellings=AuxiliaryDwellingRule(
+            max_units=4, floor_area_ratio=0.5, small_lot_far=(5500, 0.75),
+            mount_vernon_max_units=8),
+    ),
+    # Sections 4-206(B)(1), 4-208, 4-306(B)(1), 4-308, 4-406(B)(1) and 4-408.
+    "CC": _commercial("CC", 1980, 0.75, 35, auxiliary_dwellings=_AUXILIARY_HALF_FAR),
+    "CSL": _commercial("CSL", 1980, 0.75, 50, historic_far=True,
+                       auxiliary_dwellings=_AUXILIARY_HALF_FAR),
+    "CG": _commercial("CG", 1980, 0.75, 50, auxiliary_dwellings=_AUXILIARY_HALF_FAR),
     "OC": _commercial("OC", 1600, 1.25, 50, historic_far=True),
     # Height in CDX comes from a neighborhood plan (section 4-606(C)), which
     # the map doesn't have; only the height district map's limit is checked.
     "CDX": _commercial("CDX", 1245, 1.25, None, historic_far=True,
+                       auxiliary_dwellings=_AUXILIARY_DOWNTOWN,  # Sections 4-606(B)(1), 4-608.
                        end_lot_width=None, corner_lot_width=None,
                        height_set_by="the Old Town North Small Area Plan"),
     "OCM(50)": _commercial("OCM(50)", 800, 1.50, 50, **_OFFICE),
@@ -697,6 +731,7 @@ ZONES |= {
     "CD": ZoneRules(
         name="CD",
         allowed=ALL_TYPES,
+        auxiliary_dwellings=_AUXILIARY_DOWNTOWN,  # Sections 4-506(B)(1), 4-508.
         # Section 4-505(B) asks 1,452 sq ft of each house, two-unit house and
         # townhouse ("dwelling"), not of each home in it as the RM zone does.
         # Apportion the whole twin's minimum evenly across separately lotted halves.
