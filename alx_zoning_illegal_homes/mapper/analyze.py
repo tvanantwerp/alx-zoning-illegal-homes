@@ -15,7 +15,7 @@ from .places import near_a_station, near_eisenhower_avenue, station_points
 from .checks import (Home, LotFacts, Outbuilding, TownhouseDevelopment,
                      TownhouseRow, check_lot)
 from .lot_lines import (MAX_DIVIDED_GAP, MAX_STREET_DISTANCE, MIN_SHARED_WALL,
-                        WALL_GAP, Street, classify, parallel_shared_walls)
+                        WALL_GAP, Street, _wall_segments, classify, parallel_shared_walls)
 from .rule_results import under_special_approval
 from .rules import (ALL_TYPES, HOME_TYPE_NAMES, MAX_TOWNHOUSES_IN_ROW, PLANNED_DISTRICTS,
                     braddock_gateway_fallback, duke_street_floor_area, height_map_limit,
@@ -333,6 +333,35 @@ def _shared_walls(home_shapes) -> tuple[np.ndarray, np.ndarray]:
         shapely.length(shapely.intersection(shapely.boundary(b), shapely.buffer(a, WALL_GAP))))
     keep = [i for i in np.flatnonzero(along >= MIN_SHARED_WALL) if next(parallel_shared_walls(a[i], b[i]), None) is not None]
     return left[keep], right[keep]
+
+
+def _twin_wall_share(first, second) -> float:
+    """Estimate the shared share of the shorter of two facing wall segments."""
+    other_walls = list(_wall_segments(second))
+    longest, share = 0.0, 0.0
+    for direction, wall in _wall_segments(first):
+        band = wall.buffer(ROW_GAP, cap_style="flat")
+        for facing, other in other_walls:
+            if abs(direction @ facing) < 0.97:
+                continue
+            overlap = min(other.intersection(band).length, wall.intersection(
+                other.buffer(ROW_GAP, cap_style="flat")).length)
+            if overlap > 0:
+                candidate = overlap / min(wall.length, other.length)
+                longest, share = max((longest, share), (overlap, candidate))
+    return min(1.0, share)
+
+
+def _mapped_twin_wall(home_type, outlines, neighbors) -> float | None:
+    if home_type == "two_unit" and len(outlines) == 2:
+        return _twin_wall_share(*outlines)
+    if home_type == "semi" and len(outlines) == 1:
+        outline = outlines[0]
+        facing = [other for other in neighbors
+                  if outline.distance(other) <= ROW_GAP and not outline.equals(other)]
+        if len(facing) == 1:
+            return _twin_wall_share(outline, facing[0])
+    return None
 
 
 def _long_side(shape) -> float:
@@ -987,6 +1016,8 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
                     height_areas=_home_height_areas(lot["address"], height_map.get(index, [])),
                     height=part["height"] if pd.notna(part["height"]) else None,
                     floor_area=_floor_area(part),
+                    gross_floor_area=(part.geometry.area * part["STORIES"] * OUTLINE_FLOOR_SHARE
+                                      if part["STORIES"] > 0 else None),
                     sections=part["sections"],
                     stories=float(part["STORIES"]) if part["STORIES"] > 0 else None,
                     ground_floor_retail=(bool(part["ground_floor_retail"])
@@ -1008,6 +1039,7 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
             attached_neighbors=unary_union(attached) if attached else None,
             residential_abutters=residential_abutters,
             in_historic_district=is_historic,
+            twin_wall_share=_mapped_twin_wall(home_type, list(homes.geometry), attached),
             year_built=record["year_built"],
             near_eisenhower_avenue=near_eisenhower_avenue(shape, places["eisenhower"]),
             in_mount_vernon_overlay=_fronts_mount_vernon_overlay(lines, mount_vernon_overlay),

@@ -411,6 +411,13 @@ Other details that matter:
   Old Town rows were built a house or two at a time, but where their walls
   are shared the map counts them as one building, as the ordinance's words
   read, so a number of Old Town blocks fail.
+- When two twin homes are identifiable, the map estimates how much of one
+  facing wall is shared from their roof outlines. The map cannot see the
+  vertical walls themselves. For detached garages and sheds, it compares
+  measured heights and estimates gross floor space from roof outlines and
+  story counts. These comparisons need a single identifiable principal
+  building. A twin half on its own lot lacks the full principal building
+  outline for the floor-space comparison.
 - Roads, driveways and parking lots come from the city's planimetric map,
   traced from aerial photos. Patios, small parking pads and paving missing
   from that map still count as open space, so open space can look bigger

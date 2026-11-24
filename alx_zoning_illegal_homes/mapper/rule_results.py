@@ -19,7 +19,8 @@ OLDER_LOT = "older_lot"
 
 RULE_IDS = ("lot_area", "development_area", "frontage", "width", "yard:front", "yard:street", "yard:left", "yard:right",
             "yard:rear", "yard:nearest", "yard:accessory", "floor_area", "height", "height_near_street", "height_at_rear",
-            "coverage", "open_space", "home_type", "row_length")
+            "coverage", "open_space", "home_type", "row_length",
+            "twin_wall", "accessory_height", "accessory_area")
 
 NO_STREET = ("The map couldn't find a street next to this lot, so it "
              "can't tell which edge is the front.")
@@ -132,6 +133,9 @@ def reason_kind(rule: str) -> str:
         "coverage": "open_space",
         "open_space": "open_space",
         "height_near_street": "height",
+        "twin_wall": "home_type",
+        "accessory_height": "height",
+        "accessory_area": "floor_area",
         "height_at_rear": "height",
     }.get(rule, rule)
 

@@ -118,6 +118,7 @@ class Home:
     # when they don't say.
     ground_floor_retail: bool | None = None
     height_areas: list = field(default_factory=list)  # (intersection or whole outline, map rule)
+    gross_floor_area: float | None = None
     # Recorded count for this building, or None if the data does not give one.
     dwelling_units: int | None = None
 
@@ -195,6 +196,8 @@ class LotFacts:
     outbuildings: list[Outbuilding] = field(default_factory=list)
     # Homes on other lots that touch this lot's homes.
     attached_neighbors: object = None
+    # Shared fraction of the shorter facing wall on a mapped twin pair.
+    twin_wall_share: float | None = None
     # Outlines of abutting residential lots, for the KR rear stepback.
     residential_abutters: object = None
     in_historic_district: bool = False
@@ -292,6 +295,8 @@ def check_lot(facts: LotFacts) -> Findings:
         _check_yards(facts, findings, width, position)
         _check_accessory_yards(facts, findings, width, position)
     _check_named_street_setbacks(facts, findings)
+    _check_twin_wall(facts, findings)
+    _check_accessory_sizes(facts, findings)
     marginal = (not older_lot and facts.rules.name in OLDER_LOTS.zones
                 and facts.home_type in HOUSE_LIKE and facts.home_type in facts.rules.allowed
                 and any(row.rule in LOT_RULES and row.status == PASSES and row.required
@@ -531,6 +536,30 @@ def _check_home_type(facts, findings) -> OlderHomeAllowance | None:
     findings.results.append(RuleResult(
         "home_type", "Home type", status, summary=summary, explanation=explanation))
     return allowance
+
+
+def _check_twin_wall(facts, findings):
+    """Check the facing wall share of a semi-detached two-unit dwelling (section 2-140)."""
+    if facts.home_type not in {"semi", "two_unit"}:
+        return
+    measured = facts.twin_wall_share
+    # A whole duplex can have one outline and no shared exterior wall.
+    if measured is None and facts.home_type == "two_unit" and len(facts.homes) == 1:
+        return
+    row = RuleResult(
+        "twin_wall", "Shared twin wall", NOT_CHECKED, measured=measured, required=0.5,
+        unit="share", about="At least half of one twin home's facing wall must be "
+        "opposite the other's. The map estimates this from roof outlines.")
+    findings.results.append(row)
+    if measured is None:
+        row.explanation = "The map could not identify both halves of this twin."
+    elif measured < row.required:
+        row.status = FAILS
+        findings.reasons.append(Reason(
+            "home_type", f"About {measured:.0%} of one twin wall faces the other home. "
+            "The zoning definition requires at least 50%."))
+    else:
+        row.status = PASSES
 
 
 def _check_row_length(facts, findings):
@@ -1920,6 +1949,56 @@ class HeightLimit:
     feet: float
     allows: str
     source: str
+
+
+def _check_accessory_sizes(facts, findings):
+    """Compare mapped garages and sheds to their principal building (section 2-123.1)."""
+    accessories = [part for part in facts.outbuildings if part.label == "garage or shed"]
+    if not accessories:
+        return
+    home = facts.homes[0] if len(facts.homes) == 1 else None
+    principal = _home_height(facts, home) if home and (home.height or home.sections) else None
+    principal_area = (home.gross_floor_area if home and facts.home_type != "semi" else None)
+
+    heights = []
+    for part in accessories:
+        if part.height is not None:
+            outline = facts.all_buildings[part.index]
+            roof = building_height(Home(outline, height=part.height))
+            if roof is not None:
+                heights.append((part, roof.height))
+
+    limits = (
+        ("accessory_height", "Accessory building height", "ft",
+         principal.height if principal else None, heights, HEIGHT_MARGIN, "height",
+         "A detached garage or shed may be no taller than the principal building."),
+        ("accessory_area", "Accessory building floor space", "sq ft",
+         principal_area / 3 if principal_area else None,
+         [(part, part.floor_area) for part in accessories],
+         (principal_area or 0) / 3 * FLOOR_AREA_MARGIN, "floor_area",
+         "Each detached garage or shed may have at most one-third of the principal "
+         "building's gross floor space. Gross floor space is estimated from roof "
+         "outlines and story counts."),
+    )
+    for rule, name, unit, limit, measures, margin, kind, about in limits:
+        row = RuleResult(rule, name, NOT_CHECKED, required=limit, unit=unit, limit="max", about=about)
+        findings.results.append(row)
+        if limit is None or not measures:
+            row.explanation = ("The map could not identify a single principal building "
+                               "and measure both buildings for this comparison.")
+            continue
+        part, measured = max(measures, key=lambda measure: measure[1])
+        row.measured, row.buildings = measured, [part.index]
+        if measured > limit + margin:
+            row.status = FAILS
+            show = _feet if unit == "ft" else _square_feet
+            findings.reasons.append(Reason(
+                kind, f"{name} is about {show(measured)}, above the {show(limit)} "
+                "limit set by the principal building."))
+        elif len(measures) == len(accessories):
+            row.status = PASSES
+        else:
+            row.explanation = "At least one other garage or shed has no measured height."
 
 
 def _map_height_limit(facts: LotFacts, home: Home) -> HeightLimit | None:
