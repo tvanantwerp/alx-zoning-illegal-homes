@@ -74,6 +74,8 @@ ALLEY_CREDIT = 5.0
 # Lot lines closer than this to both a home and its neighbor's home are
 # treated as a shared wall, where no yard is expected.
 SHARED_WALL_GAP = 3.0
+# A lot line within 45 degrees of the front runs along it, not down a side.
+ALONG_FRONT_DIRECTION = np.cos(np.radians(45))
 # A free-standing home drawn closer than this to a lot line is treated as
 # a mapping error, not a real zero-foot yard.
 TOUCHING_GAP = 0.5
@@ -314,16 +316,18 @@ def _shared_line(line, shape, neighbor, min_run=4):
 
 
 def _attached_sides(facts: LotFacts) -> set[int]:
-    """Which sides of the lot's homes share a wall with a neighbor."""
-    if facts.attached_neighbors is None or facts.lines.front_direction is None:
+    """Which left and right sides of the lot's homes share a wall."""
+    along = facts.lines.front_direction
+    if facts.attached_neighbors is None or along is None:
         return set()
     sides = set()
     for home in facts.homes:
         for piece in facts.lines.pieces:
-            if piece.kind == "street":
+            if piece.kind == "street" or abs(piece.direction @ along) > ALONG_FRONT_DIRECTION:
                 continue
-            if not _shared_line(piece.line, home.shape, facts.attached_neighbors).is_empty:
-                sides.add(_side_of(facts, piece.midpoint, home))
+            wall = _shared_line(piece.line, home.shape, facts.attached_neighbors)
+            if not wall.is_empty:
+                sides.add(_side_of(facts, wall.centroid.coords[0], home))
     return sides
 
 
@@ -730,7 +734,7 @@ def _yard_gaps(facts, home) -> tuple[dict, dict]:
         if piece.kind == "street":
             key = "front"
         else:
-            runs_along_front = abs(piece.direction @ along) > np.cos(np.radians(45))
+            runs_along_front = abs(piece.direction @ along) > ALONG_FRONT_DIRECTION
             behind_home = (piece.midpoint - front_anchor) @ inward > rear_starts
             wall = _shared_line(piece.line, home.shape, facts.attached_neighbors,
                                 min_run=0.01 if remainder_is_rear else 4)
