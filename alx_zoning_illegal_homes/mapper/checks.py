@@ -366,6 +366,7 @@ def _check_home_type(facts, findings) -> OlderHomeAllowance | None:
         ]))
     elif kind not in rules.allowed:
         status, summary = FAILS, f"{name} not allowed in the {rules.label}"
+        explanation = rules.home_type_restriction_note or None
         findings.reasons.append(Reason(
             "home_type",
             f"This kind of home ({name}) is not allowed in the "

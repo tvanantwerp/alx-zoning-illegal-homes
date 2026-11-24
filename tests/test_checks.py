@@ -40,6 +40,20 @@ def test_roomy_house_passes_everything():
     assert kinds == set()
 
 
+@pytest.mark.parametrize("zone,note", [
+    ("CR", "regional commercial uses"),
+    ("NR", "four homes above or behind shops"),
+    ("POS", "public open space"),
+    ("WPR", "waterfront parks"),
+])
+def test_zones_without_ordinary_home_uses_flag_houses(zone, note):
+    kinds, findings = check(box(0, 0, 80, 120), box(20, 30, 60, 80), zone)
+    assert "home_type" in kinds
+    row = _rows(findings)["home_type"]
+    assert row.status == "fails"
+    assert note in row.explanation
+
+
 def test_small_narrow_lot_is_flagged():
     lot = box(0, 0, 40, 100)  # 4,000 sq ft, 40 ft wide in R-8
     kinds, _ = check(lot, box(10, 35, 30, 65), "R-8",
