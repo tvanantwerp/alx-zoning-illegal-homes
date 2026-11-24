@@ -939,6 +939,14 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
             # Second opinion: the same home under the ordinary zone that
             # would apply if the district's approved plan did not exist.
             ordinary = check_lot(replace(facts, rules=fallback_rules))
+            if label.strip().upper() == "CDD#10" and fallback_rules.name == "CRMU-L":
+                ordinary.notes.append(
+                    "The map estimates where the Slaters Lane and Piggyback Yard "
+                    "CRMU-L options apply. In the Piggyback Yard, section 5-602 "
+                    "requires a special use permit and caps development at 275 homes "
+                    "and 50 ft. These results show the CRMU-L rules before those "
+                    "conditions. The map lacks the rezoning plat needed to tell "
+                    "which lots are subject to them.")
             findings.results = under_special_approval(findings.results, district)
             project = _project_for(lot_points.loc[lot_id], projects, project_tree)
             record.update({
