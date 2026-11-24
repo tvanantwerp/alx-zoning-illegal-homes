@@ -109,8 +109,9 @@ CG, CD, CDX, OC, OCM, OCH, W-1, CRMU, KR) and in planned districts:
   city's 3D data gives only the peak, so the map guesses the roof's shape and
   the height of its eaves from the number of stories in city records (about
   10 ft per full story, plus 2 ft for a raised ground floor). A roof that
-  rises only a few feet above those eaves counts as flat, and apartment
-  buildings are taken to have flat roofs. A roof is never taken to rise
+  rises only a few feet above those eaves counts as flat. Apartment
+  buildings with at least five full stories or an unknown story count
+  are assumed to have flat roofs. A roof is never taken to rise
   more than 15 ft, since a story count that leaves a taller roof is
   probably short. With no story count, a pitched roof is measured at 85% of
   its peak. The limit is the lower of the zone's own and the city's height

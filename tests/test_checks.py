@@ -737,6 +737,12 @@ def test_rm_apartments_are_subject_to_the_structure_height_limit():
     assert row.status == "fails" and row.required == 35
 
 
+def test_rm_apartment_height_uses_the_midpoint_of_a_pitched_roof():
+    _, row, _ = _roomy_height(home_type="multi", height=39, stories=3)
+    assert row.measured == pytest.approx(35.5)
+    assert row.status == "passes" and row.required == 45
+
+
 def test_short_sloped_roof_skips_the_would_fail_sentence():
     _, row, _ = _roomy_height(height=30, stories=2)
     assert row.required == 45 and "may be held to 35 ft" in row.explanation
@@ -755,7 +761,7 @@ def test_roof_of_the_tallest_part_decides_the_limit():
 def test_cd_apartment_building_keeps_its_50_ft_limit():
     lot = box(0, 0, 120, 120)
     _, findings = check(lot, box(30, 30, 90, 90), "CD", home_type="multi", units=6,
-                        neighbors=between_neighbors(lot), height=48, stories=4)
+                        neighbors=between_neighbors(lot), height=48, stories=5)
     row = _rows(findings)["height"]
     assert row.required == 50 and "ridge" not in row.explanation
 
