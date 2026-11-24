@@ -460,10 +460,10 @@ ZONES = {
         # house needs twice both.
         lot_area={"single": 1452, "semi": 1452, "two_unit": 2904, "townhouse": 1452},
         lot_width={"single": 25, "semi": 25, "two_unit": 25, "townhouse": 18},
+        frontage={"single": 25, "semi": 25, "two_unit": 50, "townhouse": 18},
         # Section 3-1105(C)(2) applies to interior townhouse lots only.
         end_lot_width={"townhouse": None},
         corner_lot_width={"townhouse": None},
-        frontage={"single": 25, "semi": 25, "two_unit": 50, "townhouse": 18},
         front_yard_by_block_average=True,
         side_yards_by_lot_width=True,
         rear_yard=Yard(16, 1 / 2),
