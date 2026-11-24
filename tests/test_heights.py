@@ -25,9 +25,20 @@ def test_stories_taller_than_the_peak_mean_a_flat_roof():
     assert roof.shape == FLAT and roof.height == 30
 
 
-def test_apartment_building_is_flat_whatever_its_stories():
-    roof = roof_height(40, stories=2, apartment=True)
-    assert roof.shape == FLAT and roof.height == 40 and roof.eaves is None
+def test_low_apartment_with_known_stories_can_have_a_pitched_roof():
+    roof = roof_height(40, stories=3, apartment=True)
+    assert roof.shape == PITCHED and roof.height == 36 and roof.eaves == 32
+
+
+def test_low_apartment_close_to_the_top_story_has_a_flat_roof():
+    roof = roof_height(34, stories=3, apartment=True)
+    assert roof.shape == FLAT and roof.height == 34
+
+
+@pytest.mark.parametrize("stories", [None, 5, 10])
+def test_apartment_roof_defaults_to_flat_with_many_or_unknown_stories(stories):
+    roof = roof_height(125, stories=stories, apartment=True)
+    assert roof.shape == FLAT and roof.height == 125 and roof.eaves is None
 
 
 def test_unknown_stories_fall_back_to_a_share_of_the_peak():
