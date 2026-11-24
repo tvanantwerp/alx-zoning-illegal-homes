@@ -38,7 +38,7 @@ def test_rb_older_apartments_require_50_feet_at_street_and_building(historic):
     lot = box(0, 0, 40, 120)
     _, findings = check(lot, box(8, 20, 32, 75), "RB", home_type="multi",
                         units=3, year_built=1950, historic=historic,
-                        neighbors=between_neighbors(lot))
+                        rules=rules_for("RB", historic), neighbors=between_neighbors(lot))
     rows = {row.rule: row for row in findings.results}
     for rule in ("frontage", "width"):
         assert rows[rule].status == "fails"
