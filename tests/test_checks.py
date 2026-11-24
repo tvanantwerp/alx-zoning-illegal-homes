@@ -837,3 +837,13 @@ def test_shop_counts_in_full_alongside_an_exempt_shed():
                         outbuildings=[Outbuilding(1, 400, "commercial building"),
                                       Outbuilding(2, 100, "garage or shed")])
     assert _rows(findings)["floor_area"].measured == 3400
+
+
+def test_lot_position_can_explicitly_omit_a_minimum():
+    from dataclasses import replace
+
+    rules = replace(rules_for("R-8", False), corner_lot_area={}, corner_lot_width={})
+    assert rules.lot_area_for("single", "inside") == 8000
+    assert rules.lot_width_for("single", "inside") == 65
+    assert rules.lot_area_for("single", "corner") is None
+    assert rules.lot_width_for("single", "corner") is None

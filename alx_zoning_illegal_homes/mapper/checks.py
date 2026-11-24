@@ -21,7 +21,7 @@ from .rule_results import (
     NO_OUTLINES, NO_REAR_FOUND, NO_RULE, NO_SIDE_LINE, NO_STREET, NOT_CHECKED, NOT_REQUIRED,
     OLDER_LOT, PASSES, RULE_IDS,
     SHARED_LOT, SHARED_WALL, SIDE_COUNT_ON_CORNER, TOO_SHALLOW, TWO_UNIT_LOT, YARD_BENEFIT_OF_DOUBT,
-    CRMU_M_OLDER_LOT_NOTE, FLOOR_AREA_MEASURED, HEIGHT_MEASURED, HEIGHT_NEAR_STREET_ABOUT,
+    FLOOR_AREA_MEASURED, HEIGHT_MEASURED, HEIGHT_NEAR_STREET_ABOUT,
     RuleResult,
     eisenhower_older_home_note, eisenhower_special_permit_explanation,
     explain_margin, format_feet as _feet, front_yard_explanation, frontage_about,
@@ -447,8 +447,7 @@ def _check_row_length(facts, findings):
 
 def _check_lot_area(facts, findings, position):
     rules, kind = facts.rules, facts.home_type
-    table = rules.corner_lot_area if position == "corner" else rules.lot_area
-    required = table.get(kind, rules.lot_area.get(kind))
+    required = rules.lot_area_for(kind, position)
     per_home = kind == "townhouse" and facts.units > 1
     row = RuleResult("lot_area", "Land per home" if per_home else "Lot size",
                      NO_RULE, unit="sq ft",
@@ -476,9 +475,7 @@ def _check_lot_area(facts, findings, position):
 def _check_width_and_frontage(facts, findings, position):
     """Check lot width and street frontage. Returns the measured width."""
     rules, kind, lines = facts.rules, facts.home_type, facts.lines
-    measured_at = rules.width_measured_at
-    if rules.name == "W-1" and kind in {"single", "semi", "two_unit"}:
-        measured_at = 20  # Front building line proxy, as in CRMU.
+    measured_at = rules.width_depth_for(kind)
     frontage_row = RuleResult("frontage", "Street frontage", NOT_CHECKED,
                               unit="ft", measured=lines.frontage)
     width_row = RuleResult(
@@ -486,12 +483,7 @@ def _check_width_and_frontage(facts, findings, position):
         detail=(f"measured {_feet(measured_at)} back" if measured_at > 0
                 else "measured at the street"))
     findings.results += [frontage_row, width_row]
-    if position == "corner":
-        need_width = rules.corner_lot_width.get(kind, rules.lot_width.get(kind))
-    elif position == "end":
-        need_width = rules.end_lot_width.get(kind, rules.lot_width.get(kind))
-    else:
-        need_width = rules.lot_width.get(kind)
+    need_width = rules.lot_width_for(kind, position)
     where = {"corner": " for a corner lot", "end": " for an end-of-row lot"}.get(
         position, "")
 
@@ -584,8 +576,8 @@ def _excuse_older_lot(facts, findings) -> bool:
     if not short or kind not in HOUSE_LIKE or kind not in rules.allowed:
         return False
     if rules.name not in OLDER_LOTS.zones:
-        if rules.name == "CRMU-M":
-            findings.notes.append(CRMU_M_OLDER_LOT_NOTE)
+        if rules.undersized_lot_note:
+            findings.notes.append(rules.undersized_lot_note)
         return False
     for row in short:
         row.status = OLDER_LOT
@@ -1115,12 +1107,17 @@ def _side_row(facts, record, key, gap, shared, touching, parts, width):
     """A side yard row where the zone sets a side yard depth."""
     rules, kind = facts.rules, facts.home_type
     role = _side_name(facts, key)
-    if rules.name in {"CRMU-L", "CRMU-M", "CRMU-H"} and kind == "townhouse":
-        explanation = "Only interior end lots wider than 25 ft require a townhouse side yard."
-        if _position(facts) != "end" or (width is not None and width <= 25):
+    if rules.townhouse_side_yard_on_interior_ends_only and kind == "townhouse":
+        exempt_through = rules.townhouse_side_yard_exempt_through_width
+        qualifier = (f" wider than {_feet(exempt_through)}"
+                     if exempt_through is not None else "")
+        explanation = f"Only interior end lots{qualifier} require a townhouse side yard."
+        if _position(facts) != "end":
             return _yard_row(facts, role, NOT_REQUIRED, gap, explanation=explanation)
         if width is None:
             return _yard_row(facts, role, NOT_CHECKED, gap, explanation=explanation)
+        if exempt_through is not None and width <= exempt_through:
+            return _yard_row(facts, role, NOT_REQUIRED, gap, explanation=explanation)
     if key in touching:
         return _yard_row(facts, role, NOT_CHECKED, explanation=MAPPING_ERROR)
     if key in shared and kind == "semi" and not rules.split_twin_lots_allowed:
@@ -1870,10 +1867,9 @@ def _check_open_space(facts, findings):
     cover_row = RuleResult("coverage", "Land covered by buildings", NO_RULE,
                            unit="share", limit="max")
     row = cover_row if rules.max_coverage else open_row
-    if rules.name == "CRMU-X" and kind == "multi":
-        open_row.status, open_row.required = NOT_CHECKED, 0.25
-        open_row.explanation = ("The multi-unit residential portion must provide 25% open space. "
-                                "Its land area and any approved substitute amenities are unknown.")
+    if note := rules.open_space_unchecked.get(kind):
+        open_row.status, open_row.required = NOT_CHECKED, rules.min_open_space
+        open_row.explanation = note
         findings.results.append(open_row)
         return
     if (rules.open_space_applies_to and kind not in rules.open_space_applies_to) or (
