@@ -344,6 +344,35 @@ def _shared_walls(home_shapes) -> tuple[np.ndarray, np.ndarray]:
     return left[keep], right[keep]
 
 
+
+def _twin_wall_share(first, second) -> float:
+    """Estimate the shared share of the shorter of two facing wall segments."""
+    other_walls = list(_wall_segments(second))
+    longest, share = 0.0, 0.0
+    for direction, wall in _wall_segments(first):
+        band = wall.buffer(ROW_GAP, cap_style="flat")
+        for facing, other in other_walls:
+            if abs(direction @ facing) < 0.97:
+                continue
+            overlap = min(other.intersection(band).length, wall.intersection(
+                other.buffer(ROW_GAP, cap_style="flat")).length)
+            if overlap > 0:
+                candidate = overlap / min(wall.length, other.length)
+                longest, share = max((longest, share), (overlap, candidate))
+    return min(1.0, share)
+
+
+def _mapped_twin_wall(home_type, outlines, neighbors) -> float | None:
+    if home_type == "two_unit" and len(outlines) == 2:
+        return _twin_wall_share(*outlines)
+    if home_type == "semi" and len(outlines) == 1:
+        outline = outlines[0]
+        facing = [other for other in neighbors
+                  if outline.distance(other) <= ROW_GAP and not outline.equals(other)]
+        if len(facing) == 1:
+            return _twin_wall_share(outline, facing[0])
+    return None
+
 def _long_side(shape) -> float:
     """The long side of the smallest rectangle, turned to any angle, that holds a shape."""
     # GEOS warns, harmlessly, about some outlines with nearly straight runs of points.
@@ -682,7 +711,8 @@ def _outbuilding(index: int, part) -> Outbuilding:
         index=index,
         floor_area=float(part["footprint"] * part["share"] * stories * OUTLINE_FLOOR_SHARE),
         label=("commercial building" if part.get("BUSE") == "Commercial"
-               else OUTBUILDING_LABELS.get(part["BTYPE"], "outbuilding")))
+               else OUTBUILDING_LABELS.get(part["BTYPE"], "outbuilding")),
+        height=float(part["height"]) if pd.notna(part["height"]) else None)
 
 
 def _main_buildings(placed) -> dict:
@@ -897,6 +927,8 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
                     height_areas=_home_height_areas(lot["address"], height_map.get(index, [])),
                     height=part["height"] if pd.notna(part["height"]) else None,
                     floor_area=_floor_area(part),
+                    gross_floor_area=(part.geometry.area * part["STORIES"] * OUTLINE_FLOOR_SHARE
+                                      if part["STORIES"] > 0 else None),
                     sections=part["sections"],
                     stories=float(part["STORIES"]) if part["STORIES"] > 0 else None,
                     ground_floor_retail=(bool(part["ground_floor_retail"])
@@ -918,6 +950,7 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
             paved=paved,
             parking=parking,
             row=townhouse_rows.get(lot_id),
+            twin_wall_share=_mapped_twin_wall(home_type, list(homes.geometry), attached),
             street_setbacks=named_street_setbacks(lot_lon_lat.loc[lot_id].x,
                                                   lot_lon_lat.loc[lot_id].y),
         )

@@ -796,3 +796,39 @@ def test_crmu_x_apartments_need_open_space_or_approved_amenities():
     _, findings = check(YARD_LOT, box(10, 10, 40, 40), "CRMU/X", home_type="multi")
     row = rows(findings)["open_space"]
     assert row.status == NOT_CHECKED and row.required == 0.25
+
+
+def test_twin_wall_share_has_a_separate_result():
+    kinds, found = check(BIG_LOT, BIG_HOME, "RA", home_type="semi", twin_wall_share=0.4)
+    row = rows(found)["twin_wall"]
+    assert row.status == FAILS and row.required == 0.5
+    assert "home_type" in kinds
+
+
+def test_accessory_size_compares_the_garage_with_the_principal_building():
+    from alx_zoning_illegal_homes.mapper.checks import Outbuilding
+
+    garage = box(70, 70, 80, 100)
+    kinds, found = check(
+        BIG_LOT, BIG_HOME, "R-8", height=18, stories=1, gross_floor_area=900,
+        all_buildings=[BIG_HOME, garage],
+        outbuildings=[Outbuilding(index=1, floor_area=450, label="garage or shed", height=32)],
+    )
+    report = rows(found)
+    assert report["accessory_area"].status == FAILS
+    assert report["accessory_area"].required == 300
+    assert report["accessory_height"].status == FAILS
+    assert {"height", "floor_area"} <= kinds
+
+
+def test_accessory_height_remains_unchecked_if_one_building_lacks_data():
+    from alx_zoning_illegal_homes.mapper.checks import Outbuilding
+
+    _, found = check(
+        BIG_LOT, BIG_HOME, "R-8", height=20, gross_floor_area=1500,
+        all_buildings=[BIG_HOME, box(70, 70, 80, 80), box(70, 90, 80, 100)],
+        outbuildings=[Outbuilding(1, 80, "garage or shed", 10),
+                      Outbuilding(2, 80, "garage or shed")],
+    )
+    assert rows(found)["accessory_height"].status == NOT_CHECKED
+    assert rows(found)["accessory_area"].status == PASSES
