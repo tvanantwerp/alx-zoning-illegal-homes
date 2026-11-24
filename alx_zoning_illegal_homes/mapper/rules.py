@@ -130,6 +130,11 @@ def _older_houses(zone: str) -> dict:
     return {"single": allowance, "semi": allowance, "two_unit": allowance}
 
 
+# Sections 12-401, 12-402 and 12-405. Eligibility depends on lot and ownership
+# history the parcel map cannot confirm, so the standard lot measurements stay.
+UNDERSIZED_LOT_PERMIT_ZONES = frozenset({"R-20", "R-12", "R-8", "R-5", "R-2-5"})
+
+
 @dataclass(frozen=True)
 class ZoneRules:
     """Everything we check for one zone. Dicts are keyed by home type."""
@@ -147,6 +152,8 @@ class ZoneRules:
     eisenhower_older_homes: OlderHomeAllowance | None = None
     # How messages refer to these rules, after the word "the".
     described_as: str = ""
+    # Use restrictions the home-type row can explain but the map cannot measure.
+    home_type_note: str = ""
     # Largest apartment building allowed, counted in homes. None = no cap.
     max_multi_units: int | None = None
     # Minimum lot area. For townhouses this is per home.
@@ -637,6 +644,11 @@ ZONES |= {
     "W-1": ZoneRules(
         name="W-1",
         allowed=ALL_TYPES,
+        home_type_note=(
+            "Section 5-509 bars homes on the ground floor unless a site plan "
+            "with publicly accessible waterfront amenities was approved, or "
+            "a preliminary site plan was approved by June 28, 1988. The map "
+            "has no record of these approvals or which floor each home occupies."),
         # Section 5-506(A) asks no front yard of any building, but 5-512
         # gives houses and townhouses one set by the neighboring homes.
         no_front_yard_for=frozenset({"multi"}),

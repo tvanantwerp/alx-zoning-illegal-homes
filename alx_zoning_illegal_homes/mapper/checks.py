@@ -45,7 +45,7 @@ from .rule_results import (
     yard_height_explanation)
 from .rules import (HOME_TYPE_NAMES, HOUSE_LIKE, MAX_TOWNHOUSE_ROW_LENGTH,
                     MAX_TOWNHOUSES_IN_ROW, OLDER_LOTS, HeightMapLimit, OlderHomeAllowance,
-                    ZoneRules, outbuilding_allowance)
+                    UNDERSIZED_LOT_PERMIT_ZONES, ZoneRules, outbuilding_allowance)
 
 # Slack given to distance measurements, in feet. Covers measuring error and
 # the 30 inches that eaves and roof overhangs may reach into a yard, since
@@ -396,6 +396,8 @@ def _check_home_type(facts, findings) -> OlderHomeAllowance | None:
             note = eisenhower_older_home_note(older, facts.year_built)
             explanation = f"{explanation} {note}"
             findings.notes.append(note)
+    if rules.home_type_note:
+        explanation = " ".join(filter(None, [explanation, rules.home_type_note]))
     findings.results.append(RuleResult(
         "home_type", "Home type", status, summary=summary, explanation=explanation))
     return allowance
@@ -583,6 +585,12 @@ def _excuse_older_lot(facts, findings) -> bool:
              if row.rule in LOT_RULES and row.status == FAILS]
     if not short or kind not in HOUSE_LIKE or kind not in rules.allowed:
         return False
+    if rules.name in UNDERSIZED_LOT_PERMIT_ZONES:
+        for row in short:
+            row.explanation = (
+                "City Council can allow a home on a qualifying older undersized lot "
+                "by special use permit under sections 12-401 and 12-402. "
+                "The map can't verify eligibility or count that permit.")
     if rules.name not in OLDER_LOTS.zones:
         if rules.name == "CRMU-M":
             findings.notes.append(CRMU_M_OLDER_LOT_NOTE)
