@@ -246,6 +246,8 @@ class ZoneRules:
     # building's height to its distance from the middle of the street
     # (section 6-403(A)), as some planned districts' approvals do.
     height_near_street_waived: bool = False
+    # Section 6-705(E)(1) shapes new buildings beside a residential rear lot.
+    residential_rear_stepback: bool = False
     # Share of the lot that must stay open (0.35 = 35%).
     min_open_space: float | None = None
     # Home types whose lot may count one parking space as open space when it
@@ -797,10 +799,10 @@ ZONES |= {
     # are the limits west of South Peyton and Harvard Streets; see
     # king_street_retail_rules() for the rest of the zone. The zone's open
     # space rule, 150 sq ft per home, may be met on balconies, terraces and
-    # roofs, which the map can't see, so it isn't checked. Its rear
-    # setback for new buildings next to homes is a site plan rule.
+    # roofs, which the map can't see, so it isn't checked.
     "KR": ZoneRules(
         name="KR", allowed=frozenset({"multi"}), no_front_yard_for=ALL_TYPES,
+        residential_rear_stepback=True,
         max_floor_area_ratio=2.0,
         floor_area_note=(
             "The KR zone sets one floor space limit for homes and another for "

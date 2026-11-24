@@ -787,6 +787,8 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
     street_tree = shapely.STRtree(street_shapes)
     home_parts = placed[placed["is_home"]]
     home_shapes, home_lots = home_parts.geometry.values, home_parts["lot_id"].values
+    residential_lots = set(home_lots) | set(lots.index[
+        lots["land_use"].isin(list(loader.HOME_TYPE_BY_LAND_USE))])
     home_tree = shapely.STRtree(home_shapes)
     row_sizes = _row_sizes(home_shapes, home_lots)
     townhouse_rows = _townhouse_rows(home_parts, lots)
@@ -915,6 +917,11 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
 
         shape = lot.geometry
         lines = lines_for(lot_id)
+        residential_abutters = None
+        if rules.residential_rear_stepback:
+            adjacent = [lot_shapes[i] for i in lot_tree.query(shape, predicate="touches")
+                        if i in residential_lots]
+            residential_abutters = unary_union(adjacent) if adjacent else None
 
         touching = home_tree.query(home_union.buffer(ATTACHED_GAP),
                                    predicate="intersects")
@@ -957,6 +964,7 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
                           if not part["is_home"]],
             building_sections=list(on_lot["sections"]),
             attached_neighbors=unary_union(attached) if attached else None,
+            residential_abutters=residential_abutters,
             in_historic_district=is_historic,
             year_built=record["year_built"],
             near_eisenhower_avenue=near_eisenhower_avenue(shape, places["eisenhower"]),

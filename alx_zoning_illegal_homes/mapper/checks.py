@@ -174,6 +174,8 @@ class LotFacts:
     outbuildings: list[Outbuilding] = field(default_factory=list)
     # Homes on other lots that touch this lot's homes.
     attached_neighbors: object = None
+    # Outlines of abutting residential lots, for the KR rear stepback.
+    residential_abutters: object = None
     in_historic_district: bool = False
     # Year the oldest home on the lot was built, from city records.
     year_built: int | None = None
@@ -272,6 +274,8 @@ def check_lot(facts: LotFacts) -> Findings:
                                    "margin. The outcome depends on whether the older-lot limit applies.")
                 findings.reasons = [reason for reason in findings.reasons if reason.kind != row.rule]
     _check_height_near_street(facts, findings)
+    if facts.rules.residential_rear_stepback:
+        _check_height_at_rear(facts, findings)
     _check_open_space(facts, findings)
     if facts.home_type in {"multi", "townhouse"}:
         _note_site_plan_relief(findings.results)
@@ -1948,6 +1952,75 @@ def _check_height_near_street(facts, findings):
                                        worst.street.far is not None, several),
         unplaced_note,
         margin_explanation(row)]))
+
+
+def _check_height_at_rear(facts: LotFacts, findings: Findings) -> None:
+    """Check the KR sloping plane above a rear boundary shared with a home lot."""
+    row = RuleResult(
+        "height_at_rear", "Height next to rear neighbors", NOT_CHECKED, unit="ft", limit="max",
+        about=("When a new development needs a site plan, section 6-705(E)(1) starts "
+               "the height limit at 5 ft along the rear lot line shared with residential "
+               "use. The limit rises 1 ft for every 1.5 ft away from that line."))
+    findings.results.append(row)
+    if facts.units < 3:
+        row.explanation = ("The map checks this site-plan rule when city records show "
+                           "at least three homes on the lot.")
+        return
+    if facts.lines.front_line is None:
+        row.explanation = NO_STREET
+        return
+    if facts.residential_abutters is None:
+        row.status = NOT_REQUIRED
+        row.explanation = "The city's parcel map shows no abutting residential lots."
+        return
+    shape = unary_union([home.shape for home in facts.homes])
+    gaps, shared = _yard_gaps(facts, Home(shape))
+    rear = gaps.get("rear")
+    lines = [*(rear.lines if rear else []), *shared.get("rear", [])]
+    line = unary_union(lines).intersection(facts.residential_abutters)
+    if not line.length:
+        row.status = NOT_REQUIRED
+        row.explanation = "The city's parcel map shows no rear lot line shared with a residential lot."
+        return
+    # The sloping plane applies to the building envelope, including the peak of
+    # a pitched roof. Use the 3D layer's peak for each part as its height.
+    candidates = []
+    incomplete = False
+    for home in facts.homes:
+        parts = [(outline.intersection(home.shape), peak) for outline, peak in home.sections]
+        parts = [(outline, peak) for outline, peak in parts
+                 if outline.area >= MIN_PART_AREA and peak > 0]
+        if home.shape.difference(unary_union([outline for outline, _ in parts])).area >= MIN_PART_AREA:
+            incomplete = True
+        for outline, peak in parts:
+            distance = outline.distance(line)
+            limit = 5 + distance / 1.5
+            candidates.append((peak - limit, peak, limit, distance, outline, home))
+    if not candidates:
+        row.explanation = NO_HEIGHT
+        return
+    over, peak, limit, distance, outline, home = max(candidates, key=lambda part: part[0])
+    row.measured, row.required = peak, limit
+    row.detail = f"{_feet(distance)} from the shared rear lot line"
+    row.shapes = {"gap": LineString(nearest_points(outline, line)), "part": outline}
+    row.buildings = [i for i, building in enumerate(facts.all_buildings)
+                     if building.equals(home.shape)][:1]
+    row.explanation = (
+        f"The roof part closest to or furthest over its height limit was about {_feet(peak)} "
+        f"tall and {_feet(distance)} from the shared rear lot line. "
+        f"The sloping limit there is {_feet(limit)}.")
+    if incomplete:
+        row.explanation += " The city has no roof height for some parts of the home."
+    if over > HEIGHT_MARGIN:
+        row.status = FAILS
+        findings.reasons.append(Reason(
+            "height", f"Too tall near a residential rear lot line: a roof part about "
+            f"{_feet(distance)} from the line is {_feet(peak)} tall, where the "
+            f"height limit is {_feet(limit)}."))
+    elif not incomplete:
+        row.status = PASSES
+        if explanation := margin_explanation(row):
+            row.explanation += f" {explanation}"
 
 
 def _polygons(shape):
