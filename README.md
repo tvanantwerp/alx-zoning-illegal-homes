@@ -197,15 +197,16 @@ governs the land in place of the ordinary zone rules. The ordinance (section
 
 - **With the approved plan:** which kinds of home are allowed, a maximum
   height, and a cap on homes or floor space across the whole district. Lot
-  sizes and yards are not set by rule; the approved site plan drawings fix
-  them.
+  sizes and ordinary yards are set by the approved site plan drawings. The
+  map checks named-street setbacks where the ordinance keeps them in force.
 - **Without it:** an ordinary zone's rules (R-8 for Cameron Station, for
   example), sometimes with a changed floor area or height limit.
 
 Homes there are judged by the first set, since that is what a rebuild would
 be held to. That means checking home type and height lot by lot, and
-reporting each district's home count against its cap. Lot sizes and yards are
-not judged, because the drawings that set them are not available as data.
+reporting each district's home count against its cap. The drawings that
+set lot sizes and ordinary yards are unavailable as data, so those checks
+are omitted.
 
 Each lot also records how it would fare under the second set, and the map has
 a checkbox to switch to that view. It shows how far these neighborhoods are
