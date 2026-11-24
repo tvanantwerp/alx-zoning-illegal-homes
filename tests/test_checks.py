@@ -24,6 +24,21 @@ def test_crmu_side_yard_exempts_exact_width_and_corner_end_lots(width, corner):
                if row.rule in ("yard:left", "yard:right"))
 
 
+@pytest.mark.parametrize("zone", ["RM", "RB"])
+@pytest.mark.parametrize("width,expected", [(26.25, "passes"), (26.3, "fails"),
+                                            (36.75, "passes"), (36.8, "fails")])
+def test_counted_side_yards_use_width_margin_at_each_threshold(zone, width, expected):
+    lot = box(0, 0, width, 100)
+    # Just above 25 ft there are no usable side yards, and just above 35 ft
+    # there is only one. Either lot falls short without the width margin.
+    left = 5 if width > 35 else 1
+    _, findings = check(lot, box(left, 20, width - 1, 50), zone,
+                        neighbors=between_neighbors(lot), rules=rules_for(zone, True), historic=True)
+    rows = [row for row in findings.results if row.rule in ("yard:left", "yard:right")]
+    assert any(row.status == "fails" for row in rows) == (expected == "fails")
+    assert all("5% margin" in row.explanation for row in rows)
+
+
 def test_w1_tapered_house_lot_width_is_measured_inland():
     from shapely.geometry import Polygon
     lot = Polygon([(0, 0), (52, 0), (46, 20), (46, 150), (6, 150), (6, 20)])
