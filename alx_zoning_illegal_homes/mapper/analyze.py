@@ -532,6 +532,29 @@ def _street(streets, name):
     return unary_union(streets.geometry[streets["name"] == name].values)
 
 
+def _mount_vernon_overlay(streets):
+    """Locate the Mount Vernon Avenue frontage range in section 6-602(A)."""
+    parts = shapely.get_parts(shapely.line_merge(_street(streets, "MOUNT VERNON")))
+    avenue = max(parts, key=lambda line: line.length, default=None)
+    if avenue is None:
+        return None
+    ends = [avenue.intersection(_street(streets, street))
+            for street in ("NELSON", "COMMONWEALTH")]
+    if any(end.is_empty for end in ends):
+        return None
+    start, stop = sorted(avenue.project(end.centroid) for end in ends)
+    return avenue, start, stop
+
+
+def _fronts_mount_vernon_overlay(lines, overlay) -> bool:
+    """Use the mapped street frontage midpoint to place a lot in the overlay."""
+    front = lines.fronts.get("MOUNT VERNON")
+    if overlay is None or front is None:
+        return False
+    avenue, start, stop = overlay
+    return start <= avenue.project(front.centroid) <= stop
+
+
 def _district_fallback(label, lot, point, places):
     """The fallback zone and changes for planned districts where they depend on location.
 
@@ -767,6 +790,7 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
     lot_lon_lat = lot_points.to_crs("EPSG:4326")
     route_1 = _street(streets, "RICHMOND")
     kr_is_east = _king_street_divide(streets)
+    mount_vernon_overlay = _mount_vernon_overlay(streets)
     stations = station_points()
     places = {
         "route_1": route_1,
@@ -901,6 +925,10 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
                     stories=float(part["STORIES"]) if part["STORIES"] > 0 else None,
                     ground_floor_retail=(bool(part["ground_floor_retail"])
                                          if pd.notna(part["ground_floor_retail"]) else None),
+                    dwelling_units=max(
+                        int(part["BUNITS"]) if pd.notna(part["BUNITS"]) else 0,
+                        lot["condo_units"] if len(homes) == 1 else 0,
+                    ) or None,
                 )
                 for index, part in homes.iterrows()
             ],
@@ -915,6 +943,7 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
             in_historic_district=is_historic,
             year_built=record["year_built"],
             near_eisenhower_avenue=near_eisenhower_avenue(shape, places["eisenhower"]),
+            in_mount_vernon_overlay=_fronts_mount_vernon_overlay(lines, mount_vernon_overlay),
             paved=paved,
             parking=parking,
             row=townhouse_rows.get(lot_id),

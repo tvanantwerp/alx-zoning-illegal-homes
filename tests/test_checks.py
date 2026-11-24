@@ -725,6 +725,47 @@ def test_roof_of_the_tallest_part_decides_the_limit():
     assert "height" not in kinds and row.required == 45 and row.measured == 46
 
 
+@pytest.mark.parametrize("zone,area,units,retail,on_mount_vernon,far", [
+    ("CL", 5500, 4, True, False, 0.75),
+    ("CL", 5600, 4, True, False, 0.5),
+    ("CC", 5500, 4, True, False, 0.5),
+    ("CSL", 5500, 4, True, False, 0.5),
+    ("CG", 5500, 4, True, False, 0.5),
+    ("CD", 5500, 4, True, False, 1.5),
+    ("CDX", 5500, 4, True, False, 1.5),
+    ("CL", 5500, 8, True, True, 0.75),
+    ("CL", 5500, 8, True, False, None),
+    ("CL", 5500, 9, True, True, None),
+    ("CL", 5500, 4, False, True, None),
+    ("CL", 5500, None, True, True, None),
+    ("CC", 5500, 8, True, True, None),
+])
+def test_auxiliary_dwelling_bulk_rules(zone, area, units, retail, on_mount_vernon, far):
+    from alx_zoning_illegal_homes.mapper.checks import Home, LotFacts, check_lot
+    from alx_zoning_illegal_homes.mapper.lot_lines import classify
+    from .helpers import MAIN
+
+    lot, building = box(0, 0, 50, 110), box(4, 12, 46, 70)
+    facts = LotFacts(
+        shape=lot, area=area, rules=rules_for(zone, False), home_type="multi",
+        homes=[Home(shape=building, height=20, floor_area=3000,
+                    ground_floor_retail=retail, dwelling_units=units)],
+        lines=classify(lot, between_neighbors(lot), [MAIN], "MAIN"),
+        all_buildings=[building], units=units or 1, in_mount_vernon_overlay=on_mount_vernon,
+    )
+    findings = check_lot(facts)
+    rows = _rows(findings)
+    assert any("auxiliary dwellings" in note for note in findings.notes) == (far is not None)
+    if far is not None:
+        for key in ("lot_area", "width", "frontage", "yard:front", "yard:left",
+                    "yard:right", "yard:rear", "open_space"):
+            assert rows[key].status == "not_required"
+        assert rows["floor_area"].required == far * area
+    else:
+        assert rows["floor_area"].required == area * 0.75
+        assert rows["width"].required == 50
+
+
 def test_cd_apartment_building_keeps_its_50_ft_limit():
     lot = box(0, 0, 120, 120)
     _, findings = check(lot, box(30, 30, 90, 90), "CD", home_type="multi", units=6,

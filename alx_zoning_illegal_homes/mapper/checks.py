@@ -108,6 +108,8 @@ class Home:
     # when they don't say.
     ground_floor_retail: bool | None = None
     height_areas: list = field(default_factory=list)  # (intersection or whole outline, map rule)
+    # Recorded count for this building, or None if the data does not give one.
+    dwelling_units: int | None = None
 
 
 @dataclass
@@ -177,6 +179,7 @@ class LotFacts:
     year_built: int | None = None
     # Whether the lot lies within 1,000 ft of Eisenhower Avenue's centerline.
     near_eisenhower_avenue: bool = False
+    in_mount_vernon_overlay: bool = False
     parking_spaces: list | None = None  # Individual stall outlines, when surveyed.
     # Roads, alleys, driveways and parking lots on the lot, from the city's
     # map, or None. None of this counts as open space.
@@ -232,26 +235,31 @@ def check_lot(facts: LotFacts) -> Findings:
     findings = Findings()
     position = _position(facts)
     findings.measurements["position"] = position
-    allowance = _check_home_type(facts, findings)
-    _check_row_length(facts, findings)
-    if allowance is not None and allowance.older_rules:
-        note = older_rules_explanation(facts.rules.label, allowance.before)
-        rows = [("lot_area", "Lot size"), ("frontage", "Street frontage"),
-                ("width", "Lot width"), ("yard:front", "Front yard"),
-                ("yard:left", "Left side yard"), ("yard:right", "Right side yard"),
-                ("yard:rear", "Rear yard"), ("floor_area", "Floor space"),
-                ("height", "Height"), ("open_space", "Open space")]
-        if facts.rules.named_street_setbacks:
-            rows += [("yard:street", f"Setback from {label}")
-                     for label in list(_named_streets_faced(facts))[:1]]
-        for rule, name in rows:
-            findings.results.append(RuleResult(rule, name, NOT_CHECKED, explanation=note))
-        findings.results.sort(key=lambda row: RULE_IDS.index(row.rule))
-        return findings
-    _check_lot_area(facts, findings, position)
-    width = _check_width_and_frontage(facts, findings, position)
-    older_lot = _excuse_older_lot(facts, findings)
-    _check_yards(facts, findings, width)
+    auxiliary_units = _auxiliary_unit_count(facts)
+    if auxiliary_units is not None:
+        facts = _check_auxiliary_dwellings(facts, findings, auxiliary_units)
+        older_lot = False
+    else:
+        allowance = _check_home_type(facts, findings)
+        _check_row_length(facts, findings)
+        if allowance is not None and allowance.older_rules:
+            note = older_rules_explanation(facts.rules.label, allowance.before)
+            rows = [("lot_area", "Lot size"), ("frontage", "Street frontage"),
+                    ("width", "Lot width"), ("yard:front", "Front yard"),
+                    ("yard:left", "Left side yard"), ("yard:right", "Right side yard"),
+                    ("yard:rear", "Rear yard"), ("floor_area", "Floor space"),
+                    ("height", "Height"), ("open_space", "Open space")]
+            if facts.rules.named_street_setbacks:
+                rows += [("yard:street", f"Setback from {label}")
+                         for label in list(_named_streets_faced(facts))[:1]]
+            for rule, name in rows:
+                findings.results.append(RuleResult(rule, name, NOT_CHECKED, explanation=note))
+            findings.results.sort(key=lambda row: RULE_IDS.index(row.rule))
+            return findings
+        _check_lot_area(facts, findings, position)
+        width = _check_width_and_frontage(facts, findings, position)
+        older_lot = _excuse_older_lot(facts, findings)
+        _check_yards(facts, findings, width)
     _check_named_street_setbacks(facts, findings)
     marginal = (not older_lot and facts.rules.name in OLDER_LOTS.zones
                 and facts.home_type in HOUSE_LIKE and facts.home_type in facts.rules.allowed
@@ -270,10 +278,49 @@ def check_lot(facts: LotFacts) -> Findings:
                                    "margin. The outcome depends on whether the older-lot limit applies.")
                 findings.reasons = [reason for reason in findings.reasons if reason.kind != row.rule]
     _check_height_near_street(facts, findings)
-    _check_open_space(facts, findings)
+    if auxiliary_units is None:
+        _check_open_space(facts, findings)
     explain_margin(findings.results)
     findings.results.sort(key=lambda row: RULE_IDS.index(row.rule))
     return findings
+
+
+def _auxiliary_unit_count(facts: LotFacts) -> int | None:
+    """Find small apartment buildings with ground-floor shops and a recorded count."""
+    rules = facts.rules.auxiliary_dwellings
+    if rules is None or facts.home_type != "multi" or len(facts.homes) != 1:
+        return None
+    home = facts.homes[0]
+    if not home.ground_floor_retail or home.dwelling_units is None:
+        return None
+    limit = rules.max_units
+    if facts.in_mount_vernon_overlay and rules.mount_vernon_max_units is not None:
+        limit = rules.mount_vernon_max_units
+    return home.dwelling_units if 0 < home.dwelling_units <= limit else None
+
+
+def _check_auxiliary_dwellings(facts: LotFacts, findings: Findings, units: int) -> LotFacts:
+    """Show the auxiliary use and select the zone's nonresidential floor space limit."""
+    rules = facts.rules
+    homes = "home" if units == 1 else "homes"
+    note = (f"City records show ground-floor shops and {units} {homes} in this building. "
+            "The map treats the homes as auxiliary dwellings and applies the "
+            "nonresidential area and bulk rules.")
+    findings.notes.append(note)
+    findings.results.append(RuleResult(
+        "home_type", "Home type", PASSES,
+        summary=f"auxiliary dwellings allowed in the {rules.label}", explanation=note))
+    exemptions = [("lot_area", "Lot size"), ("frontage", "Street frontage"),
+                  ("width", "Lot width"), ("open_space", "Open space")]
+    explanation = f"The {rules.label} has no requirement for this under its nonresidential rules."
+    findings.results.extend(RuleResult(rule, name, NOT_REQUIRED, explanation=explanation)
+                            for rule, name in exemptions)
+    findings.results.extend(_yard_row(facts, role, NOT_REQUIRED, explanation=explanation)
+                            for role in YARD_ROLES)
+    return replace(facts, rules=replace(
+        rules, max_floor_area_ratio=rules.auxiliary_dwellings.far_for(facts.area),
+        historic_floor_area_ratio={},
+        floor_area_note=f"The {rules.label} applies its nonresidential floor space limit here."))
 
 
 def _side_of(facts: LotFacts, point, home) -> int:
