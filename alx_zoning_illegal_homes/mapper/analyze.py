@@ -13,7 +13,8 @@ from . import loader
 from .block_faces import BlockFaces
 from .places import near_a_station, near_eisenhower_avenue, station_points
 from .checks import Home, LotFacts, Outbuilding, TownhouseRow, check_lot
-from .lot_lines import MAX_DIVIDED_GAP, MAX_STREET_DISTANCE, Street, classify
+from .lot_lines import (MAX_DIVIDED_GAP, MAX_STREET_DISTANCE, MIN_SHARED_WALL,
+                        WALL_GAP, Street, classify, parallel_shared_walls)
 from .rule_results import under_special_approval
 from .rules import (HOME_TYPE_NAMES, MAX_TOWNHOUSES_IN_ROW, PLANNED_DISTRICTS,
                     braddock_gateway_fallback, duke_street_floor_area, height_map_limit,
@@ -44,11 +45,6 @@ POTOMAC_YARD_WEST_EDGE = -77.06
 ATTACHED_GAP = 1.5
 # Homes this close together count as one attached row.
 ROW_GAP = 1.0
-# For the limit on townhouses in one building, homes join a row only where
-# their outlines run together, this close, for at least MIN_SHARED_WALL feet:
-# a shared wall, not two rows whose corners meet across an alley.
-WALL_GAP = 0.5
-MIN_SHARED_WALL = 4.0
 # The pop-up outlines at most this many of the other buildings in a row.
 MAX_ROW_OUTLINES = 40
 # Building outlines in a row drawing are simplified to within this many feet.
@@ -323,27 +319,6 @@ def _union_groups(count: int, left, right) -> np.ndarray:
     return np.array([find(i) for i in range(count)])
 
 
-def _wall_segments(shape):
-    for polygon in shapely.get_parts(shape.simplify(0.1)):
-        coords = np.asarray(polygon.exterior.coords)[:, :2]
-        for start, end in zip(coords, coords[1:]):
-            length = np.linalg.norm(end - start)
-            if length >= MIN_SHARED_WALL:
-                yield (end - start) / length, shapely.LineString([start, end])
-
-
-def _parallel_wall(a, b):
-    other = list(_wall_segments(b))
-    for direction, wall in _wall_segments(a):
-        band = wall.buffer(WALL_GAP, cap_style="flat")
-        for facing, segment in other:
-            if abs(direction @ facing) < 0.97:
-                continue
-            if segment.intersection(band).length >= MIN_SHARED_WALL:
-                return True
-    return False
-
-
 def _shared_walls(home_shapes) -> tuple[np.ndarray, np.ndarray]:
     """Pairs of home outlines that share a wall: they run together for at least MIN_SHARED_WALL."""
     left, right = shapely.STRtree(home_shapes).query(home_shapes, predicate="dwithin",
@@ -355,7 +330,7 @@ def _shared_walls(home_shapes) -> tuple[np.ndarray, np.ndarray]:
     along = np.minimum(
         shapely.length(shapely.intersection(shapely.boundary(a), shapely.buffer(b, WALL_GAP))),
         shapely.length(shapely.intersection(shapely.boundary(b), shapely.buffer(a, WALL_GAP))))
-    keep = [i for i in np.flatnonzero(along >= MIN_SHARED_WALL) if _parallel_wall(a[i], b[i])]
+    keep = [i for i in np.flatnonzero(along >= MIN_SHARED_WALL) if next(parallel_shared_walls(a[i], b[i]), None) is not None]
     return left[keep], right[keep]
 
 
