@@ -38,9 +38,7 @@ left out of git, so run `create-map` before serving the site.
 Every lot with a home is measured against the rules for its zone. That covers
 the residential zones (R-20, R-12, R-8, R-5, R-2-5, RA, RB, RCX, RC, RD, RM,
 RS, RT) and homes in the commercial, office and waterfront zones (CL, CC, CSL,
-CG, CD, CDX, OC, OCM, OCH, W-1, CRMU, KR) and in planned districts. Ordinary
-home uses are flagged in I, UT, CR, NR, POS and WPR. NR also allows up to
-four auxiliary dwellings associated with a commercial use.
+CG, CD, CDX, OC, OCM, OCH, W-1, CRMU, KR) and in planned districts:
 
 - **Lot size**, **lot width** and **street frontage**. In RA, RB, RM, CL,
   CSL, CD, CDX, OC, OCM, OCH, CRMU-L, CRMU-H and CRMU-X, a lot recorded
@@ -188,6 +186,12 @@ Housing" changes.
 
 The test is always: *if the buildings vanished, could you legally put them
 back today?*
+
+### Zones that restrict ordinary homes
+
+The map flags ordinary home uses in I, UT, CR, NR, POS and WPR. NR allows
+up to four auxiliary dwellings associated with a commercial use and may
+allow townhouses with a special use permit.
 
 ### Planned districts
 
