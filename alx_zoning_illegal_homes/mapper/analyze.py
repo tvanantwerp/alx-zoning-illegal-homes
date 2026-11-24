@@ -717,6 +717,15 @@ def _add_neighbors(facts: LotFacts, lot_id: int, block_faces: BlockFaces,
     return replace(facts, **changes) if changes else facts
 
 
+def _historic_shares(lot_shapes: gpd.GeoSeries, historic) -> pd.Series:
+    """Return each lot's share inside the union of the historic district polygons."""
+    shares = pd.Series(0.0, index=lot_shapes.index)
+    intersecting = lot_shapes.sindex.query(historic, predicate="intersects")
+    nearby = lot_shapes.iloc[intersecting]
+    shares.iloc[intersecting] = nearby.intersection(historic).area / nearby.area
+    return shares.clip(upper=1.0)
+
+
 def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
     """Return one row per lot with its status and the reasons it fails.
 
@@ -762,7 +771,7 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
     townhouse_rows = _townhouse_rows(home_parts, lots)
     parts_by_lot = dict(tuple(placed.groupby("lot_id")))
     lot_points = lots.geometry.representative_point()
-    in_historic = lot_points.within(historic)
+    historic_shares = _historic_shares(lots.geometry, historic)
     height_map = _height_map_areas(home_parts.geometry, loader.load_height_districts())
     lot_lon_lat = lot_points.to_crs("EPSG:4326")
     route_1 = _street(streets, "RICHMOND")
@@ -842,7 +851,15 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
         record["home_type"] = HOME_TYPE_NAMES[home_type]
         record["year_built"] = int(years.min()) if len(years) else None
 
-        is_historic = bool(in_historic.loc[lot_id])
+        historic_share = historic_shares.loc[lot_id]
+        is_historic = bool(historic_share > 0.5)
+        if 0 < historic_share < 1:
+            classification = "inside" if is_historic else "outside"
+            historic_note = (
+                f"A historic district boundary crosses this lot. About {historic_share:.1%} "
+                f"of the lot is inside. The map treats the lot as {classification} based "
+                "on which side contains more than half of its area. Ties count as outside.")
+            record["notes"].append(historic_note)
         label = lot["zoning_label"]
         zone = normalize_zone(label)
         district = fallback_rules = None
@@ -930,6 +947,7 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
         facts = _add_neighbors(facts, lot_id, block_faces, fallback_rules)
         label, home_type = lot["zoning_label"], facts.home_type
         findings = check_lot(facts)
+        findings.notes.extend(record["notes"])
         if lot["land_use"] == TWIN_LAND_USE and home_type in ("two_unit", "single"):
             findings.notes.append(
                 TWO_UNIT_NOTE if home_type == "two_unit" else LONE_HOUSE_NOTE)
@@ -939,6 +957,7 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
             # Second opinion: the same home under the ordinary zone that
             # would apply if the district's approved plan did not exist.
             ordinary = check_lot(replace(facts, rules=fallback_rules))
+            ordinary.notes.extend(record["notes"])
             findings.results = under_special_approval(findings.results, district)
             project = _project_for(lot_points.loc[lot_id], projects, project_tree)
             record.update({

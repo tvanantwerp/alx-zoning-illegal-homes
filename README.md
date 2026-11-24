@@ -288,6 +288,9 @@ Other details that matter:
   (a strip left where a lot line runs a few feet inside a building) stays
   with the larger piece it touches, so the building keeps its full outline
   where it meets its neighbor.
+- A lot is treated as historic when more than half its area is inside the
+  historic districts. The pop-up gives the percentage for lots the boundary
+  crosses. This is how the map handles split lots.
 - Lots that one owner has built a single house across are joined.
 - Homes that share a wall (twins, townhouses) are not expected to have a yard
   on that side. The exception is half of a twin on a lot of its own in R-20,

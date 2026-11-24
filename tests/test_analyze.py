@@ -71,6 +71,16 @@ def test_piece_mostly_off_every_lot_is_still_dropped():
     assert placed.empty
 
 
+def test_historic_share_counts_area_even_if_the_lots_center_is_outside():
+    from alx_zoning_illegal_homes.mapper.analyze import _historic_shares
+
+    lots = gpd.GeoSeries([box(0, 0, 10, 10), box(-5, 0, 5, 10),
+                         box(-10, 0, 0, 10), box(0, 0, 1, 10)])
+    district = box(0, 0, 4, 10).union(box(7, 0, 10, 10))
+    assert not lots.representative_point().iloc[0].within(district)
+    assert list(_historic_shares(lots, district)) == pytest.approx([0.7, 0.4, 0, 1])
+
+
 def _lot(land_use, condo_units=0):
     return pd.Series({"land_use": land_use, "condo_units": condo_units})
 
