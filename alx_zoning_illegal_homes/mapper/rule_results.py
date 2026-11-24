@@ -678,7 +678,8 @@ def under_special_approval(results: list[RuleResult],
     """
     out = []
     for row in results:
-        plan_sets_it = row.rule in SITE_PLAN_RULES or row.rule.startswith("yard:")
+        plan_sets_it = (row.rule in SITE_PLAN_RULES
+                        or (row.rule.startswith("yard:") and row.rule != "yard:street"))
         if plan_sets_it and row.status in (NO_RULE, NOT_CHECKED):
             row = replace(row, status=NOT_REQUIRED, explanation=(
                 f"The approved site plan for {district.name} sets lot sizes and "

@@ -1721,7 +1721,7 @@ def _check_named_street_setbacks(facts, findings):
     Road, Beauregard Street and South Pickett Street, buildings must stand a
     set distance back: from the street's centerline, or on Mount Vernon Avenue
     from the front lot line. This holds in every zone, even where the zone
-    asks no front yard, but not under a planned district's approved plan.
+    asks no front yard, unless an approved district plan explicitly waives it.
     Only lots on one of those stretches get a row. The building closest to
     failing sets it, outbuildings included. When one of the streets couldn't
     be measured, a pass becomes "not checked", since that street might fail.

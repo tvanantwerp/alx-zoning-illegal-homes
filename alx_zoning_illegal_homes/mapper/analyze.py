@@ -955,7 +955,7 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
                 f"This lot is in the {district.name} planned district "
                 f"({label.strip()}). City Council approved a plan for the whole "
                 "district, which replaces the ordinary zone rules there. "
-                f"{district.plan_summary} Lot sizes and yards there are drawn "
+                f"{district.plan_summary} Lot sizes and ordinary yards there are drawn "
                 "lot by lot on the approved site plans, not set by general "
                 "rules, so they are not judged."
                 + (f" City case file: {project}." if project else "")))

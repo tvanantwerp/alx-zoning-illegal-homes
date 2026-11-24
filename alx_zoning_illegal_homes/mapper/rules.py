@@ -860,6 +860,11 @@ class PlannedDistrict:
     plan_summary: str = ""
 
 
+# Section 5-602, Table 1 explicitly waives section 7-1000 for these
+# approved plans. These districts have no home lots in the current data.
+PLANS_WAIVING_NAMED_STREET_SETBACKS = frozenset({"CDD#29", "CDD#30"})
+
+
 PLANNED_DISTRICTS = {
     # The fallback floor area ratio is 1.25 within 1,000 ft of the King
     # Street Metro kiosk and 1.0 elsewhere; see duke_street_floor_area().
@@ -1062,7 +1067,7 @@ def planned_district_rules(label, in_historic_district=False, zone=None, changes
         if district.plan_height else {},
         height_near_street_waived=district.plan_waives_height_near_street,
         long_townhouse_rows="plan",
-        named_street_setbacks=False,
+        named_street_setbacks=key not in PLANS_WAIVING_NAMED_STREET_SETBACKS,
     )
     from_table = {}
     if zone is None or zone == district.fallback_zone:
