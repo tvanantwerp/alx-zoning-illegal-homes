@@ -482,6 +482,23 @@ ZONES = {
             "buildings could be built new. Where a lot provides at least two "
             "parking spaces, one may count as open space."),
     ),
+    # Sections 3-1402 and 3-1405 through 3-1407. Townhouses and the affordable
+    # housing FAR increase require a special use permit (sections 3-1403 and 3-1406).
+    "RMF": ZoneRules(
+        name="RMF",
+        allowed=frozenset({"multi"}),
+        no_front_yard_for=ALL_TYPES,
+        side_yard={"multi": Yard(8)},
+        rear_yard=Yard(8),
+        max_floor_area_ratio=0.75,
+        height_set_by="the governing small area plan",
+        min_open_space=0.25,
+        open_space_applies_to=frozenset({"multi"}),
+        open_space_note=(
+            "The RMF zone requires the residential portion of a development to provide "
+            "25% open space and may allow substitute amenities. The map estimates "
+            "open space on this lot using the land and buildings it can measure."),
+    ),
     "RS": ZoneRules(
         name="RS",
         allowed=frozenset({"townhouse"}),
@@ -1272,15 +1289,21 @@ HOME_TYPE_NAMES = {
 }
 
 
-def normalize_zone(label) -> str | None:
-    """Turn the parcel layer's zone label into a key of ZONES.
-
-    The parcel layer writes "R 8" and "R 2-5" where the ordinance writes
-    "R-8" and "R-2-5". Lots split between two zones return None.
-    """
-    if not isinstance(label, str):
+def zoning_key(label) -> str | None:
+    """Standardize labels from the parcel and zoning layers, including planned districts."""
+    if not isinstance(label, str) or not label.strip():
         return None
-    zone = label.strip().upper().replace(" ", "-")
+    key = label.strip().upper()
+    if key.startswith("CDD #"):
+        return key.replace("CDD #", "CDD#", 1)
+    if key in {"R20", "R12", "R8", "R5", "R2-5"}:
+        return f"R-{key[1:]}"
+    return key.replace(" ", "-")
+
+
+def normalize_zone(label) -> str | None:
+    """Return the standardized label for an ordinary zone with rules."""
+    zone = zoning_key(label)
     return zone if zone in ZONES else None
 
 

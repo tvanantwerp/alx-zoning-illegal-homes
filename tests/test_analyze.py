@@ -5,7 +5,8 @@ import pytest
 from shapely.geometry import box
 
 from alx_zoning_illegal_homes.mapper.analyze import (
-    _home_type, _match_buildings_to_lots, _outbuilding, _place_buildings, _row_sizes)
+    _home_type, _mapped_zone_labels, _match_buildings_to_lots, _outbuilding,
+    _place_buildings, _row_sizes)
 
 
 def place(lot_shapes, building_shapes, is_home=True):
@@ -28,6 +29,16 @@ def place(lot_shapes, building_shapes, is_home=True):
     buildings["footprint"] = buildings.geometry.area
     pairs = _match_buildings_to_lots(lots, buildings)
     return _place_buildings(lots, buildings, pairs)
+
+
+def test_map_zone_uses_largest_combined_overlap_and_ignores_boundary_touches():
+    lots = gpd.GeoSeries([box(0, 0, 10, 10), box(10, 0, 20, 10), box(20, 0, 30, 10)])
+    zones = gpd.GeoDataFrame({"zone": ["R8", "R 8", "R8", "RB", "CDD #1"]},
+                             geometry=[box(0, 0, 3, 10), box(7, 0, 10, 10), box(1, 0, 3, 10),
+                                       box(3, 0, 7, 10), box(10, 0, 20, 10)])
+    chosen = _mapped_zone_labels(lots, zones)
+    assert chosen.iloc[:2].tolist() == ["R-8", "CDD#1"]
+    assert pd.isna(chosen.iloc[2])
 
 
 def test_disconnected_scrap_does_not_follow_its_adjacent_component():

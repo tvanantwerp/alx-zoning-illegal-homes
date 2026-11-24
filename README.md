@@ -37,7 +37,7 @@ left out of git, so run `create-map` before serving the site.
 
 Every lot with a home is measured against the rules for its zone. That covers
 the residential zones (R-20, R-12, R-8, R-5, R-2-5, RA, RB, RCX, RC, RD, RM,
-RS, RT) and homes in the commercial, office and waterfront zones (CL, CC, CSL,
+RMF, RS, RT) and homes in the commercial, office and waterfront zones (CL, CC, CSL,
 CG, CD, CDX, OC, OCM, OCH, W-1, CRMU, KR) and in planned districts:
 
 - **Lot size**, **lot width** and **street frontage**. In RA, RB, RM, CL,
@@ -267,6 +267,14 @@ lot's front, sides and rear from shape alone:
 
 Other details that matter:
 
+- The city’s zoning map supplies the zone covering the most area on each
+  lot. The parcel record supplies a fallback where the maps have no area in
+  common. A split lot can be subject to more than one zone in practice.
+- In RMF, the map applies the by-right floor area limit and estimates the
+  residential open space requirement lot by lot. It cannot measure yards or
+  height from a governing small area plan, or confirm a permit that allows
+  additional floor area for committed affordable housing.
+
 - Condo units are stacked on one polygon in the parcel layer, or drawn as
   small outlines on top of the land they share; either way they are folded
   into one lot.
@@ -427,7 +435,7 @@ From the [City of Alexandria open data site](https://cityofalexandria-alexgis.op
 - [Height Districts](https://cityofalexandria-alexgis.opendata.arcgis.com/datasets/AlexGIS::height-districts/explore)
   (height limits that apply on top of each zone's own)
 - [Zoning Map](https://cityofalexandria-alexgis.opendata.arcgis.com/datasets/AlexGIS::zoning/explore)
-  (downloaded but not yet used; zoning comes from the parcel layer)
+  (the main source for each lot’s zone)
 
 The Zoning Ordinance is published at
 [library.municode.com](https://library.municode.com/va/alexandria/codes/zoning).
