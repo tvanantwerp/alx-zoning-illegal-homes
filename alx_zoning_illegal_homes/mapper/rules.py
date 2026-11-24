@@ -15,8 +15,8 @@ Home types used throughout:
 The ordinance's "two-unit dwelling" covers both a twin (two homes side by
 side, sharing a wall) and a duplex (one home above the other). Where the
 two get different street frontage, a whole two-unit house on one lot uses
-the twin's: the map finds these houses as two attached outlines side by
-side, which a stacked duplex would not show.
+the rule for a whole twin: the map finds these houses as two attached
+outlines side by side, which a stacked duplex would not show.
 
 Every zone below was compared with its section of the ordinance. Rules the
 map could measure are here; these kinds are left out on purpose, in every
@@ -28,10 +28,15 @@ zone that has them:
   measured over a site plan's land, streets and common areas included,
   which the parcel map can't rebuild. Each zone's lot size per home asks
   about the same of a single lot.
-- Anything the ordinance lets a special permit, the planning commission or
-  the board of architectural review loosen, such as smaller townhouse lots
-  or narrower lots on a curved street. The map holds every home to the
-  limit that applies without that approval.
+- Site-specific relief from the planning commission, City Council, the board
+  of architectural review or the board of zoning appeals. For example, the
+  latter can grant a special exception under section 11-1302(D) for a taller
+  house in some residential zones. The map generally applies the limit that
+  applies without an approval. An RB front yard in a historic district is
+  left unchecked when its setback could have been approved by the board of
+  architectural review. Site plans can change certain minimums under section
+  11-416. Cluster approvals can also change yard and lot requirements and
+  count common open space under sections 11-603 and 11-604.
 - Rules for shops, offices and other non-home uses, and site plan rules
   for a whole new development (parking, landscaping, building form).
 
@@ -106,8 +111,11 @@ _RB_OLDER_APARTMENTS = OlderHomeAllowance(
     rule=("The RB zone lets land that was zoned RB by February 27, 1973 be used "
           "for apartment buildings if it had apartment buildings on it before "
           "March 28, 1978."),
-    unconfirmed=("The map has no record of past zoning, so it couldn't confirm "
-                 "this land was zoned RB by 1973."),
+    unconfirmed=("Section 3-707(A) also covers qualifying land in an urban "
+                 "renewal project established before February 22, 1973, or "
+                 "with a site plan submitted before March 28, 1978 and an "
+                 "approved special use permit. The map cannot verify that a lot was "
+                 "zoned RB by 1973, urban renewal boundaries or these approvals."),
 )
 
 
@@ -130,6 +138,11 @@ def _older_houses(zone: str) -> dict:
     return {"single": allowance, "semi": allowance, "two_unit": allowance}
 
 
+# Sections 12-401, 12-402 and 12-405. Eligibility depends on lot and ownership
+# history the parcel map cannot confirm, so the standard lot measurements stay.
+UNDERSIZED_LOT_PERMIT_ZONES = frozenset({"R-20", "R-12", "R-8", "R-5", "R-2-5"})
+
+
 @dataclass(frozen=True)
 class ZoneRules:
     """Everything we check for one zone. Dicts are keyed by home type."""
@@ -145,16 +158,22 @@ class ZoneRules:
     # Homes near Eisenhower Avenue old enough to need no special permit
     # (OCH only), as an OlderHomeAllowance.
     eisenhower_older_homes: OlderHomeAllowance | None = None
+    # Why a residential use that fails the home type rule is restricted.
+    home_type_restriction_note: str = ""
     # How messages refer to these rules, after the word "the".
     described_as: str = ""
+    # Use restrictions the home-type row can explain but the map cannot measure.
+    home_type_note: str = ""
     # Largest apartment building allowed, counted in homes. None = no cap.
     max_multi_units: int | None = None
-    # Minimum lot area. For townhouses this is per home.
+    # Minimum lot area. For these home types, the area is per home.
     lot_area: dict = field(default_factory=dict)
+    lot_area_per_home_for: frozenset = frozenset({"townhouse"})
     corner_lot_area: dict = field(default_factory=dict)
     lot_width: dict = field(default_factory=dict)
-    corner_lot_width: dict = field(default_factory=dict)
-    end_lot_width: dict = field(default_factory=dict)
+    # Use None to explicitly set no width rule for this lot position.
+    corner_lot_width: dict[str, float | None] = field(default_factory=dict)
+    end_lot_width: dict[str, float | None] = field(default_factory=dict)
     frontage: dict = field(default_factory=dict)
     # Most zones give a townhouse lot the same minimum at the front lot line
     # (frontage) as at the building line (width), including the larger end
@@ -169,6 +188,10 @@ class ZoneRules:
     # the lot line running along the shared wall. Where it may not (R-20
     # through R-5), that lot line leaves the half with no side yard there.
     split_twin_lots_allowed: bool = True
+    # Some zone sections require townhouse side yards only on interior end lots.
+    townhouse_side_yard_on_interior_ends_only: bool = False
+    # Exact widths at or below this are also exempt, where the ordinance says wider than.
+    townhouse_side_yard_exempt_through_width: float | None = None
     # One rear yard rule for the zone, or a dict keyed by home type.
     rear_yard: Yard | dict | None = None
     # The RM zone's corner lot rule: both street sides are front yards, and
@@ -183,6 +206,9 @@ class ZoneRules:
     # neighbors' front yards, but once the shallowest of them is deeper than
     # this, a home needs only this much.
     contextual_front_yard: float | None = None
+    # In house zones, a neighbor's roof drawn on or across its front
+    # lot line is too uncertain to set the contextual range.
+    screen_touching_front_neighbors: bool = False
     # The RM and CD zones' rule: the front wall sits at the front lot line,
     # unless most other buildings on the same side of the block stand
     # further back, and then at their average distance from it.
@@ -296,6 +322,7 @@ def _low_density(name, area, corner_area, width, corner_width, frontage,
         curved_frontage={t: curved for t in types} if curved else {},
         width_measured_at=measured_at,
         contextual_front_yard=front,
+        screen_touching_front_neighbors=True,
         side_yard={t: Yard(yard, side_share) for t in types},
         split_twin_lots_allowed=bool(semi),
         rear_yard=Yard(yard, 1.0),
@@ -328,8 +355,9 @@ ZONES = {
             "area": {"semi": 2500},
             "corner_area": {"semi": 3250},
             "width": {"semi": 25},
-            # A whole twin on one lot needs 25 ft for each of its two homes.
-            "frontage": {"semi": 25, "two_unit": 50},
+            # Section 3-505(C) gives each separately lotted half 25 ft.
+            # A whole twin uses the regular 40 ft lot frontage.
+            "frontage": {"semi": 25},
         },
     ),
     "RA": ZoneRules(
@@ -345,6 +373,7 @@ ZONES = {
                   "townhouse": 18},
         width_measured_at=20,
         contextual_front_yard=20,
+        screen_touching_front_neighbors=True,
         side_yard={
             "single": Yard(7, 1 / 3),
             "semi": Yard(7, 1 / 3),
@@ -360,21 +389,23 @@ ZONES = {
                     "multi": 45},
         min_open_space=0.35,
     ),
-    # The zone asks 1,980 sq ft of land for each home, apartments included.
-    # Apartments here are allowed only as older ones (see
-    # _RB_OLDER_APARTMENTS), and the map has no rule for land per apartment
-    # yet, so their lot size isn't checked.
+    # Section 3-705(B)(1) asks 1,980 sq ft per home, including apartments.
+    # The map has no records for the 1,600 sq ft exception on certain urban
+    # renewal land (section 3-707(C)).
     "RB": ZoneRules(
         name="RB",
         allowed=frozenset(HOUSE_LIKE),
         allowed_if_built_before={"multi": _RB_OLDER_APARTMENTS},
-        lot_area={"single": 1980, "semi": 1980, "two_unit": 3960, "townhouse": 1980},
-        lot_width={"single": 50, "semi": 25, "two_unit": 50, "townhouse": 18},
+        lot_area={"single": 1980, "semi": 1980, "two_unit": 3960, "townhouse": 1980,
+                  "multi": 1980},
+        lot_area_per_home_for=frozenset({"townhouse", "multi"}),
+        lot_width={"single": 50, "semi": 25, "two_unit": 50, "townhouse": 18, "multi": 50},
         end_lot_width={"townhouse": 26},
         corner_lot_width={"townhouse": 38},
-        frontage={"single": 50, "semi": 25, "two_unit": 50, "townhouse": 18},
+        frontage={"single": 50, "semi": 25, "two_unit": 50, "townhouse": 18, "multi": 50},
         width_measured_at=20,
         contextual_front_yard=20,
+        screen_touching_front_neighbors=True,
         side_yard={
             "single": Yard(8, 1 / 3),
             "semi": Yard(8, 1 / 3),
@@ -432,8 +463,8 @@ ZONES = {
         max_height={"townhouse": 150, "multi": 150},
         min_open_space=0.35,
     ),
-    # The zone also caps homes at 100 an acre. None of its few home lots
-    # comes near that, so it isn't checked.
+    # Section 3-1005 also caps density at 100 homes per acre. The map
+    # does not check this cap.
     "RD": ZoneRules(
         name="RD",
         allowed=frozenset({"multi"}),
@@ -458,8 +489,12 @@ ZONES = {
         # 1,452 sq ft and 25 ft of frontage for each home, so a two-unit
         # house needs twice both.
         lot_area={"single": 1452, "semi": 1452, "two_unit": 2904, "townhouse": 1452},
-        lot_width={"single": 25, "semi": 25, "two_unit": 25, "townhouse": 18},
+        # Section 3-1105(C)(1) specifies frontage only for twins.
+        lot_width={"single": 25, "townhouse": 18},
         frontage={"single": 25, "semi": 25, "two_unit": 50, "townhouse": 18},
+        # Section 3-1105(C)(2) applies to interior townhouse lots only.
+        end_lot_width={"townhouse": None},
+        corner_lot_width={"townhouse": None},
         front_yard_by_block_average=True,
         side_yards_by_lot_width=True,
         rear_yard=Yard(16, 1 / 2),
@@ -551,6 +586,9 @@ def _commercial(name, townhouse_area, far, height, historic_far=False,
         },
         "rear_yard": Yard(8, 1.0),
         "no_side_yard_below_width": 25,
+        # Commercial and office side yard regulations (Article IV).
+        "townhouse_side_yard_on_interior_ends_only": True,
+        "townhouse_side_yard_exempt_through_width": 25,
         "max_floor_area_ratio": far,
         "historic_floor_area_ratio":
             {kind: 1.50 for kind in HOUSE_LIKE} if historic_far else {},
@@ -604,7 +642,8 @@ ZONES |= {
         allowed=ALL_TYPES,
         # Section 4-505(B) asks 1,452 sq ft of each house, two-unit house and
         # townhouse ("dwelling"), not of each home in it as the RM zone does.
-        lot_area={kind: 1452 for kind in HOUSE_LIKE},
+        # Apportion the whole twin's minimum evenly across separately lotted halves.
+        lot_area={kind: 1452 for kind in HOUSE_LIKE} | {"semi": 726},
         lot_width={"single": 25, "semi": 25, "two_unit": 25, "townhouse": 18,
                    "multi": 50},
         # A twin needs 25 ft of frontage for each of its homes.
@@ -612,6 +651,8 @@ ZONES |= {
                   "multi": 50},
         front_yard_by_block_average=True,
         side_yard={kind: Yard(5) for kind in HOUSE_LIKE} | {"multi": Yard(25, 1 / 3)},
+        # Section 4-506(A)(2)(b) exempts widths less than 25 ft. Exactly 25 qualifies.
+        townhouse_side_yard_on_interior_ends_only=True,
         rear_yard={kind: Yard(16, 1 / 2) for kind in HOUSE_LIKE}
         | {"multi": Yard(25, 1.0)},
         no_side_yard_below_width=25,
@@ -637,6 +678,11 @@ ZONES |= {
     "W-1": ZoneRules(
         name="W-1",
         allowed=ALL_TYPES,
+        home_type_note=(
+            "Section 5-509 bars homes on the ground floor unless a site plan "
+            "with publicly accessible waterfront amenities was approved, or "
+            "a preliminary site plan was approved by June 28, 1988. The map "
+            "has no record of these approvals or which floor each home occupies."),
         # Section 5-506(A) asks no front yard of any building, but 5-512
         # gives houses and townhouses one set by the neighboring homes.
         no_front_yard_for=frozenset({"multi"}),
@@ -644,12 +690,17 @@ ZONES |= {
         lot_area={"single": 5000, "semi": 2500, "two_unit": 5000, "townhouse": 1452},
         lot_width={"single": 50, "semi": 25, "two_unit": 50, "townhouse": 18,
                    "multi": 50},
+        # Section 5-505(C)(2) gives end lots, including corners, 26 ft.
         end_lot_width={"townhouse": 26},
+        corner_lot_width={"townhouse": 26},
         frontage={"single": 50, "semi": 25, "two_unit": 50, "townhouse": 18,
                   "multi": 50},
         side_yard={"single": Yard(8, 1 / 3), "semi": Yard(8, 1 / 3),
                    "two_unit": Yard(8, 1 / 3), "townhouse": Yard(8),
                    "multi": Yard(16, 1 / 2)},
+        # Section 5-506(B)(1).
+        townhouse_side_yard_on_interior_ends_only=True,
+        townhouse_side_yard_exempt_through_width=25,
         rear_yard={kind: Yard(8, 1.0) for kind in HOUSE_LIKE}
         | {"multi": Yard(16, 1 / 2)},
         no_side_yard_below_width=25,
@@ -675,6 +726,9 @@ _MIXED_USE_HOUSES = {
     "side_yard": {kind: Yard(8, 1 / 3) for kind in ("single", "semi", "two_unit")},
     "rear_yard": {kind: Yard(8, 1.0) for kind in ("single", "semi", "two_unit")},
     "no_side_yard_below_width": 25,
+    # Sections 5-111, 5-211, 5-311 and 5-404.
+    "townhouse_side_yard_on_interior_ends_only": True,
+    "townhouse_side_yard_exempt_through_width": 25,
 }
 
 # The mixed-use zones. Bigger projects there need a special permit; these
@@ -740,6 +794,29 @@ ZONES |= {
     # Industrial and utility zones do not allow homes at all.
     "I": ZoneRules(name="I (industrial)", allowed=frozenset()),
     "UT": ZoneRules(name="UT (utility)", allowed=frozenset()),
+    # Sections 4-700, 4-1400, 6-100 and 6-200.
+    "CR": ZoneRules(
+        name="CR", allowed=frozenset(),
+        home_type_restriction_note=(
+            "The CR zone provides for regional commercial uses, including shopping, "
+            "services and offices."),
+    ),
+    "NR": ZoneRules(
+        name="NR", allowed=frozenset(),
+        home_type_restriction_note=(
+            "The NR zone allows up to four homes above or behind shops and may allow "
+            "townhouses with a special use permit. The map checks ordinary home uses here."),
+    ),
+    "POS": ZoneRules(
+        name="POS", allowed=frozenset(),
+        home_type_restriction_note=(
+            "The POS zone is for public open space and community recreation."),
+    ),
+    "WPR": ZoneRules(
+        name="WPR", allowed=frozenset(),
+        home_type_restriction_note=(
+            "The WPR zone is for waterfront parks and recreation."),
+    ),
 }
 # No special permit may allow a row of more than eight townhouses here.
 ZONES |= {zone: replace(ZONES[zone], long_townhouse_rows="never")
@@ -825,6 +902,11 @@ class PlannedDistrict:
     plan_waives_height_near_street: bool = False
     # Plain-language summary of what the approved plan allows.
     plan_summary: str = ""
+
+
+# Section 5-602, Table 1 explicitly waives section 7-1000 for these
+# approved plans. These districts have no home lots in the current data.
+PLANS_WAIVING_NAMED_STREET_SETBACKS = frozenset({"CDD#29", "CDD#30"})
 
 
 PLANNED_DISTRICTS = {
@@ -1029,7 +1111,7 @@ def planned_district_rules(label, in_historic_district=False, zone=None, changes
         if district.plan_height else {},
         height_near_street_waived=district.plan_waives_height_near_street,
         long_townhouse_rows="plan",
-        named_street_setbacks=False,
+        named_street_setbacks=key not in PLANS_WAIVING_NAMED_STREET_SETBACKS,
     )
     from_table = {}
     if zone is None or zone == district.fallback_zone:
@@ -1122,6 +1204,7 @@ RB_HISTORIC = ZoneRules(
     allowed=ZONES["RB"].allowed,
     allowed_if_built_before=ZONES["RB"].allowed_if_built_before,
     lot_area=ZONES["RB"].lot_area,
+    lot_area_per_home_for=ZONES["RB"].lot_area_per_home_for,
     lot_width=ZONES["RB"].lot_width,
     end_lot_width=ZONES["RB"].end_lot_width,
     corner_lot_width=ZONES["RB"].corner_lot_width,

@@ -1,4 +1,6 @@
 """Lot-edge detection and lot measurement on simple made-up blocks."""
+import math
+
 import pytest
 from shapely.geometry import LineString, Polygon, box
 from shapely.ops import unary_union
@@ -43,6 +45,19 @@ def test_corner_lot_front_follows_the_address():
     assert lines.frontage == pytest.approx(100, abs=0.1)
 
 
+@pytest.mark.parametrize("address", ["MAIN", "OAK", "NORTH"])
+def test_three_front_lot_can_be_both_corner_and_through(address):
+    # The west edge faces Oak only at the north end of the parcel. It meets
+    # North St, while the Main St frontage sits at the other end of the lot.
+    lot = box(0, 0, 50, 200)
+    north = ("NORTH", LineString([(-200, 225), (400, 225)]))
+    neighbors = unary_union([box(-50, 0, 0, 110), box(50, 0, 100, 200)])
+    lines = classify(lot, neighbors, [MAIN, OAK, north], address)
+    assert set(lines.fronts) == {"MAIN", "OAK", "NORTH"}
+    assert lines.primary_street == address
+    assert lines.is_corner and lines.is_through
+
+
 def test_edge_beside_an_alley_is_not_a_street_front():
     # With no lot to the east, the far lot's east edge is open land, but it
     # runs square to Main St and so must not count as fronting it.
@@ -69,6 +84,32 @@ def test_pie_shaped_lot_is_wider_at_the_building_line():
     lines = classify(pie, None, [MAIN], "MAIN")
     assert lines.frontage == pytest.approx(20, abs=0.1)
     assert lot_width(pie, lines, 30) == pytest.approx(38, abs=1.5)
+
+
+@pytest.mark.parametrize("radial", [True, False])
+def test_curved_frontage_needs_radial_side_lot_lines(radial):
+    def arc(radius):
+        return [(radius * math.cos(math.radians(angle)), radius * math.sin(math.radians(angle)))
+                for angle in range(60, 121, 10)]
+
+    front = arc(50)
+    if radial:
+        outer = arc(120)
+        back = [outer[-1], outer[0]]
+    else:
+        back = [(front[-1][0], 120), (front[0][0], 120)]
+    lot = Polygon([*front, *back])
+    lines = classify(lot, None, [("CURVE", LineString(arc(25)))], "CURVE")
+    assert lines.front_is_curved_with_radial_sides == radial
+
+
+def test_rounded_street_corner_does_not_qualify_for_curved_frontage():
+    lot = Polygon([(0, 0), (35, 0), (46, 2), (55, 10), (60, 22),
+                   (60, 100), (0, 100)])
+    side = ("SIDE", LineString([(85, -100), (85, 300)]))
+    lines = classify(lot, None, [MAIN, side], "MAIN")
+    assert lines.is_corner
+    assert not lines.front_is_curved_with_radial_sides
 
 
 def test_flag_lot_is_measured_in_its_narrow_stem():

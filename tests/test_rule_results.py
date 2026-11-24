@@ -56,7 +56,7 @@ def test_no_street_leaves_frontage_and_width_unchecked():
                      lines=classify(lot, None, [], None), all_buildings=[box(20, 35, 60, 75)])
     r = rows(check_lot(facts))
     assert r["frontage"].status == r["width"].status == NOT_CHECKED
-    assert "public street" in r["frontage"].explanation
+    assert "street next to this lot" in r["frontage"].explanation
 
 
 def test_failing_rows_match_reasons_for_lot_rules():
@@ -380,7 +380,7 @@ def test_no_street_leaves_yards_unchecked_but_measures_the_nearest_line():
                      lines=classify(lot, None, [], None), all_buildings=[box(3, 35, 43, 75)])
     f = check_lot(facts)
     r = rows(f)
-    assert r["yard:left"].status == NOT_CHECKED and "public street" in r["yard:left"].explanation
+    assert r["yard:left"].status == NOT_CHECKED and "street next to this lot" in r["yard:left"].explanation
     assert r["yard:nearest"].name == "Closest lot line"
     assert r["yard:nearest"].status == FAILS and r["yard:nearest"].required == 8
     assert r["yard:nearest"].shapes["gap"].length == pytest.approx(3)
@@ -723,12 +723,12 @@ def test_too_tall_pitched_roof_reason_names_the_peak():
         "Too tall: about 42 ft measured the ordinance's way (roof peak about 50 ft)")
 
 
-def test_apartment_building_roof_is_taken_as_flat():
+def test_tall_apartment_building_roof_is_taken_as_flat():
     lot = box(0, 0, 200, 200)
     rules = ZONES["RA"]
     limit = rules.max_height["multi"]
     _, f = check(lot, box(40, 40, 160, 160), "RA", home_type="multi", units=4,
-                 height=limit + 10, stories=2)
+                 height=limit + 10, stories=6)
     row = rows(f)["height"]
     assert row.status == FAILS and row.measured == limit + 10
     assert row.detail is None
@@ -825,3 +825,20 @@ def test_crmu_x_apartments_need_open_space_or_approved_amenities():
     _, findings = check(YARD_LOT, box(10, 10, 40, 40), "CRMU/X", home_type="multi")
     row = rows(findings)["open_space"]
     assert row.status == NOT_CHECKED and row.required == 0.25
+
+
+def test_undersized_house_lot_explains_special_permit():
+    kinds, found = check(box(0, 0, 30, 90), box(5, 20, 25, 55), "R-8")
+    assert "lot_size" in kinds
+    for rule in ("lot_area", "width", "frontage"):
+        result = rows(found)[rule]
+        assert result.status == FAILS
+        assert "City Council" in result.explanation
+
+
+def test_waterfront_home_type_explains_ground_floor_restriction():
+    _, found = check(BIG_LOT, box(20, 35, 60, 75), "W-1")
+    result = rows(found)["home_type"]
+    assert result.status == PASSES
+    assert "ground floor" in result.explanation
+    assert "June 28, 1988" in result.explanation
