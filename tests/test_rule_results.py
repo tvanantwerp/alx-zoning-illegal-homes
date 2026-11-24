@@ -694,12 +694,12 @@ def test_too_tall_pitched_roof_reason_names_the_peak():
         "Too tall: about 42 ft measured the ordinance's way (roof peak about 50 ft)")
 
 
-def test_apartment_building_roof_is_taken_as_flat():
+def test_tall_apartment_building_roof_is_taken_as_flat():
     lot = box(0, 0, 200, 200)
     rules = ZONES["RA"]
     limit = rules.max_height["multi"]
     _, f = check(lot, box(40, 40, 160, 160), "RA", home_type="multi", units=4,
-                 height=limit + 10, stories=2)
+                 height=limit + 10, stories=6)
     row = rows(f)["height"]
     assert row.status == FAILS and row.measured == limit + 10
     assert row.detail is None

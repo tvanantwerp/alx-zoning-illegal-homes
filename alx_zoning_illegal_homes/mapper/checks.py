@@ -74,6 +74,8 @@ ALLEY_CREDIT = 5.0
 # Lot lines closer than this to both a home and its neighbor's home are
 # treated as a shared wall, where no yard is expected.
 SHARED_WALL_GAP = 3.0
+# A lot line within 45 degrees of the front runs along it, not down a side.
+ALONG_FRONT_DIRECTION = np.cos(np.radians(45))
 # A free-standing home drawn closer than this to a lot line is treated as
 # a mapping error, not a real zero-foot yard.
 TOUCHING_GAP = 0.5
@@ -314,16 +316,18 @@ def _shared_line(line, shape, neighbor, min_run=4):
 
 
 def _attached_sides(facts: LotFacts) -> set[int]:
-    """Which sides of the lot's homes share a wall with a neighbor."""
-    if facts.attached_neighbors is None or facts.lines.front_direction is None:
+    """Which left and right sides of the lot's homes share a wall."""
+    along = facts.lines.front_direction
+    if facts.attached_neighbors is None or along is None:
         return set()
     sides = set()
     for home in facts.homes:
         for piece in facts.lines.pieces:
-            if piece.kind == "street":
+            if piece.kind == "street" or abs(piece.direction @ along) > ALONG_FRONT_DIRECTION:
                 continue
-            if not _shared_line(piece.line, home.shape, facts.attached_neighbors).is_empty:
-                sides.add(_side_of(facts, piece.midpoint, home))
+            wall = _shared_line(piece.line, home.shape, facts.attached_neighbors)
+            if not wall.is_empty:
+                sides.add(_side_of(facts, wall.centroid.coords[0], home))
     return sides
 
 
@@ -366,6 +370,7 @@ def _check_home_type(facts, findings) -> OlderHomeAllowance | None:
         ]))
     elif kind not in rules.allowed:
         status, summary = FAILS, f"{name} not allowed in the {rules.label}"
+        explanation = rules.home_type_restriction_note or None
         findings.reasons.append(Reason(
             "home_type",
             f"This kind of home ({name}) is not allowed in the "
@@ -451,7 +456,7 @@ def _check_lot_area(facts, findings, position):
     rules, kind = facts.rules, facts.home_type
     table = rules.corner_lot_area if position == "corner" else rules.lot_area
     required = table.get(kind, rules.lot_area.get(kind))
-    per_home = kind == "townhouse" and facts.units > 1
+    per_home = kind in rules.lot_area_per_home_for and facts.units > 1
     row = RuleResult("lot_area", "Land per home" if per_home else "Lot size",
                      NO_RULE, unit="sq ft",
                      about=TWO_UNIT_LOT if kind == "two_unit" else None)
@@ -738,7 +743,7 @@ def _yard_gaps(facts, home) -> tuple[dict, dict]:
         if piece.kind == "street":
             key = "front"
         else:
-            runs_along_front = abs(piece.direction @ along) > np.cos(np.radians(45))
+            runs_along_front = abs(piece.direction @ along) > ALONG_FRONT_DIRECTION
             behind_home = (piece.midpoint - front_anchor) @ inward > rear_starts
             wall = _shared_line(piece.line, home.shape, facts.attached_neighbors,
                                 min_run=0.01 if remainder_is_rear else 4)
@@ -884,8 +889,11 @@ def _check_yards(facts, findings, width):
         # Where side yards are simply counted (RM, historic RB), a wall on
         # the line is normal, so only the rear is screened there.
         screened = ("rear",) if rules.side_yards_by_lot_width else (-1, 1, "rear")
+        # A building can genuinely sit on its lot line in the historic
+        # districts. If the outline is local enough to measure, judge it.
         touching = [key for key in screened
-                    if key in gaps and gaps[key].gap < TOUCHING_GAP]
+                    if not facts.in_historic_district and key in gaps
+                    and gaps[key].gap < TOUCHING_GAP]
         for key in touching:
             del gaps[key]
         if touching:
@@ -981,7 +989,11 @@ def _contextual_front_row(facts, record, closest, home):
     """
     rules = facts.rules
     cap = rules.contextual_front_yard
-    fronts = _street_fronts(facts, home, facts.contextual_block_face)
+    neighbors = facts.contextual_block_face
+    if rules.screen_touching_front_neighbors:
+        neighbors = {street: [n for n in setbacks if n.distance >= TOUCHING_GAP]
+                     for street, setbacks in neighbors.items()}
+    fronts = _street_fronts(facts, home, neighbors)
     judged = [front for front in fronts if front.neighbors]
     alone = [front.label for front in fronts if not front.neighbors]
     if not judged:
@@ -1076,7 +1088,8 @@ def _side_rows(facts, record, gaps, shared, touching, parts, width):
                           parts, width) for key in (-1, 1)]
 
     measure = width if width is not None else lines.frontage
-    needed = 2 if measure >= 35 else 1 if measure >= 25 else 0
+    # Give an uncertain measurement just above either threshold the lower count.
+    needed = sum(measure > threshold * (1 + WIDTH_MARGIN) for threshold in (25, 35))
     # A shared wall is a side with no yard at all.
     have = sum(gaps[key].gap + DISTANCE_MARGIN >= 5 for key in (-1, 1) if key in gaps)
     short = not lines.is_corner and have < needed
@@ -1723,7 +1736,7 @@ def _check_named_street_setbacks(facts, findings):
     Road, Beauregard Street and South Pickett Street, buildings must stand a
     set distance back: from the street's centerline, or on Mount Vernon Avenue
     from the front lot line. This holds in every zone, even where the zone
-    asks no front yard, but not under a planned district's approved plan.
+    asks no front yard, unless an approved district plan explicitly waives it.
     Only lots on one of those stretches get a row. The building closest to
     failing sets it, outbuildings included. When one of the streets couldn't
     be measured, a pass becomes "not checked", since that street might fail.

@@ -24,6 +24,21 @@ def test_crmu_side_yard_exempts_exact_width_and_corner_end_lots(width, corner):
                if row.rule in ("yard:left", "yard:right"))
 
 
+@pytest.mark.parametrize("zone", ["RM", "RB"])
+@pytest.mark.parametrize("width,expected", [(26.25, "passes"), (26.3, "fails"),
+                                            (36.75, "passes"), (36.8, "fails")])
+def test_counted_side_yards_use_width_margin_at_each_threshold(zone, width, expected):
+    lot = box(0, 0, width, 100)
+    # Just above 25 ft there are no usable side yards, and just above 35 ft
+    # there is only one. Either lot falls short without the width margin.
+    left = 5 if width > 35 else 1
+    _, findings = check(lot, box(left, 20, width - 1, 50), zone,
+                        neighbors=between_neighbors(lot), rules=rules_for(zone, True), historic=True)
+    rows = [row for row in findings.results if row.rule in ("yard:left", "yard:right")]
+    assert any(row.status == "fails" for row in rows) == (expected == "fails")
+    assert all("5% margin" in row.explanation for row in rows)
+
+
 def test_w1_tapered_house_lot_width_is_measured_inland():
     from shapely.geometry import Polygon
     lot = Polygon([(0, 0), (52, 0), (46, 20), (46, 150), (6, 150), (6, 20)])
@@ -33,11 +48,37 @@ def test_w1_tapered_house_lot_width_is_measured_inland():
     assert rows["width"].measured == pytest.approx(40)
 
 
+@pytest.mark.parametrize("historic", [False, True])
+def test_rb_older_apartments_require_50_feet_at_street_and_building(historic):
+    lot = box(0, 0, 40, 120)
+    _, findings = check(lot, box(8, 20, 32, 75), "RB", home_type="multi",
+                        units=3, year_built=1950, historic=historic,
+                        rules=rules_for("RB", historic), neighbors=between_neighbors(lot))
+    rows = {row.rule: row for row in findings.results}
+    for rule in ("frontage", "width"):
+        assert rows[rule].status == "fails"
+        assert rows[rule].required == 50
+
+
 def test_roomy_house_passes_everything():
     lot = box(0, 0, 80, 120)  # 9,600 sq ft in R-8
     kinds, _ = check(lot, box(20, 35, 60, 75), "R-8",
                      neighbors=between_neighbors(lot), floor_area=3000)
     assert kinds == set()
+
+
+@pytest.mark.parametrize("zone,note", [
+    ("CR", "regional commercial uses"),
+    ("NR", "four homes above or behind shops"),
+    ("POS", "public open space"),
+    ("WPR", "waterfront parks"),
+])
+def test_zones_without_ordinary_home_uses_flag_houses(zone, note):
+    kinds, findings = check(box(0, 0, 80, 120), box(20, 30, 60, 80), zone)
+    assert "home_type" in kinds
+    row = _rows(findings)["home_type"]
+    assert row.status == "fails"
+    assert note in row.explanation
 
 
 def test_small_narrow_lot_is_flagged():
@@ -54,6 +95,19 @@ def test_house_near_side_line_is_flagged():
                             neighbors=between_neighbors(lot))
     assert kinds == {"yards"}
     assert "Side yard" in findings.reasons[0].text
+
+
+@pytest.mark.parametrize("zone", ["CD", "CL"])
+@pytest.mark.parametrize("side,home", [
+    ("left", box(0, 35, 40, 75)),
+    ("rear", box(10, 80, 50, 120)),
+])
+def test_historic_home_on_lot_line_is_checked(zone, side, home):
+    lot = box(0, 0, 60, 120)
+    _, findings = check(lot, home, zone, neighbors=between_neighbors(lot), historic=True)
+    yard = next(row for row in findings.results if row.rule == f"yard:{side}")
+    assert yard.status == "fails"
+    assert yard.measured == 0
 
 
 def test_tall_house_needs_a_deeper_side_yard():
@@ -232,6 +286,26 @@ def test_end_townhouse_needs_a_wider_lot():
                             neighbors=between_neighbors(lot), attached=attached)
     assert findings.measurements["position"] == "end"
     assert "lot_width" in kinds
+
+
+@pytest.mark.parametrize("side", ["left", "right"])
+@pytest.mark.parametrize("zone,width", [("RS", 26), ("RT", 45)])
+def test_back_to_back_end_townhouse_keeps_end_width_and_side_yard(side, zone, width):
+    lot = box(0, 0, 22, 90)
+    if side == "left":
+        home = box(3, 20, 22, 90)
+        side_neighbor = box(22, 20, 44, 90)
+    else:
+        home = box(0, 20, 19, 90)
+        side_neighbor = box(-22, 20, 0, 90)
+    attached = unary_union([side_neighbor, box(0, 90, 22, 140)])
+    kinds, findings = check(lot, home, zone, home_type="townhouse",
+                            neighbors=between_neighbors(lot), attached=attached)
+    rows = _rows(findings)
+    assert findings.measurements["position"] == "end"
+    assert "lot_width" in kinds and rows["width"].required == width
+    assert rows[f"yard:{side}"].status == "fails"
+    assert rows["yard:rear"].status == "not_required"
 
 
 def test_home_drawn_on_the_lot_line_is_not_judged():
@@ -505,7 +579,7 @@ def test_zones_that_allow_twin_halves_allow_whole_two_unit_houses():
 
 
 @pytest.mark.parametrize("zone, area, frontage", [
-    ("R-8", 8000, 40), ("R-2-5", 5000, 50), ("RA", 3960, 50), ("RB", 3960, 50),
+    ("R-8", 8000, 40), ("R-2-5", 5000, 40), ("RA", 3960, 50), ("RB", 3960, 50),
     ("RM", 2904, 50), ("CD", 1452, 50), ("CL", 5000, 50), ("OCM(50)", 5000, 50),
     ("CRMU/L", 5000, 50), ("CRMU/X", 5000, 50), ("W-1", 5000, 50),
 ])
@@ -539,7 +613,28 @@ def test_two_unit_house_on_a_twin_halfs_lot_is_too_small():
     assert {"lot_size", "lot_width"} <= kinds
     text = " ".join(r.text for r in findings.reasons)
     assert "requires 5,000 sq ft for a two-unit house" in text
-    assert "requires 50 ft for a two-unit house" in text
+    assert "Lot is too narrow" in text
+    assert _rows(findings)["frontage"].status == "passes"
+    assert _rows(findings)["frontage"].required == 40
+
+
+@pytest.mark.parametrize("home_type,units", [("semi", 1), ("two_unit", 2)])
+def test_rm_twins_have_frontage_but_no_width_minimum(home_type, units):
+    lot = box(0, 0, 45, 100)
+    _, findings = check(lot, box(8, 15, 32, 60), "RM", home_type=home_type, units=units,
+                        neighbors=between_neighbors(lot))
+    rows = _rows(findings)
+    assert rows["width"].status == "no_rule"
+    assert rows["frontage"].required == 25 * units
+
+
+def test_cd_split_twin_half_gets_half_the_whole_twins_lot_area():
+    lot = box(0, 0, 26, 40)
+    _, findings = check(lot, box(0, 0, 16, 20), "CD", home_type="semi",
+                        neighbors=between_neighbors(lot))
+    row = _rows(findings)["lot_area"]
+    assert row.status == "passes"
+    assert row.required == 726
 
 
 def test_older_two_unit_house_passes_in_rc():
@@ -710,6 +805,12 @@ def test_rm_apartments_are_subject_to_the_structure_height_limit():
     assert row.status == "fails" and row.required == 35
 
 
+def test_rm_apartment_height_uses_the_midpoint_of_a_pitched_roof():
+    _, row, _ = _roomy_height(home_type="multi", height=39, stories=3)
+    assert row.measured == pytest.approx(35.5)
+    assert row.status == "passes" and row.required == 45
+
+
 def test_short_sloped_roof_skips_the_would_fail_sentence():
     _, row, _ = _roomy_height(height=30, stories=2)
     assert row.required == 45 and "may be held to 35 ft" in row.explanation
@@ -728,7 +829,7 @@ def test_roof_of_the_tallest_part_decides_the_limit():
 def test_cd_apartment_building_keeps_its_50_ft_limit():
     lot = box(0, 0, 120, 120)
     _, findings = check(lot, box(30, 30, 90, 90), "CD", home_type="multi", units=6,
-                        neighbors=between_neighbors(lot), height=48, stories=4)
+                        neighbors=between_neighbors(lot), height=48, stories=5)
     row = _rows(findings)["height"]
     assert row.required == 50 and "ridge" not in row.explanation
 
@@ -745,6 +846,20 @@ def test_older_lot_rule_skips_apartments():
     kinds, findings = check(lot, box(10, 35, 30, 65), "RA", home_type="multi", units=3,
                             neighbors=between_neighbors(lot))
     assert "lot_width" in kinds and _rows(findings)["width"].status == "fails"
+
+
+@pytest.mark.parametrize("historic", [False, True])
+@pytest.mark.parametrize("units,status", [(3, "passes"), (4, "fails")])
+def test_rb_older_apartment_lot_area_is_per_home(historic, units, status):
+    lot = box(0, 0, 60, 100)
+    _, findings = check(lot, box(16, 20, 44, 70), "RB", home_type="multi",
+                        units=units, year_built=1950, historic=historic,
+                        rules=rules_for("RB", historic), neighbors=between_neighbors(lot))
+    row = _rows(findings)["lot_area"]
+    assert row.name == "Land per home"
+    assert row.status == status
+    assert row.measured == 6000 / units
+    assert row.required == 1980
 
 
 def test_crmu_m_is_left_out_of_the_older_lot_rule():
