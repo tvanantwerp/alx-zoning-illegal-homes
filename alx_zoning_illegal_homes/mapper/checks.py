@@ -408,7 +408,6 @@ def _check_home_type(facts, findings) -> OlderHomeAllowance | None:
     return allowance
 
 
-
 def _check_twin_wall(facts, findings):
     """Check the facing wall share of a semi-detached two-unit dwelling (section 2-140)."""
     if facts.home_type not in {"semi", "two_unit"}:
@@ -431,6 +430,7 @@ def _check_twin_wall(facts, findings):
             "The zoning definition requires at least 50%."))
     else:
         row.status = PASSES
+
 
 def _check_row_length(facts, findings):
     """Check how many townhouses share one building with this lot's.
@@ -1474,7 +1474,6 @@ class HeightLimit:
     source: str
 
 
-
 def _check_accessory_sizes(facts, findings):
     """Compare mapped garages and sheds to their principal building (section 2-123.1)."""
     accessories = [part for part in facts.outbuildings if part.label == "garage or shed"]
@@ -1523,6 +1522,7 @@ def _check_accessory_sizes(facts, findings):
             row.status = PASSES
         else:
             row.explanation = "At least one other garage or shed has no measured height."
+
 
 def _map_height_limit(facts: LotFacts, home: Home) -> HeightLimit | None:
     """The height district map's limit for one home, or None where the map sets none."""

@@ -344,7 +344,6 @@ def _shared_walls(home_shapes) -> tuple[np.ndarray, np.ndarray]:
     return left[keep], right[keep]
 
 
-
 def _twin_wall_share(first, second) -> float:
     """Estimate the shared share of the shorter of two facing wall segments."""
     other_walls = list(_wall_segments(second))
@@ -372,6 +371,7 @@ def _mapped_twin_wall(home_type, outlines, neighbors) -> float | None:
         if len(facing) == 1:
             return _twin_wall_share(outline, facing[0])
     return None
+
 
 def _long_side(shape) -> float:
     """The long side of the smallest rectangle, turned to any angle, that holds a shape."""
