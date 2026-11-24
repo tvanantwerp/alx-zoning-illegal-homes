@@ -45,6 +45,19 @@ def test_corner_lot_front_follows_the_address():
     assert lines.frontage == pytest.approx(100, abs=0.1)
 
 
+@pytest.mark.parametrize("address", ["MAIN", "OAK", "NORTH"])
+def test_three_front_lot_can_be_both_corner_and_through(address):
+    # The west edge faces Oak only at the north end of the parcel. It meets
+    # North St, while the Main St frontage sits at the other end of the lot.
+    lot = box(0, 0, 50, 200)
+    north = ("NORTH", LineString([(-200, 225), (400, 225)]))
+    neighbors = unary_union([box(-50, 0, 0, 110), box(50, 0, 100, 200)])
+    lines = classify(lot, neighbors, [MAIN, OAK, north], address)
+    assert set(lines.fronts) == {"MAIN", "OAK", "NORTH"}
+    assert lines.primary_street == address
+    assert lines.is_corner and lines.is_through
+
+
 def test_edge_beside_an_alley_is_not_a_street_front():
     # With no lot to the east, the far lot's east edge is open land, but it
     # runs square to Main St and so must not count as fronting it.

@@ -662,8 +662,9 @@ def side_count_explanation(zone_label: str, width: float, needed: int) -> str:
     ending = {0: "none.", 1: "a 5 ft yard on at least one side."}.get(
         needed, "a 5 ft yard on both sides.")
     return (f"In the {zone_label}, side yards depend on lot width: none on lots under "
-            "25 ft wide, one 5 ft side yard from 25 to 35 ft, and two at 35 ft or more. "
-            f"This lot is about {format_feet(width)} wide, so it needs {ending}")
+            "25 ft wide, one 5 ft side yard from 25 ft up to 35 ft, and two at "
+            "35 ft or more. With the 5% margin for measuring width, "
+            f"this lot measures about {format_feet(width)} wide and needs {ending}")
 
 
 def under_special_approval(results: list[RuleResult],
@@ -677,7 +678,8 @@ def under_special_approval(results: list[RuleResult],
     """
     out = []
     for row in results:
-        plan_sets_it = row.rule in SITE_PLAN_RULES or row.rule.startswith("yard:")
+        plan_sets_it = (row.rule in SITE_PLAN_RULES
+                        or (row.rule.startswith("yard:") and row.rule != "yard:street"))
         if plan_sets_it and row.status in (NO_RULE, NOT_CHECKED):
             row = replace(row, status=NOT_REQUIRED, explanation=(
                 f"The approved site plan for {district.name} sets lot sizes and "

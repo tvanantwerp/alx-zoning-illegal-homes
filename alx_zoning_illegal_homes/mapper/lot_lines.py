@@ -19,6 +19,7 @@ All coordinates are in feet.
 """
 from dataclasses import dataclass, field
 from functools import cached_property
+from itertools import combinations
 from typing import NamedTuple
 
 import numpy as np
@@ -135,10 +136,23 @@ class LotLines:
     pieces: list[Piece]
     fronts: dict[str, MultiLineString] = field(default_factory=dict)
     primary_street: str | None = None
-    is_corner: bool = False
-    is_through: bool = False
     # The middle of each street in `fronts`, by the same names.
     centerlines: dict[str, StreetCenterline] = field(default_factory=dict)
+
+    @cached_property
+    def _front_pair_gaps(self) -> tuple[float, ...]:
+        return tuple(first.distance(second)
+                     for first, second in combinations(self.fronts.values(), 2))
+
+    @property
+    def is_corner(self) -> bool:
+        """A lot fronting on two or more streets at their intersection (section 2-167)."""
+        return any(gap < CORNER_GAP for gap in self._front_pair_gaps)
+
+    @property
+    def is_through(self) -> bool:
+        """A lot extending through a block from one street to another (section 2-171)."""
+        return any(gap >= CORNER_GAP for gap in self._front_pair_gaps)
 
     @cached_property
     def front_line(self):
@@ -330,15 +344,6 @@ def classify(lot, neighbors, streets, address_street=None) -> LotLines:
     result.centerlines = {name: _centerline(name, result.fronts[name], group, streets)
                           for name, group in by_street.items()}
     result.primary_street = _choose_primary(result.fronts, address_street)
-    if len(result.fronts) > 1:
-        primary = result.fronts[result.primary_street]
-        touching = any(
-            line.distance(primary) < CORNER_GAP
-            for name, line in result.fronts.items()
-            if name != result.primary_street
-        )
-        result.is_corner = touching
-        result.is_through = not touching
     return result
 
 

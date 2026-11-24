@@ -101,16 +101,21 @@ CG, CD, CDX, OC, OCM, OCH, W-1, CRMU, KR) and in planned districts:
   for houses and two-unit houses in RA and RB outside the historic
   districts, garages, sheds and other outbuildings count too, beyond an
   allowance of 100 sq ft (lots under 2,500 sq ft), 350 sq ft, or 600 sq ft
-  (lots of 8,000 sq ft or more). Their floor space comes from their outlines,
-  as one story unless the city's 3D data shows a building tall enough for
-  more.
+  (lots of 8,000 sq ft or more). Only qualifying sheds and garages get
+  this allowance. The map estimates eligibility from their floor space.
+  On lots with a house or two-unit house, sheds may total up to 100 sq ft.
+  One garage of up to 250 sq ft qualifies on lots of 2,500 to under
+  8,000 sq ft, or up to 500 sq ft on larger lots. Their floor space comes
+  from their outlines, as one story unless the city's 3D data shows a
+  building tall enough for more.
 - **Height**, measured as the ordinance does: to the top of a flat roof, but
   only halfway between the eaves and the peak of a gable or hip roof. The
   city's 3D data gives only the peak, so the map guesses the roof's shape and
   the height of its eaves from the number of stories in city records (about
   10 ft per full story, plus 2 ft for a raised ground floor). A roof that
-  rises only a few feet above those eaves counts as flat, and apartment
-  buildings are taken to have flat roofs. A roof is never taken to rise
+  rises only a few feet above those eaves counts as flat. Apartment
+  buildings with at least five full stories or an unknown story count
+  are assumed to have flat roofs. A roof is never taken to rise
   more than 15 ft, since a story count that leaves a taller roof is
   probably short. With no story count, a pitched roof is measured at 85% of
   its peak. The limit is the lower of the zone's own and the city's height
@@ -187,6 +192,12 @@ Housing" changes.
 The test is always: *if the buildings vanished, could you legally put them
 back today?*
 
+### Zones that restrict ordinary homes
+
+The map flags ordinary home uses in I, UT, CR, NR, POS and WPR. NR allows
+up to four auxiliary dwellings associated with a commercial use and may
+allow townhouses with a special use permit.
+
 ### Planned districts
 
 Zones starting with CDD (Cameron Station, Potomac Yard, Carlyle and others)
@@ -197,15 +208,16 @@ governs the land in place of the ordinary zone rules. The ordinance (section
 
 - **With the approved plan:** which kinds of home are allowed, a maximum
   height, and a cap on homes or floor space across the whole district. Lot
-  sizes and yards are not set by rule; the approved site plan drawings fix
-  them.
+  sizes and ordinary yards are set by the approved site plan drawings. The
+  map checks named-street setbacks where the ordinance keeps them in force.
 - **Without it:** an ordinary zone's rules (R-8 for Cameron Station, for
   example), sometimes with a changed floor area or height limit.
 
 Homes there are judged by the first set, since that is what a rebuild would
 be held to. That means checking home type and height lot by lot, and
-reporting each district's home count against its cap. Lot sizes and yards are
-not judged, because the drawings that set them are not available as data.
+reporting each district's home count against its cap. The drawings that
+set lot sizes and ordinary yards are unavailable as data, so those checks
+are omitted.
 
 Each lot also records how it would fare under the second set, and the map has
 a checkbox to switch to that view. It shows how far these neighborhoods are
@@ -303,6 +315,16 @@ Other details that matter:
   reach into a yard. It applies to every home, even ones with little or no
   overhang. A home drawn touching or crossing a
   lot line is assumed to be a mapping error and its yards are skipped.
+- Other measurements also get some slack:
+  - **Building height:** 5 ft for uncertainty in the city's 3D data and in
+    estimating where a sloped roof's eaves are.
+  - **Floor space:** 10% because assessment records and the ordinance count
+    different kinds of space.
+  - **Lot width:** 5% for differences between mapped lot edges and a survey.
+  - **Lot size and open space:** 3% for uncertainty in drawing lot boundaries,
+    building outlines and paving.
+  - **Building coverage:** 3% of the limit for uncertainty in the mapped lot
+    and roof outlines.
 - Front yards set by the neighbors are measured from building outlines
   traced from roofs, so a porch roof or overhang counts as part of the
   building, for a home and its neighbors alike. A home with a deep porch
@@ -343,9 +365,9 @@ Other details that matter:
 - Some rules are left out on purpose; `rules.py` says why beside each one.
   Across zones: threshold height (how high the front door sits), homes per
   acre across a whole development, and anything a special permit or the
-  planning commission could loosen. In single zones: the RB zone's 1,980
-  sq ft of land per apartment for its older apartment buildings, the RT
-  zone's rules for a townhouse row as a whole, the KR zone's 150 sq ft of
+  planning commission could loosen. In single zones: the RB zone's lower
+  land-per-home minimum on certain urban renewal land, the RT zone's rules
+  for a townhouse row as a whole, the KR zone's 150 sq ft of
   open space per home (balconies and roofs count), the extra floor space
   for shops in W-1, CRMU-M and CRMU-H, and the deep setback from Washington
   Street for RC lots along the parkway.
