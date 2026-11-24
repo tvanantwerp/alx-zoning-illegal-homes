@@ -52,6 +52,11 @@ MAX_DIVIDED_GAP = 150.0
 # Two pieces of one side of a divided road are joined end to end only where
 # the road bends less than this many degrees from one piece to the next.
 MAX_CARRIAGEWAY_BEND = 60.0
+# For the limit on townhouses in one building, homes join a row only where
+# their outlines run together, this close, for at least MIN_SHARED_WALL feet:
+# a shared wall, not two rows whose corners meet across an alley.
+WALL_GAP = 0.5
+MIN_SHARED_WALL = 4.0
 
 
 class Street(NamedTuple):
@@ -204,6 +209,28 @@ def largest_polygon(geometry) -> Polygon:
     if geometry.geom_type == "Polygon":
         return geometry
     return max(geometry.geoms, key=lambda part: part.area)
+
+
+def _wall_segments(shape):
+    for polygon in shapely.get_parts(shape.simplify(0.1)):
+        coords = np.asarray(polygon.exterior.coords)[:, :2]
+        for start, end in zip(coords, coords[1:]):
+            length = np.linalg.norm(end - start)
+            if length >= MIN_SHARED_WALL:
+                yield (end - start) / length, shapely.LineString([start, end])
+
+
+def parallel_shared_walls(a, b):
+    """The parts of b's outer walls that run alongside the walls of a."""
+    other = list(_wall_segments(b))
+    for direction, wall in _wall_segments(a):
+        band = wall.buffer(WALL_GAP, cap_style="flat")
+        for facing, segment in other:
+            if abs(direction @ facing) < 0.97:
+                continue
+            overlap = segment.intersection(band)
+            if overlap.length >= MIN_SHARED_WALL:
+                yield overlap
 
 
 def cut_outline(lot: Polygon) -> list[Piece]:

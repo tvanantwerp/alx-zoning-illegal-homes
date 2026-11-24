@@ -15,7 +15,7 @@ from shapely.ops import nearest_points, substring, unary_union
 
 from .heights import FLAT, MIN_PART_AREA, BuildingHeight, RoofHeight, building_height
 from .lot_lines import (LotLines, StreetCenterline, front_for_yard, largest_polygon,
-                        lot_width, lot_width_line)
+                        lot_width, lot_width_line, parallel_shared_walls)
 from .rule_results import (
     CORNER_NO_REAR, CROSSES_LOT_LINE, FAILS, MAPPING_ERROR, NO_FLOOR_AREA, NO_HEIGHT,
     NO_OUTLINES, NO_REAR_FOUND, NO_RULE, NO_SIDE_LINE, NO_STREET, NOT_CHECKED, NOT_REQUIRED,
@@ -251,7 +251,7 @@ def check_lot(facts: LotFacts) -> Findings:
     _check_lot_area(facts, findings, position)
     width = _check_width_and_frontage(facts, findings, position)
     older_lot = _excuse_older_lot(facts, findings)
-    _check_yards(facts, findings, width)
+    _check_yards(facts, findings, width, position)
     _check_named_street_setbacks(facts, findings)
     marginal = (not older_lot and facts.rules.name in OLDER_LOTS.zones
                 and facts.home_type in HOUSE_LIKE and facts.home_type in facts.rules.allowed
@@ -313,12 +313,30 @@ def _shared_line(line, shape, neighbor, min_run=4):
     return unary_union(shared)
 
 
+def _townhouse_side_walls(facts, home) -> dict:
+    """Identify townhouse side attachments directly from the building outlines."""
+    sides = {}
+    if facts.home_type != "townhouse" or facts.attached_neighbors is None:
+        return sides
+    along = facts.lines.front_direction
+    for neighbor in shapely.get_parts(facts.attached_neighbors):
+        for wall in parallel_shared_walls(home.shape, neighbor):
+            start, end = np.asarray(wall.coords)[[0, -1]]
+            # A wall running across the lot attaches at the back or front,
+            # where it does not exempt a side yard.
+            if abs((end - start) @ along) < wall.length / math.sqrt(2):
+                side = _side_of(facts, wall.centroid.coords[0], home)
+                sides.setdefault(side, []).append(wall)
+    return sides
+
+
 def _attached_sides(facts: LotFacts) -> set[int]:
     """Which sides of the lot's homes share a wall with a neighbor."""
     if facts.attached_neighbors is None or facts.lines.front_direction is None:
         return set()
     sides = set()
     for home in facts.homes:
+        sides.update(_townhouse_side_walls(facts, home))
         for piece in facts.lines.pieces:
             if piece.kind == "street":
                 continue
@@ -331,8 +349,8 @@ def _position(facts: LotFacts) -> str:
     """Classify the lot as corner, end-of-row, or interior."""
     if facts.lines.is_corner:
         return "corner"
-    if facts.home_type == "townhouse" and len(_attached_sides(facts)) == 1:
-        return "end"
+    if facts.home_type == "townhouse":
+        return ("unknown", "end", "interior")[len(_attached_sides(facts))]
     return "interior"
 
 
@@ -724,7 +742,8 @@ def _yard_gaps(facts, home) -> tuple[dict, dict]:
     has_rear = not (lines.is_corner or lines.is_through)
     remainder_is_rear = _corner_remainder_is_rear(facts)
 
-    gaps, shared_wall = {}, {}
+    gaps = {}
+    shared_wall = {} if remainder_is_rear else _townhouse_side_walls(facts, home)
     for piece in lines.pieces:
         gap = piece.line.distance(home.shape)
         if piece.kind == "street":
@@ -832,7 +851,7 @@ def _keep_worst(rows: dict, row: RuleResult):
         rows[row.rule] = row
 
 
-def _check_yards(facts, findings, width):
+def _check_yards(facts, findings, width, position):
     rules, lines = facts.rules, facts.lines
     lot = largest_polygon(facts.shape)
     homes, crossing = [], False
@@ -889,7 +908,7 @@ def _check_yards(facts, findings, width):
             )
 
         _keep_worst(rows, _front_row(facts, record, gaps["front"], home))
-        for row in _side_rows(facts, record, gaps, shared, touching, parts, width):
+        for row in _side_rows(facts, record, gaps, shared, touching, parts, width, position):
             _keep_worst(rows, row)
         _keep_worst(rows, _rear_row(facts, record, gaps.get("rear"), shared,
                                     touching, parts))
@@ -1056,7 +1075,7 @@ def _historic_front_row(facts, gap):
                          facts.rules.label, gap.gap, at_line))
 
 
-def _side_rows(facts, record, gaps, shared, touching, parts, width):
+def _side_rows(facts, record, gaps, shared, touching, parts, width, position):
     """Judge both side yards. Returns the left and right rows.
 
     `parts` is the home split by roof height, each part's roof estimated
@@ -1065,7 +1084,7 @@ def _side_rows(facts, record, gaps, shared, touching, parts, width):
     rules, lines = facts.rules, facts.lines
     if not rules.side_yards_by_lot_width:
         return [_side_row(facts, record, key, gaps.get(key), shared, touching,
-                          parts, width) for key in (-1, 1)]
+                          parts, width, position) for key in (-1, 1)]
 
     measure = width if width is not None else lines.frontage
     needed = 2 if measure >= 35 else 1 if measure >= 25 else 0
@@ -1111,13 +1130,13 @@ def _counted_side_row(facts, key, gap, shared, measure, needed, short):
     return _yard_row(facts, role, PASSES, gap, 5, detail="needs", explanation=text)
 
 
-def _side_row(facts, record, key, gap, shared, touching, parts, width):
+def _side_row(facts, record, key, gap, shared, touching, parts, width, position):
     """A side yard row where the zone sets a side yard depth."""
     rules, kind = facts.rules, facts.home_type
     role = _side_name(facts, key)
     if rules.name in {"CRMU-L", "CRMU-M", "CRMU-H"} and kind == "townhouse":
         explanation = "Only interior end lots wider than 25 ft require a townhouse side yard."
-        if _position(facts) != "end" or (width is not None and width <= 25):
+        if position in {"interior", "corner"} or (width is not None and width <= 25):
             return _yard_row(facts, role, NOT_REQUIRED, gap, explanation=explanation)
         if width is None:
             return _yard_row(facts, role, NOT_CHECKED, gap, explanation=explanation)
@@ -1134,6 +1153,10 @@ def _side_row(facts, record, key, gap, shared, touching, parts, width):
     if kind not in rules.side_yard:
         return _yard_row(facts, role, NO_RULE, gap, explanation=no_rule_explanation(
             rules.label, HOME_TYPE_NAMES[kind], "side yard rule"))
+    if kind == "townhouse" and position == "unknown":
+        return _yard_row(facts, role, NOT_CHECKED, gap, explanation=(
+            "The map could not tell whether this lot is at the end of the townhouse row, "
+            "so it could not determine which side needs a yard."))
     if gap is None:
         return _yard_row(facts, role, NOT_CHECKED, explanation=NO_SIDE_LINE)
     part_gaps = _part_gaps(gap, parts)

@@ -224,6 +224,33 @@ def test_shared_walls_are_not_missing_side_yards():
     assert findings.measurements["position"] == "interior"
 
 
+@pytest.mark.parametrize("both_sides", [True, False])
+def test_townhouse_uses_building_walls_when_parcel_lines_miss_them(both_sides):
+    lot = box(0, 0, 30, 110)
+    home = box(4, 15, 26, 55)
+    left = box(-15, 15, 4, 55)
+    right = box(26, 15, 45, 55)
+    attached = unary_union([left, right]) if both_sides else left
+    _, findings = check(lot, home, "RA", home_type="townhouse",
+                        neighbors=between_neighbors(lot), attached=attached)
+    rows = {row.rule: row for row in findings.results}
+    assert findings.measurements["position"] == ("interior" if both_sides else "end")
+    assert rows["yard:left"].status == "not_required"
+    assert rows["yard:right"].status == ("not_required" if both_sides else "fails")
+
+
+def test_townhouse_position_is_unknown_without_a_detected_shared_wall():
+    lot = box(0, 0, 30, 110)
+    # A neighbor reaching one point on the house is insufficient evidence.
+    home = box(4, 15, 26, 55)
+    attached = box(-15, 0, 4, 15)
+    _, findings = check(lot, home, "RA", home_type="townhouse",
+                        neighbors=between_neighbors(lot), attached=attached)
+    assert findings.measurements["position"] == "unknown"
+    sides = [row for row in findings.results if row.rule in ("yard:left", "yard:right")]
+    assert all(row.status == "not_checked" for row in sides)
+
+
 def test_end_townhouse_needs_a_wider_lot():
     lot = box(0, 0, 20, 110)
     home = box(0, 15, 12, 55)
