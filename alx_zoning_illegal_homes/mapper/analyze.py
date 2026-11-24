@@ -866,6 +866,13 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
         is_historic = bool(in_historic.loc[lot_id])
         label = lot["zoning_label"]
         zone = normalize_zone(label)
+        parcel_zone = parcel_zones.loc[lot_id]
+        if amended.loc[lot_id]:
+            record["notes"].append("The map applies CRMU/X to this lot per Ordinance 5526.")
+        elif pd.notna(mapped_zones.loc[lot_id]) and pd.notna(parcel_zone) and label != parcel_zone:
+            record["notes"].append(
+                f"The parcel record lists {parcel_zone}. "
+                f"The map applies {label} from the city's zoning layer.")
         district = fallback_rules = None
         if zone is not None:
             rules = rules_for(zone, is_historic)
@@ -951,15 +958,7 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
         facts = _add_neighbors(facts, lot_id, block_faces, fallback_rules)
         label, home_type = lot["zoning_label"], facts.home_type
         findings = check_lot(facts)
-        zoning_note = None
-        parcel_zone = parcel_zones.loc[lot_id]
-        if amended.loc[lot_id]:
-            zoning_note = "The map applies CRMU/X to this lot per Ordinance 5526."
-        elif pd.notna(mapped_zones.loc[lot_id]) and parcel_zone and label != parcel_zone:
-            zoning_note = (f"The parcel record lists {parcel_zone}. "
-                           f"The map applies {label} from the city's zoning layer.")
-        if zoning_note:
-            findings.notes.append(zoning_note)
+        findings.notes.extend(record["notes"])
         if lot["land_use"] == TWIN_LAND_USE and home_type in ("two_unit", "single"):
             findings.notes.append(
                 TWO_UNIT_NOTE if home_type == "two_unit" else LONE_HOUSE_NOTE)
@@ -969,8 +968,7 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
             # Second opinion: the same home under the ordinary zone that
             # would apply if the district's approved plan did not exist.
             ordinary = check_lot(replace(facts, rules=fallback_rules))
-            if zoning_note:
-                ordinary.notes.append(zoning_note)
+            ordinary.notes.extend(record["notes"])
             findings.results = under_special_approval(findings.results, district)
             project = _project_for(lot_points.loc[lot_id], projects, project_tree)
             record.update({
