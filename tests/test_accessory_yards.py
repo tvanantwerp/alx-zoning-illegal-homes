@@ -47,3 +47,30 @@ def test_rear_garage_checks_measurable_conditions_and_reports_unknowns(height, x
 def test_historic_shed_uses_the_smaller_area_limit():
     _, row = _accessory_yards([(box(2, 110, 12, 120), 80, 8)], historic=True)
     assert row.status == "fails"
+
+
+def test_shed_beside_a_shared_wall_needs_no_side_yard():
+    from shapely.ops import unary_union
+    # An interior RA townhouse with a 64 sq ft, 8 ft shed 1 ft from each side lot line.
+    lot = box(0, 0, 30, 110)
+    home = box(0, 15, 30, 55)
+    attached = unary_union([box(-20, 15, 0, 55), box(30, 15, 50, 55)])
+    left_shed, right_shed = box(1, 95, 9, 103), box(21, 95, 29, 103)
+    kinds, findings = check(
+        lot, home, "RA", home_type="townhouse", neighbors=between_neighbors(lot),
+        attached=attached, all_buildings=[home, left_shed, right_shed],
+        outbuildings=[Outbuilding(1, 64, "garage or shed", 8),
+                      Outbuilding(2, 64, "garage or shed", 8)])
+    row = next(row for row in findings.results if row.rule == "yard:accessory")
+    assert "yards" not in kinds and row.status == "passes"
+
+
+def test_shed_still_needs_the_side_yard_the_home_needs():
+    lot = box(0, 0, 40, 110)
+    home = box(8, 15, 32, 55)
+    shed = box(1, 95, 9, 103)
+    kinds, findings = check(
+        lot, home, "RA", home_type="townhouse", neighbors=between_neighbors(lot),
+        all_buildings=[home, shed], outbuildings=[Outbuilding(1, 64, "garage or shed", 8)])
+    row = next(row for row in findings.results if row.rule == "yard:accessory")
+    assert "yards" in kinds and row.status == "fails"

@@ -1383,6 +1383,10 @@ def _check_accessory_yards(facts, findings, width):
     small = [building for building in buildings if building.floor_area <= limit]
     shed_area = sum(building.floor_area for building in small)
     garage_count = len(buildings) - len(small)
+    # Where the home needs no side yard (a shared wall, an interior townhouse
+    # lot, a narrow lot), there is no required side yard for an outbuilding to sit in.
+    no_side_yard = {row.rule for row in findings.results
+                    if row.rule in {"yard:left", "yard:right"} and row.status == NOT_REQUIRED}
     results = {}
 
     def ignore_reason(*_):
@@ -1406,7 +1410,9 @@ def _check_accessory_yards(facts, findings, width):
             row.explanation = "The outbuilding is forward of the main building or in a required front yard."
             row.shapes["gap"] = gap["front"].nearest
         else:
-            sides = _side_rows(facts_without_attached, ignore_reason, gap, {}, [], parts, width)
+            sides = [side for side in _side_rows(facts_without_attached, ignore_reason, gap, {}, [],
+                                                 parts, width)
+                     if side.rule not in no_side_yard]
             rear = _rear_row(facts_without_attached, ignore_reason, gap.get("rear"), {}, [], parts)
             short = [yard for yard in [*sides, rear] if yard.status == FAILS]
             if short:
