@@ -928,18 +928,18 @@ def _house_with_garage(garage_floor_area, zone="R-8", home_type="single", histor
                  outbuildings=[Outbuilding(1, garage_floor_area, "garage or shed")])
 
 
-def test_garage_beyond_the_allowance_counts_toward_floor_space():
+def test_oversized_garage_counts_in_full_toward_floor_space():
     # R-8 allows 35% of 9,600 sq ft, 3,360 sq ft, and fails only past 3,696.
-    # The first 600 sq ft of the 1,300 sq ft garage is left out.
+    # A garage larger than 500 sq ft cannot get the 600 sq ft lot allowance.
     kinds, findings = _house_with_garage(1300)
     assert "floor_area" in kinds
     row = _rows(findings)["floor_area"]
-    assert row.measured == 3700
+    assert row.measured == 4300
     assert row.buildings == [0, 1]
     assert "a garage or shed of about 1,300 sq ft" in row.explanation
-    assert "adds about 700 sq ft" in row.explanation
+    assert "adds about 1,300 sq ft" in row.explanation
     reason = next(r.text for r in findings.reasons if r.kind == "floor_area")
-    assert "counting about 700 sq ft in garages, sheds" in reason
+    assert "counting about 1,300 sq ft in garages, sheds" in reason
 
 
 def test_garage_within_the_allowance_adds_nothing():
@@ -957,7 +957,24 @@ def test_garages_are_left_out_where_the_zone_does_not_count_them():
         row = _rows(findings)["floor_area"]
         assert row.measured == 3000 and row.buildings == [0]
     _, findings = _house_with_garage(1300, zone="RA")
-    assert _rows(findings)["floor_area"].measured == 3700
+    assert _rows(findings)["floor_area"].measured == 4300
+
+
+@pytest.mark.parametrize("building_areas,added", [
+    ([100, 250], 0), ([100, 251], 251), ([50, 51, 250], 101),
+    ([110, 150], 260), ([100, 200, 251], 451),
+])
+def test_accessory_size_limits_on_a_mid_size_lot(building_areas, added):
+    from alx_zoning_illegal_homes.mapper.checks import Outbuilding
+    lot = box(0, 0, 60, 100)
+    home = box(15, 20, 40, 60)
+    shapes = [home] + [box(5 + i * 15, 80, 15 + i * 15, 90)
+                       for i in range(len(building_areas))]
+    _, findings = check(
+        lot, home, "R-8", all_buildings=shapes, floor_area=1600,
+        outbuildings=[Outbuilding(i, area, "garage or shed")
+                      for i, area in enumerate(building_areas, start=1)])
+    assert _rows(findings)["floor_area"].measured == 1600 + added
 
 
 def test_house_floor_space_row_says_city_records_may_run_low():
