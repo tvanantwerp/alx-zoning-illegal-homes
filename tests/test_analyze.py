@@ -2,10 +2,11 @@
 import geopandas as gpd
 import pandas as pd
 import pytest
-from shapely.geometry import box
+from shapely.geometry import LineString, box
 
 from alx_zoning_illegal_homes.mapper.analyze import (
-    _home_type, _match_buildings_to_lots, _outbuilding, _place_buildings, _row_sizes)
+    _home_type, _mapped_zone_labels, _match_buildings_to_lots, _outbuilding,
+    _place_buildings, _row_sizes)
 
 
 def place(lot_shapes, building_shapes, is_home=True):
@@ -28,6 +29,16 @@ def place(lot_shapes, building_shapes, is_home=True):
     buildings["footprint"] = buildings.geometry.area
     pairs = _match_buildings_to_lots(lots, buildings)
     return _place_buildings(lots, buildings, pairs)
+
+
+def test_map_zone_uses_largest_combined_overlap_and_ignores_boundary_touches():
+    lots = gpd.GeoSeries([box(0, 0, 10, 10), box(10, 0, 20, 10), box(20, 0, 30, 10)])
+    zones = gpd.GeoDataFrame({"zone": ["R8", "R 8", "R8", "RB", "CDD #1"]},
+                             geometry=[box(0, 0, 3, 10), box(7, 0, 10, 10), box(1, 0, 3, 10),
+                                       box(3, 0, 7, 10), box(10, 0, 20, 10)])
+    chosen = _mapped_zone_labels(lots, zones)
+    assert chosen.iloc[:2].tolist() == ["R-8", "CDD#1"]
+    assert pd.isna(chosen.iloc[2])
 
 
 def test_disconnected_scrap_does_not_follow_its_adjacent_component():
@@ -69,6 +80,16 @@ def test_piece_mostly_off_every_lot_is_still_dropped():
     # A house drawn mostly over unmapped land barely touches the only lot.
     placed = place([box(0, 0, 30, 100)], [box(28, 20, 68, 60)])
     assert placed.empty
+
+
+def test_historic_share_counts_area_even_if_the_lots_center_is_outside():
+    from alx_zoning_illegal_homes.mapper.analyze import _historic_shares
+
+    lots = gpd.GeoSeries([box(0, 0, 10, 10), box(-5, 0, 5, 10),
+                         box(-10, 0, 0, 10), box(0, 0, 1, 10)])
+    district = box(0, 0, 4, 10).union(box(7, 0, 10, 10))
+    assert not lots.representative_point().iloc[0].within(district)
+    assert list(_historic_shares(lots, district)) == pytest.approx([0.7, 0.4, 0, 1])
 
 
 def _lot(land_use, condo_units=0):
@@ -149,3 +170,20 @@ def test_outbuilding_sliver_stays_with_the_rest_of_the_building():
     placed = place(lots, [box(20, 50, 80, 101)], is_home=False)
     assert sorted(placed.lot_id) == [0, 1]
     assert placed.share.sum() == pytest.approx(1.0)
+
+
+def test_mount_vernon_overlay_uses_the_frontage_between_its_two_cross_streets():
+    from alx_zoning_illegal_homes.mapper.analyze import (
+        _fronts_mount_vernon_overlay, _mount_vernon_overlay)
+    from alx_zoning_illegal_homes.mapper.lot_lines import LotLines
+
+    streets = gpd.GeoDataFrame(
+        {"name": ["MOUNT VERNON", "NELSON", "COMMONWEALTH"]},
+        geometry=[LineString([(0, 0), (0, 300)]), LineString([(-100, 50), (100, 50)]),
+                  LineString([(-100, 200), (100, 200)])],
+    )
+    overlay = _mount_vernon_overlay(streets)
+    for y, applies in [(20, False), (90, True), (250, False)]:
+        fronts = {"MOUNT VERNON": LineString([(20, y), (20, y + 10)])}
+        assert _fronts_mount_vernon_overlay(LotLines([], fronts), overlay) is applies
+    assert not _fronts_mount_vernon_overlay(LotLines([]), overlay)
