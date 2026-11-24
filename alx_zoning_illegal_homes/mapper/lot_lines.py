@@ -166,16 +166,37 @@ class LotLines:
         return line.length if line is not None else None
 
     @cached_property
-    def front_is_curved(self) -> bool:
-        """True when the front line bends, as on a cul-de-sac."""
-        line = self.front_line
-        if line is None:
+    def front_is_curved_with_radial_sides(self) -> bool:
+        """Whether a curved street frontage has radial lot lines at both ends."""
+        if self.primary_street is None:
             return False
-        merged = linemerge(line)
-        longest = max(_lines(merged), key=lambda part: part.length)
-        start, end = longest.coords[0], longest.coords[-1]
-        chord = np.hypot(end[0] - start[0], end[1] - start[1])
-        return chord < 0.985 * longest.length
+        front = front_for_yard(self, self.primary_street)
+        longest = max(_lines(linemerge(front)), key=lambda part: part.length)
+        coords = np.asarray(longest.simplify(0.3).coords)
+        chord = np.linalg.norm(coords[-1] - coords[0])
+        if len(coords) < 4 or chord >= 0.985 * longest.length:
+            return False
+        edges = np.diff(coords, axis=0)
+        tangents = edges / np.linalg.norm(edges, axis=1)[:, None]
+        angles = np.unwrap(np.arctan2(tangents[:, 1], tangents[:, 0]))
+        turns = np.diff(angles)
+        if not (np.all(turns > 0) or np.all(turns < 0)):
+            return False
+        if np.max(np.abs(turns)) > np.radians(40):
+            return False
+
+        sides = []
+        for endpoint, tangent in ((coords[0], tangents[0]), (coords[-1], tangents[-1])):
+            side = next((piece for piece in self.pieces
+                         if piece.street != self.primary_street
+                         and tuple(endpoint) in (piece.line.coords[0], piece.line.coords[-1])),
+                        None)
+            if side is None or abs(side.direction @ tangent) > np.sin(np.radians(20)):
+                return False
+            sides.append(side.direction)
+        # Sides should fan out like radii, rather than run parallel through
+        # a lot whose frontage happens to be curved.
+        return abs(sides[0] @ sides[1]) < np.cos(np.radians(10))
 
     @cached_property
     def front_direction(self) -> np.ndarray | None:
@@ -235,7 +256,8 @@ def cut_outline(lot: Polygon) -> list[Piece]:
         outward = np.array([unit[1], -unit[0]])
         for i in range(steps):
             a = start + (end - start) * (i / steps)
-            b = start + (end - start) * ((i + 1) / steps)
+            # Keep the ring's original endpoint so adjacent pieces join exactly.
+            b = end if i + 1 == steps else start + (end - start) * ((i + 1) / steps)
             pieces.append(Piece(LineString([a, b]), (a + b) / 2, outward))
     return pieces
 

@@ -506,7 +506,7 @@ def _check_width_and_frontage(facts, findings, position):
         need_frontage = need_width
     else:
         need_frontage = rules.frontage.get(kind)
-    if lines.front_is_curved and kind in rules.curved_frontage:
+    if kind in rules.curved_frontage and lines.front_is_curved_with_radial_sides:
         need_frontage = rules.curved_frontage[kind]
 
     if not need_frontage:
