@@ -131,7 +131,7 @@ LOT = box(0, 0, 60, 120)
 
 
 def _with_block_face(zone, home, setbacks, field="contextual_block_face", rules=None,
-                     home_type="single", historic=False):
+                     home_type="single", historic=False, sections=()):
     """Check a home on LOT, with neighbors along Main St set back these distances.
 
     `field` names the LotFacts field the neighbors go in.
@@ -140,7 +140,8 @@ def _with_block_face(zone, home, setbacks, field="contextual_block_face", rules=
                  for i, d in enumerate(setbacks)]
     facts = LotFacts(
         shape=LOT, area=LOT.area, rules=rules if rules is not None else ZONES[zone],
-        home_type=home_type, homes=[Home(shape=home, height=20, floor_area=1000)],
+        home_type=home_type, homes=[Home(shape=home, height=20, floor_area=1000,
+                                         sections=list(sections))],
         lines=classify(LOT, between_neighbors(LOT), [MAIN], "MAIN"),
         all_buildings=[home], in_historic_district=historic,
         **{field: {"MAIN": neighbors}})
@@ -297,3 +298,30 @@ def test_corner_yard_leaves_out_the_cut_corner():
     assert min(home.distance(front) for front in lines.fronts.values()) < 5
     for street in ("MAIN", "SIDE"):
         assert home.distance(front_for_yard(lines, street)) == pytest.approx(15)
+
+
+@pytest.mark.parametrize("zone", ["RS", "R-8"])
+def test_front_porch_is_excluded_when_wall_and_porch_have_enough_yard(zone):
+    main = box(10, 20, 50, 65)
+    porch = box(20, 10, 40, 20)
+    home = unary_union([main, porch])
+    row, _ = _with_block_face(zone, home, [20, 28], sections=[(main, 22), (porch, 12)])
+    assert row.status == PASSES and row.measured == pytest.approx(20)
+    assert "one-story porch" in row.explanation and "7-202(E)" in row.explanation
+
+
+@pytest.mark.parametrize("porch_front,wall_front,height", [(7, 17, 12), (10, 22, 12), (10, 20, 18)])
+def test_front_projection_that_exceeds_a_porch_limit_is_judged(porch_front, wall_front, height):
+    main = box(10, wall_front, 50, 65)
+    porch = box(20, porch_front, 40, wall_front)
+    home = unary_union([main, porch])
+    row, _ = _with_block_face("R-8", home, [20, 28], sections=[(main, 25), (porch, height)])
+    assert row.status == FAILS and row.measured == pytest.approx(porch_front)
+
+
+def test_eligible_porch_does_not_excuse_a_wall_too_close_to_the_front():
+    main = box(10, 16, 50, 65)
+    porch = box(20, 10, 40, 16)
+    home = unary_union([main, porch])
+    row, _ = _with_block_face("R-8", home, [20, 28], sections=[(main, 25), (porch, 12)])
+    assert row.status == FAILS and row.measured == pytest.approx(16)
