@@ -300,6 +300,19 @@ def test_counted_corner_side_yards_include_both_nonstreet_edges(zone, back, expe
     assert result["yard:rear"].status == NOT_CHECKED
 
 
+def test_corner_lot_width_includes_a_cut_corner():
+    from shapely.geometry import Polygon
+    # A 40 ft wide historic RB corner lot with its corner cut back 12 ft.
+    lot = Polygon([(12, 0), (40, 0), (40, 60), (0, 60), (0, 12)])
+    _, findings = check(lot, box(10, 15, 30, 45), "RB",
+                        neighbors=unary_union([RM_CORNER_EAST, RM_CORNER_BEHIND]),
+                        streets=[SIDE_STREET], rules=rules_for("RB", True), historic=True)
+    assert findings.measurements["position"] == "corner"
+    assert findings.measurements["width"] == pytest.approx(40)
+    start, end = rows(findings)["width"].shapes["line"].coords
+    assert start[1] == pytest.approx(end[1])
+
+
 def test_front_yard_without_neighbors_is_not_checked_in_contextual_zone():
     row = yard_rows("roomy")["yard:front"]
     assert row.status == NOT_CHECKED and row.measured == pytest.approx(35)

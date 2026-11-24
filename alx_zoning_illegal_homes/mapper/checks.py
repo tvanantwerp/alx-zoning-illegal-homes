@@ -473,6 +473,29 @@ def _check_lot_area(facts, findings, position):
         ))
 
 
+def _corner_width_line(lines: LotLines) -> LineString:
+    """The width of a corner lot at the front, from the side lot line to the secondary front.
+
+    Section 2-170.2 measures this across the lot, so the width includes any
+    rounded or cut bend where the two streets meet. The line runs along the
+    primary front's direction, from the end of the primary front at the side
+    lot line out to the furthest reach of the secondary front.
+    """
+    # Take the direction from the front without its bend, which would tilt it.
+    straight = shapely.get_coordinates(front_for_yard(lines, lines.primary_street))
+    along = np.linalg.svd(straight - straight.mean(axis=0), full_matrices=False)[2][0]
+    primary = shapely.get_coordinates(lines.front_line)
+    secondary = min((front for name, front in lines.fronts.items()
+                     if name != lines.primary_street), key=lines.front_line.distance)
+    primary_offsets = primary @ along
+    secondary_offsets = shapely.get_coordinates(secondary) @ along
+    if secondary_offsets.mean() < primary_offsets.mean():
+        start, far = primary[primary_offsets.argmax()], secondary_offsets.min()
+    else:
+        start, far = primary[primary_offsets.argmin()], secondary_offsets.max()
+    return LineString([start, start + along * (far - start @ along)])
+
+
 def _check_width_and_frontage(facts, findings, position):
     """Check lot width and street frontage. Returns the measured width."""
     rules, kind, lines = facts.rules, facts.home_type, facts.lines
@@ -522,12 +545,7 @@ def _check_width_and_frontage(facts, findings, position):
     width_line = (lot_width_line(facts.shape, lines, measured_at) if measured_at > 0
                   else lines.front_line)
     if position == "corner" and rules.side_yards_by_lot_width and measured_at == 0:
-        # At the front, measure straight from the secondary front toward the
-        # side line, leaving out the bend where the two streets meet.
-        front = front_for_yard(lines, lines.primary_street)
-        coords = shapely.get_coordinates(front)
-        offsets = coords @ lines.front_direction
-        width_line = LineString([coords[offsets.argmin()], coords[offsets.argmax()]])
+        width_line = _corner_width_line(lines)
         width = width_line.length
         findings.measurements["width"] = width
     if width_line is not None:
