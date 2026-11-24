@@ -732,6 +732,15 @@ def _add_neighbors(facts: LotFacts, lot_id: int, block_faces: BlockFaces,
     return replace(facts, **changes) if changes else facts
 
 
+def _historic_shares(lot_shapes: gpd.GeoSeries, historic) -> pd.Series:
+    """Return each lot's share inside the union of the historic district polygons."""
+    shares = pd.Series(0.0, index=lot_shapes.index)
+    intersecting = lot_shapes.sindex.query(historic, predicate="intersects")
+    nearby = lot_shapes.iloc[intersecting]
+    shares.iloc[intersecting] = nearby.intersection(historic).area / nearby.area
+    return shares.clip(upper=1.0)
+
+
 def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
     """Return one row per lot with its status and the reasons it fails.
 
@@ -783,7 +792,7 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
     townhouse_rows = _townhouse_rows(home_parts, lots)
     parts_by_lot = dict(tuple(placed.groupby("lot_id")))
     lot_points = lots.geometry.representative_point()
-    in_historic = lot_points.within(historic)
+    historic_shares = _historic_shares(lots.geometry, historic)
     height_map = _height_map_areas(home_parts.geometry, loader.load_height_districts())
     lot_lon_lat = lot_points.to_crs("EPSG:4326")
     route_1 = _street(streets, "RICHMOND")
@@ -863,7 +872,15 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
         record["home_type"] = HOME_TYPE_NAMES[home_type]
         record["year_built"] = int(years.min()) if len(years) else None
 
-        is_historic = bool(in_historic.loc[lot_id])
+        historic_share = historic_shares.loc[lot_id]
+        is_historic = bool(historic_share > 0.5)
+        if 0 < historic_share < 1:
+            classification = "inside" if is_historic else "outside"
+            historic_note = (
+                f"A historic district boundary crosses this lot. About {historic_share:.1%} "
+                f"of the lot is inside. The map treats the lot as {classification} based "
+                "on which side contains more than half of its area. Ties count as outside.")
+            record["notes"].append(historic_note)
         label = lot["zoning_label"]
         zone = normalize_zone(label)
         parcel_zone = parcel_zones.loc[lot_id]
@@ -969,6 +986,14 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
             # would apply if the district's approved plan did not exist.
             ordinary = check_lot(replace(facts, rules=fallback_rules))
             ordinary.notes.extend(record["notes"])
+            if label.strip().upper() == "CDD#10" and fallback_rules.name == "CRMU-L":
+                ordinary.notes.append(
+                    "The map estimates where the Slaters Lane and Piggyback Yard "
+                    "CRMU-L options apply. In the Piggyback Yard, section 5-602 "
+                    "requires a special use permit and caps development at 275 homes "
+                    "and 50 ft. These results show the CRMU-L rules before those "
+                    "conditions. The map lacks the rezoning plat needed to tell "
+                    "which lots are subject to them.")
             findings.results = under_special_approval(findings.results, district)
             project = _project_for(lot_points.loc[lot_id], projects, project_tree)
             record.update({
@@ -985,7 +1010,7 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
                 f"This lot is in the {district.name} planned district "
                 f"({label.strip()}). City Council approved a plan for the whole "
                 "district, which replaces the ordinary zone rules there. "
-                f"{district.plan_summary} Lot sizes and yards there are drawn "
+                f"{district.plan_summary} Lot sizes and ordinary yards there are drawn "
                 "lot by lot on the approved site plans, not set by general "
                 "rules, so they are not judged."
                 + (f" City case file: {project}." if project else "")))
