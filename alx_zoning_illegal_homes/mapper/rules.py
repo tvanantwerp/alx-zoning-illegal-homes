@@ -203,12 +203,11 @@ class ZoneRules:
     historic_floor_area_ratio: dict = field(default_factory=dict)
     # Shown on the floor space row's name, where the zone's limit needs explaining.
     floor_area_note: str = ""
-    # Home types whose floor space takes in every building on the lot,
-    # garages, sheds and backyard cottages included, beyond a small allowance
-    # set by lot size (see outbuilding_allowance). The floor area definition
-    # does this for every home in R-20 through R-2-5, and for houses and
-    # two-unit houses in RA and RB, outside the historic districts.
-    outbuildings_counted_for: frozenset = frozenset()
+    # Home types eligible for the section 2-145(A) allowance for garages,
+    # sheds and backyard cottages, based on lot size. Outside the historic
+    # districts, that definition applies in R-20 through R-2-5 and to houses
+    # and two-unit houses in RA and RB. Other homes use section 2-145(B).
+    house_floor_area_allowance_for: frozenset = frozenset()
     max_height: dict = field(default_factory=dict)
     # A higher height limit, by home type, for a home whose roof's ridge line
     # runs parallel to the street and whose roof slope is compatible with
@@ -300,7 +299,7 @@ def _low_density(name, area, corner_area, width, corner_width, frontage,
         split_twin_lots_allowed=bool(semi),
         rear_yard=Yard(yard, 1.0),
         max_floor_area_ratio=far,
-        outbuildings_counted_for=ALL_TYPES,
+        house_floor_area_allowance_for=ALL_TYPES,
         max_height={t: 30 for t in types},
     )
 
@@ -355,7 +354,7 @@ ZONES = {
         rear_yard=Yard(8, 1.0),
         no_side_yard_below_width=25,
         max_floor_area_ratio=0.75,
-        outbuildings_counted_for=_HOUSES,
+        house_floor_area_allowance_for=_HOUSES,
         max_height={"single": 30, "semi": 30, "two_unit": 30, "townhouse": 45,
                     "multi": 45},
         min_open_space=0.35,
@@ -385,7 +384,7 @@ ZONES = {
         rear_yard=Yard(8, 1.0),
         no_side_yard_below_width=25,
         max_floor_area_ratio=0.75,
-        outbuildings_counted_for=_HOUSES,
+        house_floor_area_allowance_for=_HOUSES,
         max_height={"single": 30, "semi": 30, "two_unit": 30, "townhouse": 45,
                     "multi": 45},
         min_open_space=0.35,

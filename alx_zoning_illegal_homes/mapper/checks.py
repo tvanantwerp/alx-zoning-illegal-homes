@@ -1336,24 +1336,29 @@ def _home_indexes(facts) -> list[int]:
     return found
 
 
-def _counted_outbuildings(facts) -> list[Outbuilding]:
-    """The garages, sheds and other outbuildings that count toward this lot's floor space.
+OTHER_SHED_ALLOWANCE = 65
 
-    Only where the zone's way of counting floor space takes them in: every
-    home in R-20 through R-2-5, and houses and two-unit houses in RA and RB,
-    outside the historic districts. Elsewhere none count.
-    """
-    if (facts.in_historic_district
-            or facts.home_type not in facts.rules.outbuildings_counted_for):
-        return []
-    return list(facts.outbuildings)
+
+def _shed_exclusion(facts: LotFacts) -> float:
+    """Estimate the small-accessory-building exclusion under section 2-145(B)."""
+    # Section 7-202(C)(2) covers houses and twins everywhere, and townhouses
+    # in the historic districts. The city's building type groups garages
+    # and sheds, so only a structure small enough to be a shed can qualify.
+    is_house = facts.home_type in {"single", "semi", "two_unit"}
+    is_historic_townhouse = facts.home_type == "townhouse" and facts.in_historic_district
+    if not (is_house or is_historic_townhouse):
+        return 0.0
+    total = sum(building.floor_area for building in facts.outbuildings
+                if building.label == "garage or shed"
+                and building.floor_area <= OTHER_SHED_ALLOWANCE)
+    return total if total <= OTHER_SHED_ALLOWANCE else 0.0
 
 
 def _check_floor_area(facts, findings, older_lot=False):
     """Check floor space against the zone's limit, or the older-lot limit when `older_lot`.
 
-    Where the zone counts them, garages, sheds and other outbuildings add
-    whatever floor space they hold beyond the lot's allowance.
+    Count the floor space in both homes and outbuildings, applying the
+    outbuilding exclusions under the relevant part of section 2-145.
     """
     kind = facts.home_type
     usual = facts.rules.floor_area_ratio_for(kind, facts.in_historic_district)
@@ -1375,12 +1380,19 @@ def _check_floor_area(facts, findings, older_lot=False):
         if note:
             _add_older_lot_note(row, note)
         return
-    outbuildings = _counted_outbuildings(facts)
-    allowance = outbuilding_allowance(facts.area)
+    outbuildings = facts.outbuildings
+    house_allowance = (not facts.in_historic_district
+                       and kind in facts.rules.house_floor_area_allowance_for)
     total = sum(building.floor_area for building in outbuildings)
-    accessory = sum(building.floor_area for building in outbuildings
-                    if building.label == "garage or shed")
-    added = total - min(accessory, allowance)
+    if house_allowance:
+        allowance = outbuilding_allowance(facts.area)
+        accessory = sum(building.floor_area for building in outbuildings
+                        if building.label == "garage or shed")
+        exclusion = min(accessory, allowance)
+    else:
+        allowance = OTHER_SHED_ALLOWANCE
+        exclusion = _shed_exclusion(facts)
+    added = total - exclusion
     floor_area = sum(home.floor_area for home in facts.homes) + added
     ratio = floor_area / facts.area
     findings.measurements["floor_area_ratio"] = ratio
@@ -1401,7 +1413,7 @@ def _check_floor_area(facts, findings, older_lot=False):
         ))
     found = outbuildings_explanation(
         facts.rules.label, [(building.label, building.floor_area) for building in outbuildings],
-        allowance, added) if outbuildings else None
+        allowance, added, house_allowance=house_allowance) if outbuildings else None
     if note or found:
         row.explanation = " ".join(filter(None, [note, found, margin_explanation(row)]))
 

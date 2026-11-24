@@ -814,14 +814,26 @@ def test_garage_within_the_allowance_adds_nothing():
     assert "within the allowance" in row.explanation
 
 
-def test_garages_are_left_out_where_the_zone_does_not_count_them():
-    # The historic districts and RA townhouses count floor space the other way.
+def test_other_floor_space_rules_count_garages_in_full():
+    # Section 2-145(B) covers historic districts and RA townhouses.
     for options in ({"historic": True}, {"zone": "RA", "home_type": "townhouse"}):
         _, findings = _house_with_garage(1300, **options)
         row = _rows(findings)["floor_area"]
-        assert row.measured == 3000 and row.buildings == [0]
+        assert row.measured == 4300 and row.buildings == [0, 1]
+        assert "counts garages in full" in row.explanation
     _, findings = _house_with_garage(1300, zone="RA")
     assert _rows(findings)["floor_area"].measured == 3700
+
+
+@pytest.mark.parametrize("area,added", [(65, 0), (66, 66)])
+def test_historic_townhouse_excludes_only_a_qualifying_small_shed(area, added):
+    _, findings = _house_with_garage(area, zone="RB", home_type="townhouse", historic=True)
+    assert _rows(findings)["floor_area"].measured == 3000 + added
+
+
+def test_apartment_floor_area_includes_its_outbuildings():
+    _, findings = _house_with_garage(500, zone="RC", home_type="multi")
+    assert _rows(findings)["floor_area"].measured == 3500
 
 
 def test_house_floor_space_row_says_city_records_may_run_low():
