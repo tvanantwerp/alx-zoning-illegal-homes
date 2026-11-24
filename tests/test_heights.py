@@ -40,6 +40,14 @@ def test_flat_roof_ignores_small_raised_equipment_surrounded_by_roof():
     assert "section 6-403(B)" in estimate.why
 
 
+def test_flat_roofed_house_keeps_a_raised_rooftop_room():
+    # A 3-story flat-roofed rowhouse with a 10 ft rooftop room set back from every wall.
+    shape = box(0, 0, 20, 60)
+    room = box(4, 20, 16, 34)
+    home = Home(shape, height=43, sections=[(shape.difference(room), 33), (room, 43)], stories=3)
+    assert building_height(home).peak == 43
+
+
 @pytest.mark.parametrize("upper,base_height", [
     (box(0, 25, 40, 75), 88),  # Against an outer wall.
     (box(25, 20, 75, 80), 88),  # Too large.

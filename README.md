@@ -113,9 +113,11 @@ CG, CD, CDX, OC, OCM, OCH, W-1, CRMU, KR) and in planned districts:
   buildings are taken to have flat roofs. A roof is never taken to rise
   more than 15 ft, since a story count that leaves a taller roof is
   probably short. With no story count, a pitched roof is measured at 85% of
-  its peak. Under section 6-403(B), the map treats up to three small raised
-  sections surrounded by a flat roof as rooftop appurtenances if they each
-  rise no more than 15 ft and cover at most a quarter of the roof in all.
+  its peak. Under section 6-403(B), on apartment buildings the map treats
+  up to three small raised sections surrounded by a flat roof as rooftop
+  appurtenances if they each rise no more than 15 ft and cover at most a
+  quarter of the roof in all. On houses and townhouses it counts them, since
+  a raised section there may be a rooftop room, which counts toward height.
   Rooftop equipment mapped as part of the same roof section may still be
   included. The limit is the lower of the zone's own and the city's height
   district map's, and the pop-up says which one set it. RM, and houses and

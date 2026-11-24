@@ -216,9 +216,9 @@ def building_height(home, apartment: bool = False) -> BuildingHeight | None:
     height (see `roof_parts`) and each part is estimated with `roof_height`.
     A part taller than the home's own height is a chimney, stair tower or
     similar small piece the home's height already leaves out, so it is
-    lowered to that height. Small raised parts enclosed by the main flat
-    roof can also qualify as rooftop appurtenances. Returns None when the
-    home's height is unknown.
+    lowered to that height. On an apartment building, small raised parts
+    enclosed by the main flat roof are taken as rooftop appurtenances (see
+    `_exclude_rooftop_parts`). Returns None when the home's height is unknown.
     """
     estimated = []
     for shape, peak in roof_parts(home.shape, home.sections, home.height or 0):
@@ -231,7 +231,12 @@ def building_height(home, apartment: bool = False) -> BuildingHeight | None:
             estimated.append(RoofHeight(height, height, UNKNOWN,
                                         "Height is estimated from the recorded stories. "
                                         "The roof height and shape are unknown.", outline=shape))
-    return BuildingHeight(_exclude_rooftop_parts(estimated, home.shape)) if estimated else None
+    if not estimated:
+        return None
+    # On a flat-roofed house or townhouse, a raised part this size is as likely
+    # a rooftop room as a stair or elevator penthouse, and a room counts toward height.
+    return BuildingHeight(_exclude_rooftop_parts(estimated, home.shape) if apartment
+                          else estimated)
 
 
 def _exclude_rooftop_parts(parts: list[RoofHeight], footprint) -> list[RoofHeight]:
