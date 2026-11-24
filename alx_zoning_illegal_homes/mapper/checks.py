@@ -13,9 +13,10 @@ import shapely
 from shapely.geometry import LineString, MultiLineString
 from shapely.ops import nearest_points, substring, unary_union
 
+from . import lot_lines
 from .heights import FLAT, MIN_PART_AREA, BuildingHeight, RoofHeight, building_height
 from .lot_lines import (LotLines, StreetCenterline, front_for_yard, largest_polygon,
-                        lot_width, lot_width_line, street_pieces)
+                        lot_width, lot_width_line)
 from .rule_results import (
     CORNER_NO_REAR, CROSSES_LOT_LINE, FAILS, MAPPING_ERROR, NO_FLOOR_AREA, NO_HEIGHT,
     NO_OUTLINES, NO_REAR_FOUND, NO_RULE, NO_SIDE_LINE, NO_STREET, NOT_CHECKED, NOT_REQUIRED,
@@ -981,7 +982,7 @@ def _front_with_porch(facts, home, front, minimum):
     if tall_roof.area == 0:
         return front
     lot_line = MultiLineString(front.gap.lines)
-    pieces = street_pieces(facts.lines, front.street)
+    pieces = lot_lines.street_pieces(facts.lines, front.street)
     inward = -sum(piece.length * piece.outward for piece in pieces)
     inward /= np.linalg.norm(inward) or 1.0
     origin = np.asarray(lot_line.centroid.coords[0])
@@ -1003,7 +1004,7 @@ def _front_with_porch(facts, home, front, minimum):
     nearest = LineString(nearest_points(wall, lot_line))
     porch_depth = nearest.length - front.gap.gap
     if 0 < porch_depth <= MAX_FRONT_PORCH_DEPTH + 1e-7:
-        gap = YardGap(nearest.length, False, nearest, front.gap.lines)
+        gap = replace(front.gap, gap=nearest.length, nearest=nearest)
         return replace(front, gap=gap, porch_depth=porch_depth)
     return front
 
