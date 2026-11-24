@@ -9,17 +9,19 @@ import shapely
 import shapely.ops
 from shapely.ops import unary_union
 
-from . import loader
+from . import checks, loader
 from .block_faces import BlockFaces
 from .places import near_a_station, near_eisenhower_avenue, station_points
-from .checks import Home, LotFacts, Outbuilding, TownhouseRow, check_lot
-from .lot_lines import MAX_DIVIDED_GAP, MAX_STREET_DISTANCE, Street, classify
+from .checks import (Home, LotFacts, Outbuilding, TownhouseDevelopment,
+                     TownhouseRow, check_lot)
+from .lot_lines import (MAX_DIVIDED_GAP, MAX_STREET_DISTANCE, MIN_SHARED_WALL,
+                        WALL_GAP, Street, classify, parallel_shared_walls)
 from .rule_results import under_special_approval
-from .rules import (HOME_TYPE_NAMES, MAX_TOWNHOUSES_IN_ROW, PLANNED_DISTRICTS,
+from .rules import (ALL_TYPES, HOME_TYPE_NAMES, MAX_TOWNHOUSES_IN_ROW, PLANNED_DISTRICTS,
                     braddock_gateway_fallback, duke_street_floor_area, height_map_limit,
                     king_street_retail_rules, normalize_zone, office_high_rules,
                     named_street_setbacks, planned_district_rules, potomac_yard_fallback,
-                    route_1_properties_fallback, rules_for)
+                    route_1_properties_fallback, rules_for, zoning_key)
 
 # A building counts as sitting on a second lot when this much of it does.
 STRADDLE_SHARE = 0.15
@@ -44,11 +46,6 @@ POTOMAC_YARD_WEST_EDGE = -77.06
 ATTACHED_GAP = 1.5
 # Homes this close together count as one attached row.
 ROW_GAP = 1.0
-# For the limit on townhouses in one building, homes join a row only where
-# their outlines run together, this close, for at least MIN_SHARED_WALL feet:
-# a shared wall, not two rows whose corners meet across an alley.
-WALL_GAP = 0.5
-MIN_SHARED_WALL = 4.0
 # The pop-up outlines at most this many of the other buildings in a row.
 MAX_ROW_OUTLINES = 40
 # Building outlines in a row drawing are simplified to within this many feet.
@@ -136,6 +133,21 @@ def _merge_lots_under_one_home(lots, pairs):
         merged.append(lead)
     return gpd.GeoDataFrame(
         merged, geometry="geometry", crs=lots.crs).reset_index(drop=True)
+
+
+def _mapped_zone_labels(lots: gpd.GeoSeries, zoning: gpd.GeoDataFrame) -> pd.Series:
+    """Select the zone covering the most area on each lot, if any."""
+    districts = zoning.assign(zone=zoning["zone"].map(zoning_key)).dissolve(by="zone")
+    lot_ids, district_ids = districts.sindex.query(lots, predicate="intersects")
+    overlap = shapely.area(shapely.intersection(
+        lots.values[lot_ids], districts.geometry.values[district_ids]))
+    candidates = pd.DataFrame({"lot": lot_ids,
+                               "zone": districts.index.to_numpy()[district_ids],
+                               "overlap": overlap})
+    largest = (candidates[candidates["overlap"] > 0]
+               .sort_values(["overlap", "zone"], ascending=[False, True])
+               .drop_duplicates("lot").set_index("lot"))
+    return pd.Series(largest["zone"].reindex(range(len(lots))).to_numpy(), index=lots.index)
 
 
 def _fold_units_into_their_lots(lots):
@@ -308,27 +320,6 @@ def _union_groups(count: int, left, right) -> np.ndarray:
     return np.array([find(i) for i in range(count)])
 
 
-def _wall_segments(shape):
-    for polygon in shapely.get_parts(shape.simplify(0.1)):
-        coords = np.asarray(polygon.exterior.coords)[:, :2]
-        for start, end in zip(coords, coords[1:]):
-            length = np.linalg.norm(end - start)
-            if length >= MIN_SHARED_WALL:
-                yield (end - start) / length, shapely.LineString([start, end])
-
-
-def _parallel_wall(a, b):
-    other = list(_wall_segments(b))
-    for direction, wall in _wall_segments(a):
-        band = wall.buffer(WALL_GAP, cap_style="flat")
-        for facing, segment in other:
-            if abs(direction @ facing) < 0.97:
-                continue
-            if segment.intersection(band).length >= MIN_SHARED_WALL:
-                return True
-    return False
-
-
 def _shared_walls(home_shapes) -> tuple[np.ndarray, np.ndarray]:
     """Pairs of home outlines that share a wall: they run together for at least MIN_SHARED_WALL."""
     left, right = shapely.STRtree(home_shapes).query(home_shapes, predicate="dwithin",
@@ -340,7 +331,7 @@ def _shared_walls(home_shapes) -> tuple[np.ndarray, np.ndarray]:
     along = np.minimum(
         shapely.length(shapely.intersection(shapely.boundary(a), shapely.buffer(b, WALL_GAP))),
         shapely.length(shapely.intersection(shapely.boundary(b), shapely.buffer(a, WALL_GAP))))
-    keep = [i for i in np.flatnonzero(along >= MIN_SHARED_WALL) if _parallel_wall(a[i], b[i])]
+    keep = [i for i in np.flatnonzero(along >= MIN_SHARED_WALL) if next(parallel_shared_walls(a[i], b[i]), None) is not None]
     return left[keep], right[keep]
 
 
@@ -543,6 +534,11 @@ def _district_fallback(label, lot, point, places):
     if label == "CDD#1":
         return None, duke_street_floor_area(near_a_station(
             lot.geometry, places["stations"], ["King Street-Old Town"]))
+    if label == "CDD#2" and places["hoffman_tract"].covers(point):
+        return None, {
+            "max_height": dict.fromkeys(ALL_TYPES, 150),
+            "described_as": "OC zone rules for the Hoffman Tract",
+        }
     if label == "CDD#7":
         on_reed = str(lot["address_street"]).strip().upper() == "REED"
         commonwealth = places["commonwealth"]
@@ -569,6 +565,24 @@ def _project_for(point, projects, project_tree):
     name, case = (value.strip() if isinstance(value, str) else ""
                   for value in (best["PROJECTNAME"], best["PERMIT_PLAN_CASE"]))
     return f"{name} ({case})" if name and case else name or case or None
+
+
+# Two net blocks of 90,558 sq ft and 152 homes, including the stacked
+# townhouses in the approved residential development. The city's project
+# polygon locates the site but includes the public street between blocks.
+# https://dockets.alexandriava.gov/FY03/121402ph/di11.pdf
+TOWNHOUSE_DEVELOPMENTS = {
+    "DSP2002-00029": TownhouseDevelopment("Chatham Square", 181_116, 152),
+}
+
+
+def _townhouse_development_for(point, projects, project_tree):
+    """Find a development whose site area and home count have been verified."""
+    hits = project_tree.query(point, predicate="within")
+    found = [TOWNHOUSE_DEVELOPMENTS[case]
+             for case in projects.iloc[hits]["PERMIT_PLAN_CASE"].unique()
+             if case in TOWNHOUSE_DEVELOPMENTS]
+    return found[0] if len(found) == 1 else None
 
 
 def _add_district_totals(records):
@@ -718,6 +732,15 @@ def _add_neighbors(facts: LotFacts, lot_id: int, block_faces: BlockFaces,
     return replace(facts, **changes) if changes else facts
 
 
+def _historic_shares(lot_shapes: gpd.GeoSeries, historic) -> pd.Series:
+    """Return each lot's share inside the union of the historic district polygons."""
+    shares = pd.Series(0.0, index=lot_shapes.index)
+    intersecting = lot_shapes.sindex.query(historic, predicate="intersects")
+    nearby = lot_shapes.iloc[intersecting]
+    shares.iloc[intersecting] = nearby.intersection(historic).area / nearby.area
+    return shares.clip(upper=1.0)
+
+
 def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
     """Return one row per lot with its status and the reasons it fails.
 
@@ -741,11 +764,17 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
     buildings["BSIZE"] = buildings["BSIZE"].fillna(0)
     buildings["STORIES"] = buildings["STORIES"].fillna(0)
 
-    amended = lots["address"].eq("1201 E ABINGDON DR")
-    lots.loc[amended & lots["zoning_label"].eq("OCM(50)"), "zoning_label"] = "CRMU/X"
     lots = _fold_units_into_their_lots(lots)
     pairs = _match_buildings_to_lots(lots, buildings)
     lots = _merge_lots_under_one_home(lots, pairs)
+    parcel_zones = lots["zoning_label"].map(zoning_key)
+    mapped_zones = _mapped_zone_labels(lots.geometry, loader.load_zoning())
+    lots["zoning_label"] = mapped_zones.fillna(parcel_zones)
+    # The city's downloaded zoning layer still shows the previous zone here.
+    # Ordinance 5526 applies while the map is awaiting an update (section 1-300(A)(2)).
+    amended = (lots["address"].eq("1201 E ABINGDON DR")
+               & lots["zoning_label"].eq("OCM(50)"))
+    lots.loc[amended, "zoning_label"] = "CRMU/X"
     pairs = _match_buildings_to_lots(lots, buildings)
     placed = _place_buildings(lots, buildings, pairs)
 
@@ -758,12 +787,14 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
     street_tree = shapely.STRtree(street_shapes)
     home_parts = placed[placed["is_home"]]
     home_shapes, home_lots = home_parts.geometry.values, home_parts["lot_id"].values
+    residential_lots = set(home_lots) | set(lots.index[
+        lots["land_use"].isin(list(loader.HOME_TYPE_BY_LAND_USE))])
     home_tree = shapely.STRtree(home_shapes)
     row_sizes = _row_sizes(home_shapes, home_lots)
     townhouse_rows = _townhouse_rows(home_parts, lots)
     parts_by_lot = dict(tuple(placed.groupby("lot_id")))
     lot_points = lots.geometry.representative_point()
-    in_historic = lot_points.within(historic)
+    historic_shares = _historic_shares(lots.geometry, historic)
     height_map = _height_map_areas(home_parts.geometry, loader.load_height_districts())
     lot_lon_lat = lot_points.to_crs("EPSG:4326")
     route_1 = _street(streets, "RICHMOND")
@@ -778,10 +809,17 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
             _street(streets, "FAYETTE")),
     }
     projects = loader.load_development_projects()
+    # Use the city's mapped Hoffman project sites as evidence of tract location.
+    # Other CDD #2 projects, such as Mill Race, keep the district-wide 100 ft limit.
+    places["hoffman_tract"] = projects.loc[
+        projects["PROJECTNAME"].str.match(r"(?i)^Hoffman\b", na=False), "geometry"
+    ].union_all()
     project_tree = shapely.STRtree(projects.geometry.values)
     paving = loader.load_paving()
     paving_shapes, paving_is_parking = paving.geometry.values, paving["is_parking"].values
     paving_tree = shapely.STRtree(paving_shapes)
+    alley_shapes = paving.geometry.values[paving["is_alley"].values]
+    alley_tree = shapely.STRtree(alley_shapes)
 
     # Lots without a home often have no address, which arrives as NaN.
     address_streets = [name if isinstance(name, str) else None
@@ -843,9 +881,24 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
         record["home_type"] = HOME_TYPE_NAMES[home_type]
         record["year_built"] = int(years.min()) if len(years) else None
 
-        is_historic = bool(in_historic.loc[lot_id])
+        historic_share = historic_shares.loc[lot_id]
+        is_historic = bool(historic_share > 0.5)
+        if 0 < historic_share < 1:
+            classification = "inside" if is_historic else "outside"
+            historic_note = (
+                f"A historic district boundary crosses this lot. About {historic_share:.1%} "
+                f"of the lot is inside. The map treats the lot as {classification} based "
+                "on which side contains more than half of its area. Ties count as outside.")
+            record["notes"].append(historic_note)
         label = lot["zoning_label"]
         zone = normalize_zone(label)
+        parcel_zone = parcel_zones.loc[lot_id]
+        if amended.loc[lot_id]:
+            record["notes"].append("The map applies CRMU/X to this lot per Ordinance 5526.")
+        elif pd.notna(mapped_zones.loc[lot_id]) and pd.notna(parcel_zone) and label != parcel_zone:
+            record["notes"].append(
+                f"The parcel record lists {parcel_zone}. "
+                f"The map applies {label} from the city's zoning layer.")
         district = fallback_rules = None
         if zone is not None:
             rules = rules_for(zone, is_historic)
@@ -871,12 +924,19 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
 
         shape = lot.geometry
         lines = lines_for(lot_id)
+        residential_abutters = None
+        if rules.residential_rear_stepback:
+            adjacent = [lot_shapes[i] for i in lot_tree.query(shape, predicate="touches")
+                        if i in residential_lots]
+            residential_abutters = unary_union(adjacent) if adjacent else None
 
         touching = home_tree.query(home_union.buffer(ATTACHED_GAP),
                                    predicate="intersects")
         attached = [home_shapes[i] for i in touching if home_lots[i] != lot_id]
 
         paved, parking = _paving_on(shape, paving_tree, paving_shapes, paving_is_parking)
+        near_alleys = alley_tree.query(shape, predicate="dwithin", distance=checks.DISTANCE_MARGIN)
+        alleys = unary_union(alley_shapes[near_alleys]) if len(near_alleys) else None
 
         units = len(homes)
         if home_type == "multi":
@@ -887,6 +947,11 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
         elif home_type == "two_unit":
             units = 2
 
+        development = None
+        if home_type == "townhouse" and (rules.townhouse_development_area_per_home
+                                         or (fallback_rules is not None
+                                             and fallback_rules.townhouse_development_area_per_home)):
+            development = _townhouse_development_for(lot_points.loc[lot_id], projects, project_tree)
         facts = LotFacts(
             shape=shape,
             area=_lot_area(lot),
@@ -913,12 +978,15 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
                           if not part["is_home"]],
             building_sections=list(on_lot["sections"]),
             attached_neighbors=unary_union(attached) if attached else None,
+            residential_abutters=residential_abutters,
             in_historic_district=is_historic,
             year_built=record["year_built"],
             near_eisenhower_avenue=near_eisenhower_avenue(shape, places["eisenhower"]),
             paved=paved,
+            alleys=alleys,
             parking=parking,
             row=townhouse_rows.get(lot_id),
+            townhouse_development=development,
             street_setbacks=named_street_setbacks(lot_lon_lat.loc[lot_id].x,
                                                   lot_lon_lat.loc[lot_id].y),
         )
@@ -931,6 +999,7 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
         facts = _add_neighbors(facts, lot_id, block_faces, fallback_rules)
         label, home_type = lot["zoning_label"], facts.home_type
         findings = check_lot(facts)
+        findings.notes.extend(record["notes"])
         if lot["land_use"] == TWIN_LAND_USE and home_type in ("two_unit", "single"):
             findings.notes.append(
                 TWO_UNIT_NOTE if home_type == "two_unit" else LONE_HOUSE_NOTE)
@@ -940,6 +1009,15 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
             # Second opinion: the same home under the ordinary zone that
             # would apply if the district's approved plan did not exist.
             ordinary = check_lot(replace(facts, rules=fallback_rules))
+            ordinary.notes.extend(record["notes"])
+            if label.strip().upper() == "CDD#10" and fallback_rules.name == "CRMU-L":
+                ordinary.notes.append(
+                    "The map estimates where the Slaters Lane and Piggyback Yard "
+                    "CRMU-L options apply. In the Piggyback Yard, section 5-602 "
+                    "requires a special use permit and caps development at 275 homes "
+                    "and 50 ft. These results show the CRMU-L rules before those "
+                    "conditions. The map lacks the rezoning plat needed to tell "
+                    "which lots are subject to them.")
             findings.results = under_special_approval(findings.results, district)
             project = _project_for(lot_points.loc[lot_id], projects, project_tree)
             record.update({
@@ -956,7 +1034,7 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
                 f"This lot is in the {district.name} planned district "
                 f"({label.strip()}). City Council approved a plan for the whole "
                 "district, which replaces the ordinary zone rules there. "
-                f"{district.plan_summary} Lot sizes and yards there are drawn "
+                f"{district.plan_summary} Lot sizes and ordinary yards there are drawn "
                 "lot by lot on the approved site plans, not set by general "
                 "rules, so they are not judged."
                 + (f" City case file: {project}." if project else "")))
