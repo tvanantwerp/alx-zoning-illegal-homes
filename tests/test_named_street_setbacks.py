@@ -71,10 +71,10 @@ def test_no_row_off_the_named_streets():
     assert _street_row(findings) is None
 
 
-def test_planned_district_plans_set_it_aside():
+def test_planned_district_checks_setbacks_in_both_scenarios():
     _, plan, fallback = planned_district_rules("CDD#9")
     _, findings = _check(20, FROM_CENTER, rules=plan)
-    assert _street_row(findings) is None
+    assert _street_row(findings).status == "fails"
     _, findings = _check(20, FROM_CENTER, rules=fallback)
     assert _street_row(findings).status == "fails"
 

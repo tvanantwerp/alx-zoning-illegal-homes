@@ -21,7 +21,7 @@ RULE_IDS = ("lot_area", "frontage", "width", "yard:front", "yard:street", "yard:
             "yard:rear", "yard:nearest", "floor_area", "height", "height_near_street",
             "coverage", "open_space", "home_type", "row_length")
 
-NO_STREET = ("The map couldn't find a public street next to this lot, so it "
+NO_STREET = ("The map couldn't find a street next to this lot, so it "
              "can't tell which edge is the front.")
 SHARED_LOT = ("Several homes share this one lot, so no single home has lot "
               "lines of its own to measure.")
@@ -50,8 +50,10 @@ NO_FLOOR_AREA = ("City records don't give this home's floor space, and it couldn
                  "estimated from the number of stories.")
 FLOOR_AREA_MEASURED = (
     "The zoning rules count all floor space under a roof, measured from the outside of "
-    "the walls, finished or not, but leave out basements, stairs, attic space under 7 ft "
-    "high and open porches up to 8 ft deep. The map uses each home's floor space from "
+    "the walls, finished or not. Stairs, attic space under 7 ft high and open porches "
+    "up to 8 ft deep are excluded. A basement counts when the bottom of the first "
+    "floor is at least 4 ft above the average finished ground level. The map can't "
+    "measure that height. It uses each home's floor space from "
     "the city's assessment records, or, where they give none, an estimate from its "
     "outline and number of stories. The city's figure seems to count only finished "
     "living space, leaving out attached garages and unfinished space, so the real "
@@ -72,8 +74,8 @@ HEIGHT_NEAR_STREET_ABOUT = (
     "height rule, against the center of every street the lot faces.")
 CENTERLINE_MEASURED = (
     "The center of the street comes from the city's street map, which traces the middle "
-    "of the pavement. The rule means the middle of the public street, which can sit a "
-    "few feet off it, and building outlines include roof overhangs, so the map allows "
+    "of the pavement. The middle of the street right-of-way can sit a few feet off it, "
+    "and building outlines include roof overhangs, so the map allows "
     "5 ft of distance (10 ft of height) before calling it a problem.")
 NO_OUTLINES = "The city's map has no building outlines on this lot."
 OPEN_SPACE_MEASURED = (
@@ -518,8 +520,8 @@ def no_front_yard_explanation(rules: ZoneRules) -> str:
     """Why no front yard is required in this lot's zone."""
     text = (f"The {rules.label} requires no front yard. Six streets have extra setbacks "
             "of their own (Duke Street, King Street, Seminary Road, Beauregard Street, "
-            "South Pickett Street and Mount Vernon Avenue), which the map doesn't "
-            "check yet.")
+            "South Pickett Street and Mount Vernon Avenue), which the map checks "
+            "separately where they apply.")
     if rules.name == "RC":
         text += (" RC lots along the George Washington Memorial Parkway also have a "
                  "deep setback from Washington Street.")
@@ -584,8 +586,6 @@ def contextual_front_yard_explanation(street: str, gap: float, distances: list[f
         parts.append(f"No neighbors share its frontage on {' and '.join(alone)}, so that "
                      "side wasn't judged.")
     parts.append(FRONT_MEASURED)
-    parts.append("The map checks only that the home stands back far enough, not that it "
-                 "stands no further back than its neighbors.")
     return " ".join(parts)
 
 
@@ -662,8 +662,9 @@ def side_count_explanation(zone_label: str, width: float, needed: int) -> str:
     ending = {0: "none.", 1: "a 5 ft yard on at least one side."}.get(
         needed, "a 5 ft yard on both sides.")
     return (f"In the {zone_label}, side yards depend on lot width: none on lots under "
-            "25 ft wide, one 5 ft side yard from 25 to 35 ft, and two at 35 ft or more. "
-            f"This lot is about {format_feet(width)} wide, so it needs {ending}")
+            "25 ft wide, one 5 ft side yard from 25 ft up to 35 ft, and two at "
+            "35 ft or more. With the 5% margin for measuring width, "
+            f"this lot measures about {format_feet(width)} wide and needs {ending}")
 
 
 def under_special_approval(results: list[RuleResult],
@@ -677,7 +678,8 @@ def under_special_approval(results: list[RuleResult],
     """
     out = []
     for row in results:
-        plan_sets_it = row.rule in SITE_PLAN_RULES or row.rule.startswith("yard:")
+        plan_sets_it = (row.rule in SITE_PLAN_RULES
+                        or (row.rule.startswith("yard:") and row.rule != "yard:street"))
         if plan_sets_it and row.status in (NO_RULE, NOT_CHECKED):
             row = replace(row, status=NOT_REQUIRED, explanation=(
                 f"The approved site plan for {district.name} sets lot sizes and "
