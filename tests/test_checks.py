@@ -579,7 +579,7 @@ def test_zones_that_allow_twin_halves_allow_whole_two_unit_houses():
 
 
 @pytest.mark.parametrize("zone, area, frontage", [
-    ("R-8", 8000, 40), ("R-2-5", 5000, 50), ("RA", 3960, 50), ("RB", 3960, 50),
+    ("R-8", 8000, 40), ("R-2-5", 5000, 40), ("RA", 3960, 50), ("RB", 3960, 50),
     ("RM", 2904, 50), ("CD", 1452, 50), ("CL", 5000, 50), ("OCM(50)", 5000, 50),
     ("CRMU/L", 5000, 50), ("CRMU/X", 5000, 50), ("W-1", 5000, 50),
 ])
@@ -613,7 +613,28 @@ def test_two_unit_house_on_a_twin_halfs_lot_is_too_small():
     assert {"lot_size", "lot_width"} <= kinds
     text = " ".join(r.text for r in findings.reasons)
     assert "requires 5,000 sq ft for a two-unit house" in text
-    assert "requires 50 ft for a two-unit house" in text
+    assert "Lot is too narrow" in text
+    assert _rows(findings)["frontage"].status == "passes"
+    assert _rows(findings)["frontage"].required == 40
+
+
+@pytest.mark.parametrize("home_type,units", [("semi", 1), ("two_unit", 2)])
+def test_rm_twins_have_frontage_but_no_width_minimum(home_type, units):
+    lot = box(0, 0, 45, 100)
+    _, findings = check(lot, box(8, 15, 32, 60), "RM", home_type=home_type, units=units,
+                        neighbors=between_neighbors(lot))
+    rows = _rows(findings)
+    assert rows["width"].status == "no_rule"
+    assert rows["frontage"].required == 25 * units
+
+
+def test_cd_split_twin_half_gets_half_the_whole_twins_lot_area():
+    lot = box(0, 0, 26, 40)
+    _, findings = check(lot, box(0, 0, 16, 20), "CD", home_type="semi",
+                        neighbors=between_neighbors(lot))
+    row = _rows(findings)["lot_area"]
+    assert row.status == "passes"
+    assert row.required == 726
 
 
 def test_older_two_unit_house_passes_in_rc():
