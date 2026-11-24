@@ -353,9 +353,9 @@ Other details that matter:
 - Some rules are left out on purpose; `rules.py` says why beside each one.
   Across zones: threshold height (how high the front door sits), homes per
   acre across a whole development, and anything a special permit or the
-  planning commission could loosen. In single zones: the RB zone's 1,980
-  sq ft of land per apartment for its older apartment buildings, the RT
-  zone's rules for a townhouse row as a whole, the KR zone's 150 sq ft of
+  planning commission could loosen. In single zones: the RB zone's lower
+  land-per-home minimum on certain urban renewal land, the RT zone's rules
+  for a townhouse row as a whole, the KR zone's 150 sq ft of
   open space per home (balconies and roofs count), the extra floor space
   for shops in W-1, CRMU-M and CRMU-H, and the deep setback from Washington
   Street for RC lots along the parkway.

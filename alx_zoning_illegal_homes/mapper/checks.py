@@ -449,7 +449,7 @@ def _check_lot_area(facts, findings, position):
     rules, kind = facts.rules, facts.home_type
     table = rules.corner_lot_area if position == "corner" else rules.lot_area
     required = table.get(kind, rules.lot_area.get(kind))
-    per_home = kind == "townhouse" and facts.units > 1
+    per_home = kind in rules.lot_area_per_home_for and facts.units > 1
     row = RuleResult("lot_area", "Land per home" if per_home else "Lot size",
                      NO_RULE, unit="sq ft",
                      about=TWO_UNIT_LOT if kind == "two_unit" else None)
