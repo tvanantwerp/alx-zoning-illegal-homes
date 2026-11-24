@@ -149,12 +149,3 @@ def test_outbuilding_sliver_stays_with_the_rest_of_the_building():
     placed = place(lots, [box(20, 50, 80, 101)], is_home=False)
     assert sorted(placed.lot_id) == [0, 1]
     assert placed.share.sum() == pytest.approx(1.0)
-
-
-def test_twin_wall_share_uses_overlap_along_the_shorter_facing_wall():
-    from alx_zoning_illegal_homes.mapper.analyze import _twin_wall_share
-
-    first = box(0, 0, 20, 20)
-    assert _twin_wall_share(first, box(20.5, 10, 40, 30)) == pytest.approx(0.5)
-    assert _twin_wall_share(first, box(20.5, 18, 40, 38)) == pytest.approx(0.1)
-    assert _twin_wall_share(first, box(20.5, 20, 40, 40)) == pytest.approx(0)

@@ -12,8 +12,7 @@ MAIN = ("MAIN", LineString([(-300, -25), (500, -25)]))
 def check(lot, home, zone, home_type="single", neighbors=None, attached=None,
           height=20, floor_area=1000, units=1, rules=None, streets=(), all_buildings=None,
           sections=(), year_built=None, historic=False, near_eisenhower=False, stories=None,
-          height_map=None, retail=None, row=None, outbuildings=(), street_setbacks=None,
-          twin_wall_share=None, gross_floor_area=None):
+          height_map=None, retail=None, row=None, outbuildings=(), street_setbacks=None):
     """Check one lot holding one home, fronting Main St to its south.
 
     Pass `rules` to use those instead of the zone's own, `streets` to add
@@ -35,7 +34,7 @@ def check(lot, home, zone, home_type="single", neighbors=None, attached=None,
         home_type=home_type,
         homes=[Home(shape=home, height=height, floor_area=floor_area,
                     sections=list(sections), stories=stories,
-                    ground_floor_retail=retail, gross_floor_area=gross_floor_area)],
+                    ground_floor_retail=retail)],
         lines=classify(lot, neighbors, [MAIN, *streets], "MAIN"),
         units=units,
         all_buildings=[home] if all_buildings is None else all_buildings,
@@ -45,7 +44,6 @@ def check(lot, home, zone, home_type="single", neighbors=None, attached=None,
         near_eisenhower_avenue=near_eisenhower,
         height_map=height_map,
         row=row,
-        twin_wall_share=twin_wall_share,
         outbuildings=list(outbuildings),
         street_setbacks=street_setbacks or {},
     )

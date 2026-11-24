@@ -945,12 +945,12 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
             building_sections=list(on_lot["sections"]),
             attached_neighbors=unary_union(attached) if attached else None,
             in_historic_district=is_historic,
+            twin_wall_share=_mapped_twin_wall(home_type, list(homes.geometry), attached),
             year_built=record["year_built"],
             near_eisenhower_avenue=near_eisenhower_avenue(shape, places["eisenhower"]),
             paved=paved,
             parking=parking,
             row=townhouse_rows.get(lot_id),
-            twin_wall_share=_mapped_twin_wall(home_type, list(homes.geometry), attached),
             street_setbacks=named_street_setbacks(lot_lon_lat.loc[lot_id].x,
                                                   lot_lon_lat.loc[lot_id].y),
         )

@@ -175,6 +175,8 @@ class LotFacts:
     outbuildings: list[Outbuilding] = field(default_factory=list)
     # Homes on other lots that touch this lot's homes.
     attached_neighbors: object = None
+    # Shared fraction of the shorter facing wall on a mapped twin pair.
+    twin_wall_share: float | None = None
     in_historic_district: bool = False
     # Year the oldest home on the lot was built, from city records.
     year_built: int | None = None
@@ -201,8 +203,6 @@ class LotFacts:
     # The extra setbacks along named streets (section 7-1006) that cover this
     # lot's location, as NamedStreetSetbacks keyed by street name.
     street_setbacks: dict = field(default_factory=dict)
-    # Shared fraction of the shorter facing wall on a mapped twin pair.
-    twin_wall_share: float | None = None
 
 
 @dataclass
@@ -253,13 +253,13 @@ def check_lot(facts: LotFacts) -> Findings:
             findings.results.append(RuleResult(rule, name, NOT_CHECKED, explanation=note))
         findings.results.sort(key=lambda row: RULE_IDS.index(row.rule))
         return findings
-    _check_twin_wall(facts, findings)
-    _check_accessory_sizes(facts, findings)
     _check_lot_area(facts, findings, position)
     width = _check_width_and_frontage(facts, findings, position)
     older_lot = _excuse_older_lot(facts, findings)
     _check_yards(facts, findings, width)
     _check_named_street_setbacks(facts, findings)
+    _check_twin_wall(facts, findings)
+    _check_accessory_sizes(facts, findings)
     marginal = (not older_lot and facts.rules.name in OLDER_LOTS.zones
                 and facts.home_type in HOUSE_LIKE and facts.home_type in facts.rules.allowed
                 and any(row.rule in LOT_RULES and row.status == PASSES and row.required
