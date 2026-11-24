@@ -956,12 +956,13 @@ def test_garage_within_the_allowance_adds_nothing():
     assert "within the allowance" in row.explanation
 
 
-def test_garages_are_left_out_where_the_zone_does_not_count_them():
-    # The historic districts and RA townhouses count floor space the other way.
+def test_other_floor_space_rules_count_garages_in_full():
+    # Section 2-145(B) covers historic districts and RA townhouses.
     for options in ({"historic": True}, {"zone": "RA", "home_type": "townhouse"}):
         _, findings = _house_with_garage(1300, **options)
         row = _rows(findings)["floor_area"]
-        assert row.measured == 3000 and row.buildings == [0]
+        assert row.measured == 4300 and row.buildings == [0, 1]
+        assert "counts garages" in row.explanation
     _, findings = _house_with_garage(1300, zone="RA")
     assert _rows(findings)["floor_area"].measured == 4300
 
@@ -981,6 +982,33 @@ def test_accessory_size_limits_on_a_mid_size_lot(building_areas, added):
         outbuildings=[Outbuilding(i, area, "garage or shed")
                       for i, area in enumerate(building_areas, start=1)])
     assert _rows(findings)["floor_area"].measured == 1600 + added
+
+
+@pytest.mark.parametrize("area,added", [(65, 0), (66, 66)])
+def test_historic_townhouse_excludes_only_a_qualifying_small_shed(area, added):
+    _, findings = _house_with_garage(area, zone="RB", home_type="townhouse", historic=True)
+    assert _rows(findings)["floor_area"].measured == 3000 + added
+
+
+@pytest.mark.parametrize("zone", ["RM", "CL"])
+@pytest.mark.parametrize("area,added", [(90, 0), (100, 0), (101, 101)])
+def test_house_outside_historic_districts_excludes_a_shed_up_to_100_sq_ft(zone, area, added):
+    _, findings = _house_with_garage(area, zone=zone)
+    row = _rows(findings)["floor_area"]
+    assert row.measured == 3000 + added
+    assert "excludes up to 100 sq ft" in row.explanation
+
+
+def test_townhouse_outside_historic_districts_gets_no_shed_exclusion():
+    _, findings = _house_with_garage(50, zone="RM", home_type="townhouse")
+    row = _rows(findings)["floor_area"]
+    assert row.measured == 3050
+    assert "counts garages and sheds in full" in row.explanation
+
+
+def test_apartment_floor_area_includes_its_outbuildings():
+    _, findings = _house_with_garage(500, zone="RC", home_type="multi")
+    assert _rows(findings)["floor_area"].measured == 3500
 
 
 def test_house_floor_space_row_says_city_records_may_run_low():

@@ -97,17 +97,23 @@ CG, CD, CDX, OC, OCM, OCH, W-1, CRMU, KR) and in planned districts:
   behind toward the second part). The map measures it to every lot line
   away from both streets that isn't along a shared wall.
 - **Floor space** compared with lot size. In the KR and OCH zones the limit
-  is looser within 1,000 ft of a Metro station. In R-20 through R-2-5, and
-  for houses and two-unit houses in RA and RB outside the historic
-  districts, garages, sheds and other outbuildings count too, beyond an
-  allowance of 100 sq ft (lots under 2,500 sq ft), 350 sq ft, or 600 sq ft
-  (lots of 8,000 sq ft or more). Only qualifying sheds and garages get
-  this allowance. The map estimates eligibility from their floor space.
-  On lots with a house or two-unit house, sheds may total up to 100 sq ft.
-  One garage of up to 250 sq ft qualifies on lots of 2,500 to under
-  8,000 sq ft, or up to 500 sq ft on larger lots. Their floor space comes
-  from their outlines, as one story unless the city's 3D data shows a
-  building tall enough for more.
+  is looser within 1,000 ft of a Metro station. Where a floor space limit
+  applies, the map counts garages, sheds and other outbuildings. Outside
+  the historic districts, homes in R-20 through R-2-5 and houses and
+  two-unit houses in RA and RB get an allowance of 100 sq ft (lots under
+  2,500 sq ft), 350 sq ft, or 600 sq ft (lots of 8,000 sq ft or more).
+  Only qualifying sheds and garages get this allowance. The map estimates
+  eligibility from their floor space. On lots with a house or two-unit
+  house, sheds may total up to 100 sq ft. One garage of up to 250 sq ft
+  qualifies on lots of 2,500 to under 8,000 sq ft, or up to 500 sq ft on
+  larger lots. Their floor space comes from their outlines, as one story
+  unless the city's 3D data shows a building tall enough for more.
+  Elsewhere, section 2-145(B) counts garages in full. It leaves out small
+  sheds: up to 100 sq ft for houses and two-unit houses outside the
+  historic districts, and up to 65 sq ft for houses, two-unit houses and
+  townhouses inside them. Other homes get no shed exclusion. City records
+  group garages and sheds together, so the map uses floor space to
+  estimate which structures qualify.
 - **Height**, measured as the ordinance does: to the top of a flat roof, but
   only halfway between the eaves and the peak of a gable or hip roof. The
   city's 3D data gives only the peak, so the map guesses the roof's shape and

@@ -829,7 +829,7 @@ def _outbuilding_list(outbuildings: list[tuple[str, float]]) -> str:
 
 
 def outbuildings_explanation(zone_label: str, outbuildings: list[tuple[str, float]],
-                             allowance: float, added: float) -> str:
+                             allowance: float, added: float, *, house_allowance: bool = True) -> str:
     """Say which garages, sheds and other outbuildings count toward floor space, and how much.
 
     `outbuildings` holds a (label, floor space) pair for each, `allowance`
@@ -837,9 +837,16 @@ def outbuildings_explanation(zone_label: str, outbuildings: list[tuple[str, floa
     `added` is what the map adds to the homes' floor space.
     """
     one = len(outbuildings) == 1
+    if house_allowance:
+        excluded = (f"On a lot this size, up to {allowance:,.0f} sq ft in qualifying "
+                    "garages and sheds is excluded.")
+    elif allowance:
+        excluded = (f"This floor space rule counts garages in full and excludes up to "
+                    f"{allowance:,.0f} sq ft of qualifying small accessory buildings.")
+    else:
+        excluded = "For this kind of home, this floor space rule counts garages and sheds in full."
     found = (f"In the {zone_label}, floor space takes in every building on the lot, garages "
-             f"and sheds included. On a lot this size, up to {allowance:,.0f} sq ft in qualifying "
-             f"garages and sheds is excluded. Other than homes, the map found {_outbuilding_list(outbuildings)} "
+             f"and sheds included. {excluded} Other than homes, the map found {_outbuilding_list(outbuildings)} "
              "on this lot. ")
     measured = (f"{'Its' if one else 'Their'} floor space is estimated from "
                 f"{'its outline' if one else 'their outlines'}, less a fifth for eaves, as "
