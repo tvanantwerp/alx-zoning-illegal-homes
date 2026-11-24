@@ -30,6 +30,27 @@ def test_apartment_building_is_flat_whatever_its_stories():
     assert roof.shape == FLAT and roof.height == 40 and roof.eaves is None
 
 
+def test_flat_roof_ignores_small_raised_equipment_surrounded_by_roof():
+    shape = box(0, 0, 100, 100)
+    upper = box(30, 25, 70, 75)
+    home = Home(shape, height=100, sections=[(shape.difference(upper), 88), (upper, 100)])
+    estimate = building_height(home, apartment=True)
+    assert estimate.height == estimate.peak == 88
+    assert estimate.tallest.outline.equals(shape)
+    assert "section 6-403(B)" in estimate.why
+
+
+@pytest.mark.parametrize("upper,base_height", [
+    (box(0, 25, 40, 75), 88),  # Against an outer wall.
+    (box(25, 20, 75, 80), 88),  # Too large.
+    (box(30, 25, 70, 75), 80),  # Too tall.
+])
+def test_larger_or_unsurrounded_roof_parts_keep_their_height(upper, base_height):
+    shape = box(0, 0, 100, 100)
+    home = Home(shape, height=100, sections=[(shape.difference(upper), base_height), (upper, 100)])
+    assert building_height(home, apartment=True).height == 100
+
+
 def test_unknown_stories_fall_back_to_a_share_of_the_peak():
     roof = roof_height(40)
     assert roof.shape == PITCHED and roof.height == pytest.approx(PITCHED_SHARE * 40)
