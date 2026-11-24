@@ -5,7 +5,8 @@ import pytest
 from shapely.geometry import box
 
 from alx_zoning_illegal_homes.mapper.analyze import (
-    _home_type, _match_buildings_to_lots, _outbuilding, _place_buildings, _row_sizes)
+    _historic_shares, _home_type, _match_buildings_to_lots, _outbuilding,
+    _place_buildings, _row_sizes)
 
 
 def place(lot_shapes, building_shapes, is_home=True):
@@ -28,6 +29,14 @@ def place(lot_shapes, building_shapes, is_home=True):
     buildings["footprint"] = buildings.geometry.area
     pairs = _match_buildings_to_lots(lots, buildings)
     return _place_buildings(lots, buildings, pairs)
+
+
+def test_historic_share_counts_area_even_if_the_lots_center_is_outside():
+    lots = gpd.GeoSeries([box(0, 0, 10, 10), box(-5, 0, 5, 10),
+                         box(-10, 0, 0, 10), box(0, 0, 1, 10)])
+    district = box(0, 0, 4, 10).union(box(7, 0, 10, 10))
+    assert not lots.representative_point().iloc[0].within(district)
+    assert list(_historic_shares(lots, district)) == pytest.approx([0.7, 0.4, 0, 1])
 
 
 def test_disconnected_scrap_does_not_follow_its_adjacent_component():

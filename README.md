@@ -267,6 +267,10 @@ lot's front, sides and rear from shape alone:
 
 Other details that matter:
 
+- A lot is treated as historic when more than half its area is inside the
+  historic districts. The pop-up gives the percentage for lots the boundary
+  crosses. This is how the map handles split lots.
+
 - Condo units are stacked on one polygon in the parcel layer, or drawn as
   small outlines on top of the land they share; either way they are folded
   into one lot.
