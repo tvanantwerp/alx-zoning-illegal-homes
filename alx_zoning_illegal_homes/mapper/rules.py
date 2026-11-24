@@ -1124,6 +1124,7 @@ RB_HISTORIC = ZoneRules(
     allowed=ZONES["RB"].allowed,
     allowed_if_built_before=ZONES["RB"].allowed_if_built_before,
     lot_area=ZONES["RB"].lot_area,
+    lot_area_per_home_for=ZONES["RB"].lot_area_per_home_for,
     lot_width=ZONES["RB"].lot_width,
     end_lot_width=ZONES["RB"].end_lot_width,
     corner_lot_width=ZONES["RB"].corner_lot_width,
