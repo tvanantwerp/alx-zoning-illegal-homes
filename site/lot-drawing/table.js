@@ -126,5 +126,5 @@ function sizeNote(row) {
 /** The lot's notes as a list. */
 export function notesList(notes) {
   if (!notes || !notes.length) return "";
-  return `<ul class="notes">${notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>`;
+  return `<ul class="notes">${Array.from(new Set(notes)).map((n) => `<li>${esc(n)}</li>`).join("")}</ul>`;
 }
