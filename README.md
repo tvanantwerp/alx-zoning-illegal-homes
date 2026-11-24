@@ -303,6 +303,16 @@ Other details that matter:
   reach into a yard. It applies to every home, even ones with little or no
   overhang. A home drawn touching or crossing a
   lot line is assumed to be a mapping error and its yards are skipped.
+- Other measurements also get some slack:
+  - **Building height:** 5 ft for uncertainty in the city's 3D data and in
+    estimating where a sloped roof's eaves are.
+  - **Floor space:** 10% because assessment records and the ordinance count
+    different kinds of space.
+  - **Lot width:** 5% for differences between mapped lot edges and a survey.
+  - **Lot size and open space:** 3% for uncertainty in drawing lot boundaries,
+    building outlines and paving.
+  - **Building coverage:** 3% of the limit for uncertainty in the mapped lot
+    and roof outlines.
 - Front yards set by the neighbors are measured from building outlines
   traced from roofs, so a porch roof or overhang counts as part of the
   building, for a home and its neighbors alike. A home with a deep porch
