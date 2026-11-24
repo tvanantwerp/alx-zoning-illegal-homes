@@ -15,8 +15,8 @@ Home types used throughout:
 The ordinance's "two-unit dwelling" covers both a twin (two homes side by
 side, sharing a wall) and a duplex (one home above the other). Where the
 two get different street frontage, a whole two-unit house on one lot uses
-the twin's: the map finds these houses as two attached outlines side by
-side, which a stacked duplex would not show.
+the rule for a whole twin: the map finds these houses as two attached
+outlines side by side, which a stacked duplex would not show.
 
 Every zone below was compared with its section of the ordinance. Rules the
 map could measure are here; these kinds are left out on purpose, in every
@@ -328,8 +328,9 @@ ZONES = {
             "area": {"semi": 2500},
             "corner_area": {"semi": 3250},
             "width": {"semi": 25},
-            # A whole twin on one lot needs 25 ft for each of its two homes.
-            "frontage": {"semi": 25, "two_unit": 50},
+            # Section 3-505(C) gives each separately lotted half 25 ft.
+            # A whole twin uses the regular 40 ft lot frontage.
+            "frontage": {"semi": 25},
         },
     ),
     "RA": ZoneRules(
@@ -458,7 +459,8 @@ ZONES = {
         # 1,452 sq ft and 25 ft of frontage for each home, so a two-unit
         # house needs twice both.
         lot_area={"single": 1452, "semi": 1452, "two_unit": 2904, "townhouse": 1452},
-        lot_width={"single": 25, "semi": 25, "two_unit": 25, "townhouse": 18},
+        # Section 3-1105(C)(1) specifies frontage only for twins.
+        lot_width={"single": 25, "townhouse": 18},
         frontage={"single": 25, "semi": 25, "two_unit": 50, "townhouse": 18},
         front_yard_by_block_average=True,
         side_yards_by_lot_width=True,
@@ -604,7 +606,8 @@ ZONES |= {
         allowed=ALL_TYPES,
         # Section 4-505(B) asks 1,452 sq ft of each house, two-unit house and
         # townhouse ("dwelling"), not of each home in it as the RM zone does.
-        lot_area={kind: 1452 for kind in HOUSE_LIKE},
+        # Apportion the whole twin's minimum evenly across separately lotted halves.
+        lot_area={kind: 1452 for kind in HOUSE_LIKE} | {"semi": 726},
         lot_width={"single": 25, "semi": 25, "two_unit": 25, "townhouse": 18,
                    "multi": 50},
         # A twin needs 25 ft of frontage for each of its homes.
