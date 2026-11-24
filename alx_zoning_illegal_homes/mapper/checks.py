@@ -20,7 +20,7 @@ from .rule_results import (
     CORNER_NO_REAR, CROSSES_LOT_LINE, FAILS, MAPPING_ERROR, NO_FLOOR_AREA, NO_HEIGHT,
     NO_OUTLINES, NO_REAR_FOUND, NO_RULE, NO_SIDE_LINE, NO_STREET, NOT_CHECKED, NOT_REQUIRED,
     OLDER_LOT, PASSES, RULE_IDS,
-    SHARED_LOT, SHARED_WALL, SIDE_COUNT_ON_CORNER, TOO_SHALLOW, TWO_UNIT_LOT, YARD_BENEFIT_OF_DOUBT,
+    SHARED_LOT, SHARED_WALL, TOO_SHALLOW, TWO_UNIT_LOT, YARD_BENEFIT_OF_DOUBT,
     CRMU_M_OLDER_LOT_NOTE, FLOOR_AREA_MEASURED, HEIGHT_MEASURED, HEIGHT_NEAR_STREET_ABOUT,
     RuleResult,
     eisenhower_older_home_note, eisenhower_special_permit_explanation,
@@ -521,6 +521,15 @@ def _check_width_and_frontage(facts, findings, position):
     frontage_row.shapes["line"] = lines.front_line
     width_line = (lot_width_line(facts.shape, lines, measured_at) if measured_at > 0
                   else lines.front_line)
+    if position == "corner" and rules.side_yards_by_lot_width and measured_at == 0:
+        # At the front, measure straight from the secondary front toward the
+        # side line, leaving out the bend where the two streets meet.
+        front = front_for_yard(lines, lines.primary_street)
+        coords = shapely.get_coordinates(front)
+        offsets = coords @ lines.front_direction
+        width_line = LineString([coords[offsets.argmin()], coords[offsets.argmax()]])
+        width = width_line.length
+        findings.measurements["width"] = width
     if width_line is not None:
         width_row.shapes["line"] = width_line
     # Several homes on one shared lot have no lot lines of their own.
@@ -723,6 +732,13 @@ def _yard_gaps(facts, home) -> tuple[dict, dict]:
     rear_starts = home_depth + 0.6 * (deepest - home_depth)
     has_rear = not (lines.is_corner or lines.is_through)
     remainder_is_rear = _corner_remainder_is_rear(facts)
+    corner_back_side = None
+    if lines.is_corner and facts.rules.side_yards_by_lot_width and not remainder_is_rear:
+        secondary = min((front for name, front in lines.fronts.items()
+                         if name != lines.primary_street), key=lines.front_line.distance)
+        # The non-street edge parallel to the primary front counts as a
+        # single side yard, even if it extends past both sides of the home.
+        corner_back_side = _side_of(facts, secondary.centroid.coords[0], home)
 
     gaps, shared_wall = {}, {}
     for piece in lines.pieces:
@@ -759,7 +775,8 @@ def _yard_gaps(facts, home) -> tuple[dict, dict]:
                     continue
                 key = "rear"
             else:
-                key = _side_of(facts, piece.midpoint, home)
+                key = (corner_back_side if corner_back_side is not None and runs_along_front
+                       else _side_of(facts, piece.midpoint, home))
                 if on_shared_wall:
                     shared_wall.setdefault(key, []).append(piece.line)
         if key not in gaps:
@@ -1071,7 +1088,7 @@ def _side_rows(facts, record, gaps, shared, touching, parts, width):
     needed = 2 if measure >= 35 else 1 if measure >= 25 else 0
     # A shared wall is a side with no yard at all.
     have = sum(gaps[key].gap + DISTANCE_MARGIN >= 5 for key in (-1, 1) if key in gaps)
-    short = not lines.is_corner and have < needed
+    short = not _corner_remainder_is_rear(facts) and have < needed
     if short:
         record("side", needed - have,
                f"A lot this wide ({_feet(measure)}) needs "
@@ -1093,8 +1110,6 @@ def _counted_side_row(facts, key, gap, shared, measure, needed, short):
             return _yard_row(facts, role, NOT_REQUIRED, explanation=SHARED_WALL)
         return _yard_row(facts, role, NOT_CHECKED, explanation=(
             corner_side_as_rear_explanation(facts.rules.label)))
-    if facts.lines.is_corner:
-        return _yard_row(facts, role, NOT_CHECKED, gap, explanation=SIDE_COUNT_ON_CORNER)
     text = side_count_explanation(facts.rules.label, measure, needed)
     if needed == 0:
         return _yard_row(facts, role, NOT_REQUIRED, gap, explanation=text)

@@ -11,6 +11,8 @@ from alx_zoning_illegal_homes.mapper.rule_results import (
     RULE_IDS, FAILS, NO_RULE, NOT_CHECKED, NOT_REQUIRED, PASSES, reason_kind, under_special_approval)
 from alx_zoning_illegal_homes.mapper.rules import ZONES, planned_district_rules
 
+from alx_zoning_illegal_homes.mapper.rules import rules_for
+
 from .helpers import between_neighbors, check
 
 
@@ -282,6 +284,20 @@ def test_rm_corner_house_still_has_no_rear_yard():
                  streets=[SIDE_STREET])
     assert rows(f)["yard:rear"].status == NOT_CHECKED
     assert "no rear yard to check" in rows(f)["yard:rear"].explanation
+
+
+@pytest.mark.parametrize("zone", ["RM", "RB"])
+@pytest.mark.parametrize("back,expected", [(59, FAILS), (50, PASSES)])
+def test_counted_corner_side_yards_include_both_nonstreet_edges(zone, back, expected):
+    _, findings = check(RM_CORNER_LOT, box(10, 0.5, 30, back), zone,
+                        neighbors=unary_union([RM_CORNER_EAST, RM_CORNER_BEHIND]),
+                        streets=[SIDE_STREET], rules=rules_for(zone, True), historic=True)
+    result = rows(findings)
+    assert result["yard:left"].status == expected
+    assert result["yard:left"].measured == pytest.approx(60 - back)
+    assert result["yard:right"].status == PASSES
+    assert result["yard:right"].measured == pytest.approx(10)
+    assert result["yard:rear"].status == NOT_CHECKED
 
 
 def test_front_yard_without_neighbors_is_not_checked_in_contextual_zone():
