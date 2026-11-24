@@ -1007,25 +1007,19 @@ def potomac_yard_fallback(longitude, latitude, feet_east_of_route_1) -> tuple:
     The ordinance gives RB south of the Monroe Avenue bridge and east of the
     Metro tracks, CSL for the first 250 feet east of Route 1, and industrial
     everywhere else, except that the "Piggyback Yard" and Slaters Lane parts
-    may be built under CRMU-L rules, with the Piggyback Yard capped at 50 ft.
+    can use CRMU-L rules. The Piggyback Yard option requires a special use
+    permit and is capped at 50 ft and 275 homes.
 
     The bridge and tracks are approximated here by a line of latitude and a
     line of longitude. The Piggyback Yard and Slaters Lane parts are drawn
     only on a 1995 rezoning plat (REZ #95-0004) that the map doesn't have,
     so their edges are a judgment call:
 
-    - The Piggyback Yard is taken to be Potomac Greens, east of the tracks and
-      north of the bridge line. Its approved plan allows 244 homes, which fits
-      the ordinance's cap of 275 for the Piggyback Yard.
-    - Slaters Lane itself runs just south of the bridge line. The townhouses
-      just north of it (Hunting Creek Drive and nearby), between Slaters Lane
-      and Potomac Greens, are taken to be the Slaters Lane part.
-
-    So everything east of the tracks and north of the line gets CRMU-L. The
-    city's master plan calls the rezoning "RB to CRMU-L", which suggests the
-    bridge boundary sat further north than this line. That doesn't change any
-    result: no home in the district sits east of the tracks and south of the
-    line, where RB still applies.
+    The model uses CRMU-L east of the tracks and north of the bridge line to
+    show what the CRMU-L option would allow. The ordinary-zoning notes
+    explain the uncertainty and conditions. The 1995 master plan amendment
+    describes the area as formerly RB, which suggests the original bridge
+    boundary sat further north than this line.
 
     The Piggyback Yard's 50 ft cap isn't applied, because the map can't tell
     where the Piggyback Yard ends and the Slaters Lane part begins. CRMU-L
