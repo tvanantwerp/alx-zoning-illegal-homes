@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chooseResults, rulesTable, lotSquares, verdict } from "../../site/lot-drawing/table.js";
+import { chooseResults, rulesTable, lotSquares, notesList, verdict } from "../../site/lot-drawing/table.js";
 
 const row = (o) => ({ rule: "lot_area", name: "Lot size", status: "fails", measured: 4000, required: 8000, unit: "sq ft", limit: "min", ...o });
 const plain = { results: { label: "R-8 zone rules", rules: [row()] } };
@@ -98,4 +98,9 @@ test("table parts name their roles, so screen readers keep the table on narrow s
   assert.match(html, /<tbody role="rowgroup">/);
   assert.doesNotMatch(html, /<td[ >](?!role="cell")/);
   assert.doesNotMatch(html, /<th[ >](?!role="columnheader")/);
+});
+
+test("notes show repeated text once, in first-seen order", () => {
+  assert.equal(notesList(["A roof crosses the lot line.", "Another note.", "A roof crosses the lot line."]),
+    '<ul class="notes"><li>A roof crosses the lot line.</li><li>Another note.</li></ul>');
 });
