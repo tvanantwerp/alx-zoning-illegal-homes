@@ -252,9 +252,38 @@ def test_rm_corner_townhouse_with_a_tall_home_needs_a_deeper_yard():
 def test_rm_corner_townhouse_counts_half_an_alley_toward_the_setback_ratio():
     # 14 ft to the back line clears the 16 ft minimum (with the margin) but
     # not the 18 ft the home's height needs, unless half the alley behind counts.
-    assert rows(rm_corner(46, height=40, stories=3)[1])["yard:rear"].status == FAILS
+    rear = rows(rm_corner(46, height=40, stories=3)[1])["yard:rear"]
+    assert rear.status == FAILS and "alley" not in rear.detail
+    for behind in (True, False):
+        # The alley's own parcel can make the back line shared.
+        alley = box(0, 60, 40, 68)
+        rear = rows(rm_corner(46, behind=behind, height=40, stories=3, alleys=alley)[1])["yard:rear"]
+        assert rear.status == PASSES and "alley" in rear.detail
+        assert "adds 4.0 ft" in rear.explanation and "may run low" in rear.explanation
+
+
+def test_open_land_behind_without_mapped_paving_gets_the_typical_alley_credit():
+    # An unpaved or untraced alley: open land behind, no paving polygon.
     rear = rows(rm_corner(46, behind=False, height=40, stories=3)[1])["yard:rear"]
     assert rear.status == PASSES and "alley" in rear.detail
+    assert "traces no alley paving" in rear.explanation
+
+
+def test_rear_alley_credit_cannot_cover_the_fixed_minimum():
+    # The 12 ft rear yard is too small for the 16 ft minimum with or
+    # without a 12 ft alley beyond the lot line.
+    rear = rows(rm_corner(48, height=40, stories=3, alleys=box(0, 60, 40, 72))[1])["yard:rear"]
+    assert rear.status == FAILS and rear.required == 16
+
+
+def test_rear_yard_uses_the_actual_alley_width():
+    # The 14 ft rear yard can pass the 18 ft ratio with a 6 ft alley,
+    # but an alley only 2 ft wide adds too little.
+    rear = rows(rm_corner(46, height=40, stories=3, alleys=box(0, 60, 40, 62))[1])["yard:rear"]
+    assert rear.status == FAILS and rear.required == 18
+    assert "adds 1.0 ft" in rear.explanation
+    rear = rows(rm_corner(46, height=40, stories=3, alleys=box(0, 60, 40, 66))[1])["yard:rear"]
+    assert rear.status == PASSES and "adds 3.0 ft" in rear.explanation
 
 
 def test_rm_corner_townhouse_walled_in_at_the_back_is_not_judged():

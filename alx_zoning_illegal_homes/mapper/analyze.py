@@ -9,7 +9,7 @@ import shapely
 import shapely.ops
 from shapely.ops import unary_union
 
-from . import loader
+from . import checks, loader
 from .block_faces import BlockFaces
 from .places import near_a_station, near_eisenhower_avenue, station_points
 from .checks import (Home, LotFacts, Outbuilding, TownhouseDevelopment,
@@ -817,6 +817,8 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
     paving = loader.load_paving()
     paving_shapes, paving_is_parking = paving.geometry.values, paving["is_parking"].values
     paving_tree = shapely.STRtree(paving_shapes)
+    alley_shapes = paving.geometry.values[paving["is_alley"].values]
+    alley_tree = shapely.STRtree(alley_shapes)
 
     # Lots without a home often have no address, which arrives as NaN.
     address_streets = [name if isinstance(name, str) else None
@@ -932,6 +934,8 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
         attached = [home_shapes[i] for i in touching if home_lots[i] != lot_id]
 
         paved, parking = _paving_on(shape, paving_tree, paving_shapes, paving_is_parking)
+        near_alleys = alley_tree.query(shape, predicate="dwithin", distance=checks.DISTANCE_MARGIN)
+        alleys = unary_union(alley_shapes[near_alleys]) if len(near_alleys) else None
 
         units = len(homes)
         if home_type == "multi":
@@ -978,6 +982,7 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
             year_built=record["year_built"],
             near_eisenhower_avenue=near_eisenhower_avenue(shape, places["eisenhower"]),
             paved=paved,
+            alleys=alleys,
             parking=parking,
             row=townhouse_rows.get(lot_id),
             townhouse_development=development,

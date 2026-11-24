@@ -49,6 +49,7 @@ STREET_WORDS = {
 }
 # Codes in the city's roads, driveways and parking layer.
 PARKING_LOT = 3
+ALLEY = 7
 OFF_STREET_PARKING = 2
 
 
@@ -186,7 +187,8 @@ def load_paving() -> gpd.GeoDataFrame:
     These come from the city's planimetric map, traced from aerial photos.
     None of this land counts as open space. "is_parking" marks parking lots
     and driveways the city tags as off-street parking, for the RD zone,
-    which lets part of its parking count toward open space.
+    which lets part of its parking count toward open space. "is_alley"
+    marks the alley outlines used by the rear yard rule.
     """
     paving = gpd.read_file(DATA_DIR / "Roads_Driveways_Parking.geojson")
     paving = paving.to_crs(FEET_CRS)
@@ -194,7 +196,8 @@ def load_paving() -> gpd.GeoDataFrame:
     paving = paving[~paving.geometry.is_empty & paving.geometry.notna()]
     paving["is_parking"] = (paving["FEATURE"] == PARKING_LOT) | (
         paving["PARKING"] == OFF_STREET_PARKING)
-    return paving[["is_parking", "geometry"]].reset_index(drop=True)
+    paving["is_alley"] = paving["FEATURE"] == ALLEY
+    return paving[["is_parking", "is_alley", "geometry"]].reset_index(drop=True)
 
 
 def load_zoning() -> gpd.GeoDataFrame:
