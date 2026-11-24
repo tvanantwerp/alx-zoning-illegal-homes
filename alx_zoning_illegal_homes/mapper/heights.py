@@ -12,7 +12,9 @@ pitched one on their own. They do give each block its own peak, so each
 block is estimated on its own: a low wing gets its own eaves, not the main
 house's. The guess for each block goes like this:
 
-- Apartment buildings are taken to have flat roofs, as most do.
+- Apartment buildings with five or more full stories, or no reported story
+  count, are taken to have flat roofs. Smaller apartment buildings with a
+  story count use the same estimate as houses.
 - Otherwise the eaves are put at about 10 ft per full story, plus 2 ft for
   a ground floor raised above the ground, using the city's count of
   stories. Half and quarter stories are rooms tucked under the roof, so
@@ -43,6 +45,8 @@ MIN_PART_AREA = 5.0
 STORY_HEIGHT = 10.0
 # How far a ground floor usually sits above the ground, in feet.
 FIRST_FLOOR_RISE = 2.0
+# Use the house roof estimate for apartment buildings below this many full stories.
+TALL_APARTMENT_STORIES = 5
 # A roof rising no more than this above the estimated eaves is taken as
 # flat. It covers the parapet up to 3 ft that the ordinance leaves out of a
 # flat roof's height, and stories that run a little taller than estimated.
@@ -158,15 +162,22 @@ def roof_height(peak: float, stories: float | None = None, apartment: bool = Fal
 
     `stories` is the city's count of stories for the whole building, or None
     when unknown. `apartment` marks an apartment building, whose roof is
-    taken as flat. `building_peak` is the peak of the whole building when
+    taken as flat when it is tall or its story count is unknown.
+    `building_peak` is the peak of the whole building when
     this roof covers only part of it: a lower part holds only as many full
     stories as fit under its own peak. See the module's description for how
     the guess is made.
     """
     peak = float(peak)
-    if apartment:
+    if apartment and not stories:
         return RoofHeight(peak, peak, FLAT, (
-            "Apartment buildings mostly have flat roofs, so it is measured at the top."),
+            "City records don't say how many stories this apartment building has. "
+            "The map assumes a flat roof and measures it at the top."),
+            outline=outline)
+    if apartment and stories >= TALL_APARTMENT_STORIES:
+        return RoofHeight(peak, peak, FLAT, (
+            f"City records give this apartment building {_stories_word(stories)}. "
+            "The map assumes a flat roof for a building this tall and measures it at the top."),
             outline=outline)
     if stories:
         full_stories = math.floor(stories)
