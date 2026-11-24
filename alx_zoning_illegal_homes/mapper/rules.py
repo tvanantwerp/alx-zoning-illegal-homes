@@ -188,6 +188,10 @@ class ZoneRules:
     # the lot line running along the shared wall. Where it may not (R-20
     # through R-5), that lot line leaves the half with no side yard there.
     split_twin_lots_allowed: bool = True
+    # Some zone sections require townhouse side yards only on interior end lots.
+    townhouse_side_yard_on_interior_ends_only: bool = False
+    # Exact widths at or below this are also exempt, where the ordinance says wider than.
+    townhouse_side_yard_exempt_through_width: float | None = None
     # One rear yard rule for the zone, or a dict keyed by home type.
     rear_yard: Yard | dict | None = None
     # The RM zone's corner lot rule: both street sides are front yards, and
@@ -582,6 +586,9 @@ def _commercial(name, townhouse_area, far, height, historic_far=False,
         },
         "rear_yard": Yard(8, 1.0),
         "no_side_yard_below_width": 25,
+        # Commercial and office side yard regulations (Article IV).
+        "townhouse_side_yard_on_interior_ends_only": True,
+        "townhouse_side_yard_exempt_through_width": 25,
         "max_floor_area_ratio": far,
         "historic_floor_area_ratio":
             {kind: 1.50 for kind in HOUSE_LIKE} if historic_far else {},
@@ -644,6 +651,8 @@ ZONES |= {
                   "multi": 50},
         front_yard_by_block_average=True,
         side_yard={kind: Yard(5) for kind in HOUSE_LIKE} | {"multi": Yard(25, 1 / 3)},
+        # Section 4-506(A)(2)(b) exempts widths less than 25 ft. Exactly 25 qualifies.
+        townhouse_side_yard_on_interior_ends_only=True,
         rear_yard={kind: Yard(16, 1 / 2) for kind in HOUSE_LIKE}
         | {"multi": Yard(25, 1.0)},
         no_side_yard_below_width=25,
@@ -689,6 +698,9 @@ ZONES |= {
         side_yard={"single": Yard(8, 1 / 3), "semi": Yard(8, 1 / 3),
                    "two_unit": Yard(8, 1 / 3), "townhouse": Yard(8),
                    "multi": Yard(16, 1 / 2)},
+        # Section 5-506(B)(1).
+        townhouse_side_yard_on_interior_ends_only=True,
+        townhouse_side_yard_exempt_through_width=25,
         rear_yard={kind: Yard(8, 1.0) for kind in HOUSE_LIKE}
         | {"multi": Yard(16, 1 / 2)},
         no_side_yard_below_width=25,
@@ -714,6 +726,9 @@ _MIXED_USE_HOUSES = {
     "side_yard": {kind: Yard(8, 1 / 3) for kind in ("single", "semi", "two_unit")},
     "rear_yard": {kind: Yard(8, 1.0) for kind in ("single", "semi", "two_unit")},
     "no_side_yard_below_width": 25,
+    # Sections 5-111, 5-211, 5-311 and 5-404.
+    "townhouse_side_yard_on_interior_ends_only": True,
+    "townhouse_side_yard_exempt_through_width": 25,
 }
 
 # The mixed-use zones. Bigger projects there need a special permit; these

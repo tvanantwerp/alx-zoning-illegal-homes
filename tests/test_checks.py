@@ -9,19 +9,25 @@ from alx_zoning_illegal_homes.mapper.rules import (
 from .helpers import between_neighbors, check
 
 
-@pytest.mark.parametrize("width,corner", [(25, False), (40, True)])
-def test_crmu_side_yard_exempts_exact_width_and_corner_end_lots(width, corner):
+@pytest.mark.parametrize("zone", [
+    "CL", "CC", "CSL", "CG", "CD", "CDX", "OC", "OCM(50)", "OCM(100)", "OCH",
+    "CRMU/L", "CRMU/M", "CRMU/H", "CRMU/X", "W-1",
+])
+@pytest.mark.parametrize("width,corner", [(25, False), (30, False), (40, True)])
+def test_townhouse_side_yard_only_applies_to_wide_interior_end_lots(zone, width, corner):
     from shapely.geometry import LineString
     lot = box(0, 0, width, 100)
-    home = box(3, 20, width, 60)
+    home = box(2, 20, width, 60)
     east = box(width, 0, width + 60, 100)
     side = [("SIDE", LineString([(-25, -100), (-25, 150)]))] if corner else []
-    _, findings = check(lot, home, "CRMU/L", home_type="townhouse",
+    _, findings = check(lot, home, zone, home_type="townhouse",
                         neighbors=east if corner else between_neighbors(lot),
                         attached=box(width, 20, width + 20, 60), streets=side)
     assert findings.measurements["position"] == ("corner" if corner else "end")
-    assert all(row.status == "not_required" for row in findings.results
-               if row.rule in ("yard:left", "yard:right"))
+    statuses = {row.status for row in findings.results
+                if row.rule in ("yard:left", "yard:right")}
+    needs_side_yard = not corner and (width > 25 or zone == "CD")
+    assert statuses == ({"fails", "not_required"} if needs_side_yard else {"not_required"})
 
 
 @pytest.mark.parametrize("zone,corner,required,status", [
