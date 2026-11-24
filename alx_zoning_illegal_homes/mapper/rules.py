@@ -186,6 +186,9 @@ class ZoneRules:
     # neighbors' front yards, but once the shallowest of them is deeper than
     # this, a home needs only this much.
     contextual_front_yard: float | None = None
+    # In house zones, a neighbor's roof drawn on or across its front
+    # lot line is too uncertain to set the contextual range.
+    screen_touching_front_neighbors: bool = False
     # The RM and CD zones' rule: the front wall sits at the front lot line,
     # unless most other buildings on the same side of the block stand
     # further back, and then at their average distance from it.
@@ -299,6 +302,7 @@ def _low_density(name, area, corner_area, width, corner_width, frontage,
         curved_frontage={t: curved for t in types} if curved else {},
         width_measured_at=measured_at,
         contextual_front_yard=front,
+        screen_touching_front_neighbors=True,
         side_yard={t: Yard(yard, side_share) for t in types},
         split_twin_lots_allowed=bool(semi),
         rear_yard=Yard(yard, 1.0),
@@ -348,6 +352,7 @@ ZONES = {
                   "townhouse": 18},
         width_measured_at=20,
         contextual_front_yard=20,
+        screen_touching_front_neighbors=True,
         side_yard={
             "single": Yard(7, 1 / 3),
             "semi": Yard(7, 1 / 3),
@@ -379,6 +384,7 @@ ZONES = {
         frontage={"single": 50, "semi": 25, "two_unit": 50, "townhouse": 18, "multi": 50},
         width_measured_at=20,
         contextual_front_yard=20,
+        screen_touching_front_neighbors=True,
         side_yard={
             "single": Yard(8, 1 / 3),
             "semi": Yard(8, 1 / 3),

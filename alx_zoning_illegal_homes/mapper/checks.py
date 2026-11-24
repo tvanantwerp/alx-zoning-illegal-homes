@@ -974,7 +974,11 @@ def _contextual_front_row(facts, record, closest, home):
     """
     rules = facts.rules
     cap = rules.contextual_front_yard
-    fronts = _street_fronts(facts, home, facts.contextual_block_face)
+    neighbors = facts.contextual_block_face
+    if rules.screen_touching_front_neighbors:
+        neighbors = {street: [n for n in setbacks if n.distance >= TOUCHING_GAP]
+                     for street, setbacks in neighbors.items()}
+    fronts = _street_fronts(facts, home, neighbors)
     judged = [front for front in fronts if front.neighbors]
     alone = [front.label for front in fronts if not front.neighbors]
     if not judged:
