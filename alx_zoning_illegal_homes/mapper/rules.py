@@ -986,9 +986,8 @@ PLANNED_DISTRICTS = {
     "CDD#13": PlannedDistrict(
         "Triangle Sites", "CL", plan_height=45,
         fallback_allowed=frozenset({"multi"}),
-        plan_allowed=frozenset({"multi"}),
-        plan_summary="The plan allows apartments over shops, up to "
-        "45 ft; houses and townhouses are not allowed."),
+        plan_summary="The plan allows residential or office use as part of a mix "
+        "that includes some ground-floor retail, with buildings up to 45 ft."),
     # OCM(50) on most of the site, CRMU-H on one acre at First and Fayette
     # Streets; see braddock_gateway_fallback().
     "CDD#15": PlannedDistrict(

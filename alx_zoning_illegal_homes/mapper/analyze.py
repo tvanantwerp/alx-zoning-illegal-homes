@@ -17,7 +17,7 @@ from .checks import (Home, LotFacts, Outbuilding, TownhouseDevelopment,
 from .lot_lines import (MAX_DIVIDED_GAP, MAX_STREET_DISTANCE, MIN_SHARED_WALL,
                         WALL_GAP, Street, classify, parallel_shared_walls)
 from .rule_results import under_special_approval
-from .rules import (HOME_TYPE_NAMES, MAX_TOWNHOUSES_IN_ROW, PLANNED_DISTRICTS,
+from .rules import (ALL_TYPES, HOME_TYPE_NAMES, MAX_TOWNHOUSES_IN_ROW, PLANNED_DISTRICTS,
                     braddock_gateway_fallback, duke_street_floor_area, height_map_limit,
                     king_street_retail_rules, normalize_zone, office_high_rules,
                     named_street_setbacks, planned_district_rules, potomac_yard_fallback,
@@ -534,6 +534,11 @@ def _district_fallback(label, lot, point, places):
     if label == "CDD#1":
         return None, duke_street_floor_area(near_a_station(
             lot.geometry, places["stations"], ["King Street-Old Town"]))
+    if label == "CDD#2" and places["hoffman_tract"].covers(point):
+        return None, {
+            "max_height": dict.fromkeys(ALL_TYPES, 150),
+            "described_as": "OC zone rules for the Hoffman Tract",
+        }
     if label == "CDD#7":
         on_reed = str(lot["address_street"]).strip().upper() == "REED"
         commonwealth = places["commonwealth"]
@@ -803,6 +808,11 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
             _street(streets, "FAYETTE")),
     }
     projects = loader.load_development_projects()
+    # Use the city's mapped Hoffman project sites as evidence of tract location.
+    # Other CDD #2 projects, such as Mill Race, keep the district-wide 100 ft limit.
+    places["hoffman_tract"] = projects.loc[
+        projects["PROJECTNAME"].str.match(r"(?i)^Hoffman\b", na=False), "geometry"
+    ].union_all()
     project_tree = shapely.STRtree(projects.geometry.values)
     paving = loader.load_paving()
     paving_shapes, paving_is_parking = paving.geometry.values, paving["is_parking"].values
