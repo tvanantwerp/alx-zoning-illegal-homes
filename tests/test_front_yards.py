@@ -70,6 +70,31 @@ def test_block_face_is_the_lots_beside_and_across_the_street():
     assert all(s.distance == pytest.approx(20) for s in found)
 
 
+@pytest.mark.parametrize("angle", [0, 20])
+def test_corner_block_face_includes_the_opposite_corner_on_both_streets(angle):
+    from shapely.affinity import skew
+
+    # Four corners plus a lot farther along the far side of Main.
+    lots = [box(30, 30, 100, 100), box(-100, 30, -30, 100),
+            box(30, -100, 100, -30), box(-100, -100, -30, -30),
+            box(-170, -100, -100, -30)]
+    lots = [skew(lot, xs=angle, origin=(0, 0)) for lot in lots]
+    side = ("SIDE", skew(LineString([(0, -300), (0, 300)]), xs=angle, origin=(0, 0)))
+
+    def lines_for(i):
+        neighbors = unary_union(lots[:i] + lots[i + 1:])
+        return classify(lots[i], neighbors, [MAIN_ST, side], "MAIN")
+
+    buildings = {i: [(lot.buffer(-10), True)] for i, lot in enumerate(lots)}
+    faces = BlockFaces(lots, lines_for, buildings)
+    for name in ("MAIN", "SIDE"):
+        assert 3 not in faces.across(0, name)
+        assert faces.diagonally_across(0, name) == [3]
+        opposite = [setback for setback in faces.contextual(0, name) if setback.lot_id == 3]
+        assert len(opposite) == 1 and opposite[0].across
+        assert opposite[0].distance == pytest.approx(10)
+
+
 def test_block_face_leaves_out_lots_without_buildings():
     setbacks = [20] * 10
     setbacks[1] = None
