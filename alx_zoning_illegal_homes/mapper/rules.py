@@ -153,8 +153,9 @@ class ZoneRules:
     lot_area: dict = field(default_factory=dict)
     corner_lot_area: dict = field(default_factory=dict)
     lot_width: dict = field(default_factory=dict)
-    corner_lot_width: dict = field(default_factory=dict)
-    end_lot_width: dict = field(default_factory=dict)
+    # Use None to explicitly set no width rule for this lot position.
+    corner_lot_width: dict[str, float | None] = field(default_factory=dict)
+    end_lot_width: dict[str, float | None] = field(default_factory=dict)
     frontage: dict = field(default_factory=dict)
     # Most zones give a townhouse lot the same minimum at the front lot line
     # (frontage) as at the building line (width), including the larger end
@@ -459,6 +460,9 @@ ZONES = {
         # house needs twice both.
         lot_area={"single": 1452, "semi": 1452, "two_unit": 2904, "townhouse": 1452},
         lot_width={"single": 25, "semi": 25, "two_unit": 25, "townhouse": 18},
+        # Section 3-1105(C)(2) applies to interior townhouse lots only.
+        end_lot_width={"townhouse": None},
+        corner_lot_width={"townhouse": None},
         frontage={"single": 25, "semi": 25, "two_unit": 50, "townhouse": 18},
         front_yard_by_block_average=True,
         side_yards_by_lot_width=True,
@@ -644,7 +648,9 @@ ZONES |= {
         lot_area={"single": 5000, "semi": 2500, "two_unit": 5000, "townhouse": 1452},
         lot_width={"single": 50, "semi": 25, "two_unit": 50, "townhouse": 18,
                    "multi": 50},
+        # Section 5-505(C)(2) gives end lots, including corners, 26 ft.
         end_lot_width={"townhouse": 26},
+        corner_lot_width={"townhouse": 26},
         frontage={"single": 50, "semi": 25, "two_unit": 50, "townhouse": 18,
                   "multi": 50},
         side_yard={"single": Yard(8, 1 / 3), "semi": Yard(8, 1 / 3),

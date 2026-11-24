@@ -24,6 +24,27 @@ def test_crmu_side_yard_exempts_exact_width_and_corner_end_lots(width, corner):
                if row.rule in ("yard:left", "yard:right"))
 
 
+@pytest.mark.parametrize("zone,corner,required,status", [
+    ("RM", False, None, "no_rule"),
+    ("RM", True, None, "no_rule"),
+    ("W-1", False, 26, "fails"),
+    ("W-1", True, 26, "fails"),
+])
+def test_townhouse_width_and_frontage_for_end_lots(zone, corner, required, status):
+    from shapely.geometry import LineString
+    lot = box(0, 0, 20, 100)
+    east = box(20, 0, 80, 100)
+    side = [("SIDE", LineString([(-25, -100), (-25, 150)]))] if corner else []
+    _, findings = check(lot, box(3, 20, 20, 60), zone, home_type="townhouse",
+                        neighbors=east if corner else between_neighbors(lot),
+                        attached=box(20, 20, 40, 60), streets=side)
+    assert findings.measurements["position"] == ("corner" if corner else "end")
+    rows = _rows(findings)
+    for rule in ("frontage", "width"):
+        assert rows[rule].required == required
+        assert rows[rule].status == status
+
+
 def test_w1_tapered_house_lot_width_is_measured_inland():
     from shapely.geometry import Polygon
     lot = Polygon([(0, 0), (52, 0), (46, 20), (46, 150), (6, 150), (6, 20)])
