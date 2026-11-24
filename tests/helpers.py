@@ -13,7 +13,7 @@ def check(lot, home, zone, home_type="single", neighbors=None, attached=None,
           height=20, floor_area=1000, units=1, rules=None, streets=(), all_buildings=None,
           sections=(), year_built=None, historic=False, near_eisenhower=False, stories=None,
           height_map=None, retail=None, row=None, outbuildings=(), street_setbacks=None,
-          residential_abutters=None):
+          townhouse_development=None, residential_abutters=None):
     """Check one lot holding one home, fronting Main St to its south.
 
     Pass `rules` to use those instead of the zone's own, `streets` to add
@@ -46,6 +46,7 @@ def check(lot, home, zone, home_type="single", neighbors=None, attached=None,
         near_eisenhower_avenue=near_eisenhower,
         height_map=height_map,
         row=row,
+        townhouse_development=townhouse_development,
         outbuildings=list(outbuildings),
         street_setbacks=street_setbacks or {},
     )
