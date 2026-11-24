@@ -201,13 +201,6 @@ def older_lot_limit_explanation(zone_label: str, what: str, usual: str | None) -
             f"for older lots applies: {what}, {instead}.")
 
 
-CRMU_M_OLDER_LOT_NOTE = (
-    "This lot falls short of what the CRMU-M zone asks of new lots. The zoning rules "
-    "let older lots in many zones that fall short still hold a house, a two-unit house "
-    "or a townhouse (section 12-1000). That section's title names the CRMU-M zone, but "
-    "its text leaves CRMU-M out, and the text governs, so the map doesn't apply it here.")
-
-
 def eisenhower_special_permit_explanation(zone_label: str) -> str:
     """Say why a home near Eisenhower Avenue fails the home type rule."""
     return (f"The {zone_label} allows homes on lots within 1,000 ft of the centerline of "
@@ -523,9 +516,8 @@ def no_front_yard_explanation(rules: ZoneRules) -> str:
             "of their own (Duke Street, King Street, Seminary Road, Beauregard Street, "
             "South Pickett Street and Mount Vernon Avenue), which the map checks "
             "separately where they apply.")
-    if rules.name == "RC":
-        text += (" RC lots along the George Washington Memorial Parkway also have a "
-                 "deep setback from Washington Street.")
+    if rules.no_front_yard_note:
+        text = f"{text} {rules.no_front_yard_note}"
     return text
 
 

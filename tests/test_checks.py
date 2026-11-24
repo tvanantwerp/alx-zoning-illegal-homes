@@ -1080,6 +1080,17 @@ def test_shop_counts_in_full_alongside_an_exempt_shed():
     assert _rows(findings)["floor_area"].measured == 3400
 
 
+def test_lot_position_can_explicitly_omit_a_minimum():
+    from dataclasses import replace
+
+    rules = replace(rules_for("R-8", False), corner_lot_area={"single": None},
+                    corner_lot_width={"single": None})
+    assert rules.lot_area_for("single", "inside") == 8000
+    assert rules.lot_width_for("single", "inside") == 65
+    assert rules.lot_area_for("single", "corner") is None
+    assert rules.lot_width_for("single", "corner") is None
+
+
 def test_triangle_sites_plan_allows_residential_types():
     from alx_zoning_illegal_homes.mapper.rules import ALL_TYPES, planned_district_rules
 
