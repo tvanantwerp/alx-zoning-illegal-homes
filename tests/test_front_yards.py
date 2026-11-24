@@ -138,6 +138,7 @@ def test_corner_street_without_neighbors_is_left_out():
 def test_home_set_back_further_than_its_neighbors_fails():
     row, findings = _with_block_face("R-8", box(10, 40, 50, 80), [20, 28])
     assert row.status == FAILS and row.required == 28 and row.limit == "max"
+    assert "strip" not in row.shapes and row.shapes["gap"]
     assert any(reason.text.startswith("Too far back from Main")
                for reason in findings.reasons)
 

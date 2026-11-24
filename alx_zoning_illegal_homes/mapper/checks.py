@@ -802,13 +802,15 @@ def _yard_row(facts, role, status, gap=None, required=None, **fields) -> RuleRes
     """One yard's row, with the gap and the required strip to draw when known.
 
     The strip is the required depth measured in from that side's lot lines.
+    A row whose limit is a maximum gets no strip, since the lot drawing shades
+    the strip as land the home reaches into.
     """
     row = RuleResult(f"yard:{role}", YARD_NAMES[role], status, unit="ft",
                      required=required, **fields)
     if gap is not None:
         row.measured = gap.gap
         row.shapes["gap"] = gap.nearest
-        if required:
+        if required and row.limit == "min":
             row.shapes["strip"] = _strip(facts, gap.lines, required)
     return row
 
