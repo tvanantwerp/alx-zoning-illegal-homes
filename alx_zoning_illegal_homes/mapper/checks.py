@@ -450,7 +450,7 @@ def _check_lot_area(facts, findings, position):
     rules, kind = facts.rules, facts.home_type
     table = rules.corner_lot_area if position == "corner" else rules.lot_area
     required = table.get(kind, rules.lot_area.get(kind))
-    per_home = kind == "townhouse" and facts.units > 1
+    per_home = kind in rules.lot_area_per_home_for and facts.units > 1
     row = RuleResult("lot_area", "Land per home" if per_home else "Lot size",
                      NO_RULE, unit="sq ft",
                      about=TWO_UNIT_LOT if kind == "two_unit" else None)
@@ -1069,7 +1069,8 @@ def _side_rows(facts, record, gaps, shared, touching, parts, width):
                           parts, width) for key in (-1, 1)]
 
     measure = width if width is not None else lines.frontage
-    needed = 2 if measure >= 35 else 1 if measure >= 25 else 0
+    # Give an uncertain measurement just above either threshold the lower count.
+    needed = sum(measure > threshold * (1 + WIDTH_MARGIN) for threshold in (25, 35))
     # A shared wall is a side with no yard at all.
     have = sum(gaps[key].gap + DISTANCE_MARGIN >= 5 for key in (-1, 1) if key in gaps)
     short = not lines.is_corner and have < needed
