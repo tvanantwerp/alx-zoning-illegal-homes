@@ -1115,12 +1115,17 @@ def _side_row(facts, record, key, gap, shared, touching, parts, width):
     """A side yard row where the zone sets a side yard depth."""
     rules, kind = facts.rules, facts.home_type
     role = _side_name(facts, key)
-    if rules.name in {"CRMU-L", "CRMU-M", "CRMU-H"} and kind == "townhouse":
-        explanation = "Only interior end lots wider than 25 ft require a townhouse side yard."
-        if _position(facts) != "end" or (width is not None and width <= 25):
+    if rules.townhouse_side_yard_on_interior_ends_only and kind == "townhouse":
+        exempt_through = rules.townhouse_side_yard_exempt_through_width
+        qualifier = (f" wider than {_feet(exempt_through)}"
+                     if exempt_through is not None else "")
+        explanation = f"Only interior end lots{qualifier} require a townhouse side yard."
+        if _position(facts) != "end":
             return _yard_row(facts, role, NOT_REQUIRED, gap, explanation=explanation)
         if width is None:
             return _yard_row(facts, role, NOT_CHECKED, gap, explanation=explanation)
+        if exempt_through is not None and width <= exempt_through:
+            return _yard_row(facts, role, NOT_REQUIRED, gap, explanation=explanation)
     if key in touching:
         return _yard_row(facts, role, NOT_CHECKED, explanation=MAPPING_ERROR)
     if key in shared and kind == "semi" and not rules.split_twin_lots_allowed:
