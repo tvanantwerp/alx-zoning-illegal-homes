@@ -275,6 +275,26 @@ def test_end_townhouse_needs_a_wider_lot():
     assert "lot_width" in kinds
 
 
+@pytest.mark.parametrize("side", ["left", "right"])
+@pytest.mark.parametrize("zone,width", [("RS", 26), ("RT", 45)])
+def test_back_to_back_end_townhouse_keeps_end_width_and_side_yard(side, zone, width):
+    lot = box(0, 0, 22, 90)
+    if side == "left":
+        home = box(3, 20, 22, 90)
+        side_neighbor = box(22, 20, 44, 90)
+    else:
+        home = box(0, 20, 19, 90)
+        side_neighbor = box(-22, 20, 0, 90)
+    attached = unary_union([side_neighbor, box(0, 90, 22, 140)])
+    kinds, findings = check(lot, home, zone, home_type="townhouse",
+                            neighbors=between_neighbors(lot), attached=attached)
+    rows = _rows(findings)
+    assert findings.measurements["position"] == "end"
+    assert "lot_width" in kinds and rows["width"].required == width
+    assert rows[f"yard:{side}"].status == "fails"
+    assert rows["yard:rear"].status == "not_required"
+
+
 def test_home_drawn_on_the_lot_line_is_not_judged():
     lot = box(0, 0, 80, 120)
     kinds, findings = check(lot, box(0.1, 35, 40, 75), "R-8",
