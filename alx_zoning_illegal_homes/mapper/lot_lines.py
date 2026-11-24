@@ -26,7 +26,7 @@ import numpy as np
 import shapely
 from shapely.geometry import LineString, MultiLineString, Polygon
 from shapely.geometry.polygon import orient
-from shapely.ops import linemerge, nearest_points, unary_union
+from shapely.ops import linemerge, nearest_points, substring, unary_union
 
 PIECE_LENGTH = 12.0
 # How far outside the lot we look to see whether another lot is there.
@@ -41,6 +41,17 @@ MAX_FACING_ANGLE_COS = np.cos(np.radians(50))
 SMOOTH_TURN_COS = np.cos(np.radians(40))
 MIN_FRONT_LENGTH = 8.0
 CORNER_GAP = 30.0
+# Street centerlines this close count as meeting.
+JUNCTION_TOLERANCE = 1.5
+# How far along each road to look when measuring how it leaves a junction.
+ARM_REACH = 40.0
+# Two differently named streets that meet with less of a bend than this are
+# one road whose name changes there.
+SAME_ROAD_BEND = 30.0
+# Where only those two roads meet, a bend up to this much is still one road,
+# unless the lot's own edge turns at least `LOT_CORNER_TURN` degrees there.
+GENTLE_BEND = 60.0
+LOT_CORNER_TURN = 45.0
 # Where a corner lot's front lot line turns onto the other street, pieces
 # turning more than this from the street's main direction are the corner.
 CORNER_TURN_DEGREES = 30.0
@@ -143,11 +154,15 @@ class LotLines:
     primary_street: str | None = None
     # The middle of each street in `fronts`, by the same names.
     centerlines: dict[str, StreetCenterline] = field(default_factory=dict)
+    # Pairs of names in `fronts` that are one road whose name changes beside
+    # the lot. They meet at no intersection, so they don't make a corner.
+    same_road: set[frozenset[str]] = field(default_factory=set)
 
     @cached_property
     def _front_pair_gaps(self) -> tuple[float, ...]:
-        return tuple(first.distance(second)
-                     for first, second in combinations(self.fronts.values(), 2))
+        return tuple(self.fronts[first].distance(self.fronts[second])
+                     for first, second in combinations(self.fronts, 2)
+                     if frozenset((first, second)) not in self.same_road)
 
     @property
     def is_corner(self) -> bool:
@@ -354,11 +369,10 @@ def classify(lot, neighbors, streets, address_street=None) -> LotLines:
     for piece in pieces:
         if piece.kind == "street":
             by_street.setdefault(piece.street, []).append(piece)
-    for name, group in list(by_street.items()):
-        if sum(p.length for p in group) < MIN_FRONT_LENGTH:
-            for piece in group:
-                piece.kind, piece.street = "open", None
-            del by_street[name]
+    _drop_fronts(by_street, lambda name, group: sum(p.length for p in group) < MIN_FRONT_LENGTH)
+    street_lines = _street_lines(streets)
+    _drop_fronts(by_street, lambda name, group: _faces_where_street_ends(
+        name, group, set(by_street) - {name}, street_lines))
 
     result = LotLines(pieces=pieces)
     result.fronts = {
@@ -368,10 +382,127 @@ def classify(lot, neighbors, streets, address_street=None) -> LotLines:
     if not result.fronts:
         return result
 
+    result.same_road = {
+        frozenset((first, second)) for first, second in combinations(by_street, 2)
+        if _one_road_renamed(result, first, second, street_lines)
+    }
+
     result.centerlines = {name: _centerline(name, result.fronts[name], group, streets)
                           for name, group in by_street.items()}
     result.primary_street = _choose_primary(result.fronts, address_street)
     return result
+
+
+def _drop_fronts(by_street: dict[str, list[Piece]], should_drop) -> None:
+    """Turn each street's front for which `should_drop(name, pieces)` holds back into open edge."""
+    for name, group in list(by_street.items()):
+        if should_drop(name, group):
+            for piece in group:
+                piece.kind, piece.street = "open", None
+            del by_street[name]
+
+
+def _street_lines(streets: list[Street]) -> dict[str, object]:
+    """Each nearby street's centerline, all its pieces joined, by name."""
+    by_name: dict[str, list] = {}
+    for street in streets:
+        by_name.setdefault(street.name, []).append(street.line)
+    return {name: unary_union(lines) for name, lines in by_name.items()}
+
+
+def _faces_where_street_ends(name, group, other_fronts, street_lines) -> bool:
+    """Whether a front only looks across another street at where this one ends.
+
+    A lot across the street from a T-junction can have an edge that looks
+    straight out at the end of the side street. It doesn't front that street:
+    the lot isn't at the intersection, it's across from it (section 2-167).
+    This holds when every piece of the front is nearest the end of `name`
+    where it meets one of the lot's other street fronts. A street nearer to
+    those pieces, even one they weren't matched to, keeps the front, since
+    then the lot may really sit on a second street.
+    """
+    own = street_lines[name]
+    midpoints = [shapely.Point(piece.midpoint) for piece in group]
+    nearest = [own.interpolate(own.project(point)) for point in midpoints]
+    own_distance = min(line_point.distance(point) for line_point, point in zip(nearest, midpoints))
+    ends = [shapely.Point(coord) for part in shapely.get_parts(own)
+            for coord in (part.coords[0], part.coords[-1])]
+    for other in other_fronts:
+        meeting = [end for end in ends
+                   if street_lines[other].distance(end) < JUNCTION_TOLERANCE]
+        if not meeting:
+            continue
+        looks_at_end = all(any(point.distance(end) < JUNCTION_TOLERANCE for end in meeting)
+                           for point in nearest)
+        nearer_street = any(
+            min(line.distance(point) for point in midpoints) < own_distance
+            for street, line in street_lines.items() if street not in (name, other))
+        if looks_at_end and not nearer_street:
+            return True
+    return False
+
+
+def _road_arms(point, street_lines) -> list[tuple[str, np.ndarray, LineString]]:
+    """Each road leaving a junction: its name, its heading, and its first `ARM_REACH` feet.
+
+    A street that runs through the junction leaves it twice, once each way.
+    """
+    arms = []
+    for name, line in street_lines.items():
+        for part in shapely.get_parts(line):
+            if part.distance(point) >= JUNCTION_TOLERANCE:
+                continue
+            at = part.project(point)
+            for until in (min(at + ARM_REACH, part.length), max(at - ARM_REACH, 0.0)):
+                # A few feet or less on this side means the street ends here.
+                if abs(until - at) < 3.0:
+                    continue
+                start, end = part.interpolate(at), part.interpolate(until)
+                heading = np.array([end.x - start.x, end.y - start.y])
+                arms.append((name, heading / np.linalg.norm(heading),
+                             substring(part, min(at, until), max(at, until))))
+    return arms
+
+
+def _edge_direction(pieces: list[Piece]) -> np.ndarray:
+    points = np.array([c for piece in pieces for c in piece.line.coords])
+    return np.linalg.svd(points - points.mean(axis=0), full_matrices=False)[2][0]
+
+
+def _one_road_renamed(lines: LotLines, first: str, second: str, street_lines) -> bool:
+    """Whether two of a lot's street fronts are one road that changes its name.
+
+    A corner lot fronts two streets "at their intersection" (section 2-167).
+    Where a road carries straight on under a new name, there's no
+    intersection, even if a third street also leaves from that point. Where
+    only the two named roads meet, at a bend, it is still one road unless the
+    bend is sharp or the lot's own edge turns a corner there.
+    """
+    a, b = street_lines[first], street_lines[second]
+    if a.distance(b) >= JUNCTION_TOLERANCE:
+        return False
+    junction = nearest_points(a, b)[0]
+    arms = _road_arms(junction, street_lines)
+
+    def arm_beside_lot(name):
+        own = [arm for arm in arms if arm[0] == name]
+        return min(own, key=lambda arm: arm[2].distance(lines.fronts[name]), default=None)
+
+    arm_a, arm_b = arm_beside_lot(first), arm_beside_lot(second)
+    if arm_a is None or arm_b is None:
+        return False
+    # Arms leave the junction in opposite directions when a road runs straight on.
+    bend = np.degrees(np.arccos(np.clip(-(arm_a[1] @ arm_b[1]), -1.0, 1.0)))
+    if bend < SAME_ROAD_BEND:
+        return True
+    if len(arms) != 2 or bend >= GENTLE_BEND:
+        return False
+    near_second = [piece for piece in street_pieces(lines, first)
+                   if piece.line.distance(lines.fronts[second]) <= CORNER_GAP]
+    lot_turn = np.degrees(np.arccos(min(1.0, abs(
+        _edge_direction(near_second or street_pieces(lines, first))
+        @ _edge_direction(street_pieces(lines, second))))))
+    return lot_turn < LOT_CORNER_TURN
 
 
 def street_pieces(lines: LotLines, street: str) -> list[Piece]:
