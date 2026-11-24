@@ -303,6 +303,16 @@ Other details that matter:
   reach into a yard. It applies to every home, even ones with little or no
   overhang. A home drawn touching or crossing a
   lot line is assumed to be a mapping error and its yards are skipped.
+- Other measurements also get some slack:
+  - **Building height:** 5 ft for uncertainty in the city's 3D data and in
+    estimating where a sloped roof's eaves are.
+  - **Floor space:** 10% because assessment records and the ordinance count
+    different kinds of space.
+  - **Lot width:** 5% for differences between mapped lot edges and a survey.
+  - **Lot size and open space:** 3% for uncertainty in drawing lot boundaries,
+    building outlines and paving.
+  - **Building coverage:** 3% of the limit for uncertainty in the mapped lot
+    and roof outlines.
 - Front yards set by the neighbors are measured from building outlines
   traced from roofs, so a porch roof or overhang counts as part of the
   building, for a home and its neighbors alike. A home with a deep porch
@@ -343,9 +353,9 @@ Other details that matter:
 - Some rules are left out on purpose; `rules.py` says why beside each one.
   Across zones: threshold height (how high the front door sits), homes per
   acre across a whole development, and anything a special permit or the
-  planning commission could loosen. In single zones: the RB zone's 1,980
-  sq ft of land per apartment for its older apartment buildings, the RT
-  zone's rules for a townhouse row as a whole, the KR zone's 150 sq ft of
+  planning commission could loosen. In single zones: the RB zone's lower
+  land-per-home minimum on certain urban renewal land, the RT zone's rules
+  for a townhouse row as a whole, the KR zone's 150 sq ft of
   open space per home (balconies and roofs count), the extra floor space
   for shops in W-1, CRMU-M and CRMU-H, and the deep setback from Washington
   Street for RC lots along the parkway.
