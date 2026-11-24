@@ -44,7 +44,6 @@ MAPPING_ERROR = ("The city's map shows this home touching the lot line with no "
                  "wall on the line, so this yard wasn't checked.")
 CROSSES_LOT_LINE = ("A building outline on this lot crosses the lot line in the city's "
                     "map, so its yards weren't checked.")
-SIDE_COUNT_ON_CORNER = ("On corner lots the map doesn't count side yards in this zone.")
 NO_SIDE_LINE = "The map couldn't find a lot line on this side of the home."
 NO_FLOOR_AREA = ("City records don't give this home's floor space, and it couldn't be "
                  "estimated from the number of stories.")
