@@ -5,8 +5,9 @@ fixed number. Most set the front yard by the "contextual block face", which
 the ordinance defines (section 2-122.1) as "abutting property developed with
 buildings that share a common street frontage or frontages with the property
 in question." The drawings with that definition show what counts: the lots
-on either side that face the same street, and the lots straight across the
-street from the lot and those two neighbors. A corner lot has one for each
+on either side that face the same street, the lots straight across the
+street from the lot and those two neighbors, and the lot diagonally across
+the intersection from a corner lot. A corner lot has a block face for each
 street it faces. The RM and CD zones look further, at every building on the
 same side of the block.
 
@@ -20,10 +21,10 @@ from typing import Callable
 
 import numpy as np
 import shapely
-from shapely.geometry import LineString
+from shapely.geometry import LineString, Polygon
 from shapely.ops import nearest_points
 
-from .lot_lines import (MAX_STREET_DISTANCE, LotLines, facing_band, front_for_yard,
+from .lot_lines import (CORNER_GAP, MAX_STREET_DISTANCE, LotLines, facing_band, front_for_yard,
                         street_pieces)
 
 # Lots this close to each other count as touching, to bridge small gaps
@@ -38,6 +39,24 @@ ACROSS_PAST_CENTER = 25.0
 # A lot across the street must face this much of the stretch straight out
 # from the lot and its neighbors, so one that only grazes a corner is left out.
 ACROSS_MIN_OVERLAP = 8.0
+
+
+def _corner_point(front, side):
+    """Approximate the lot's corner where its two street fronts meet."""
+    first, second = nearest_points(front, side)
+    if first.distance(second) >= CORNER_GAP:
+        return None
+    return LineString([first, second]).centroid
+
+
+def _half_street_width(front, center):
+    distance = front.distance(center.near)
+    return ((distance + front.distance(center.far)) / 2 if center.far is not None
+            else distance)
+
+
+def _across_reach(half_width):
+    return min(2 * half_width + ACROSS_PAST_CENTER, 2 * MAX_STREET_DISTANCE)
 
 
 @dataclass(frozen=True)
@@ -158,10 +177,7 @@ class BlockFaces:
             source_lines = self._lines_for(source)
             front = source_lines.fronts[street]
             center = source_lines.centerlines[street]
-            to_center = front.distance(center.near)
-            if center.far is not None:
-                to_center = (to_center + front.distance(center.far)) / 2
-            reach = min(2 * to_center + ACROSS_PAST_CENTER, 2 * MAX_STREET_DISTANCE)
+            reach = _across_reach(_half_street_width(front, center))
             band = facing_band(street_pieces(source_lines, street), reach)
             for other in self._tree.query(band, predicate="intersects"):
                 other = int(other)
@@ -177,19 +193,70 @@ class BlockFaces:
                     found.add(other)
         return sorted(found)
 
+    def diagonally_across(self, lot_id: int, street: str) -> list[int]:
+        """The opposite corner at each intersection this front meets (section 2-102)."""
+        lines = self._lines_for(lot_id)
+        if lines is None or street not in lines.fronts:
+            return []
+        front = lines.fronts[street]
+        found = set()
+        for cross_street, side in lines.fronts.items():
+            if cross_street == street:
+                continue
+            corner = _corner_point(front, side)
+            if corner is None:
+                continue
+            opposite = self._opposite_corner(lot_id, lines, street, cross_street, corner)
+            if opposite is not None:
+                found.add(opposite)
+        return sorted(found)
+
+    def _opposite_corner(self, lot_id, lines, street, cross_street, corner):
+        names = (street, cross_street)
+        outward, widths = [], []
+        for name in names:
+            pieces = street_pieces(lines, name)
+            direction = sum(piece.length * piece.outward for piece in pieces)
+            outward.append(direction / (np.linalg.norm(direction) or 1.0))
+            widths.append(_half_street_width(lines.fronts[name], lines.centerlines[name]))
+        # Search beyond both street centers, a little farther than the
+        # expected far edges. Movement is measured across each street so
+        # the search follows the intersection even when its angle is skewed.
+        if abs(np.linalg.det(outward)) < 0.25:
+            return None
+        near_a, near_b = widths
+        far_a, far_b = map(_across_reach, widths)
+        origin = np.asarray(corner.coords[0])
+        area = Polygon([origin + np.linalg.solve(outward, offset) for offset in
+                        ((near_a, near_b), (far_a, near_b), (far_a, far_b), (near_a, far_b))])
+        candidates = []
+        for other in self._tree.query(area, predicate="intersects"):
+            if other == lot_id:
+                continue
+            other_lines = self._lines_for(int(other))
+            if other_lines is None or not all(
+                    name in other_lines.fronts
+                    and other_lines.centerlines[name].label == lines.centerlines[name].label
+                    for name in names):
+                continue
+            other_corner = _corner_point(other_lines.fronts[street], other_lines.fronts[cross_street])
+            if other_corner is not None and area.covers(other_corner):
+                candidates.append((corner.distance(other_corner), int(other)))
+        return min(candidates)[1] if candidates else None
+
     def contextual(self, lot_id: int, street: str) -> list[FrontSetback]:
         """The lot's contextual block face along one street, with each neighbor's setback.
 
-        The lots beside it and across the street, as the ordinance's
-        drawings show, that have a main building. The lot itself is left out:
-        the definition covers the property "abutting" the one in question.
+        Abutting property with a main building includes lots beside the
+        subject, directly across, and diagonally across an intersection.
         """
         key = (lot_id, street)
         if key not in self._contextual:
             found = [self.front_setback(other, street) for other in self.beside(lot_id, street)]
+            across = set(self.across(lot_id, street)) | set(self.diagonally_across(lot_id, street))
             found += [replace(setback, across=True) for setback in
                       (self.front_setback(other, street)
-                       for other in self.across(lot_id, street)) if setback is not None]
+                       for other in sorted(across)) if setback is not None]
             self._contextual[key] = [setback for setback in found if setback is not None]
         return self._contextual[key]
 
@@ -206,8 +273,15 @@ class BlockFaces:
         if key not in self._block_sides:
             chain, waiting = {lot_id}, [lot_id]
             while waiting:
-                for other in self.beside(waiting.pop(), street):
-                    if other not in chain:
+                current = waiting.pop()
+                neighbors = self.beside(current, street)
+                if not neighbors:
+                    continue
+                # The short street key can join different streets, such
+                # as Lee Court and South Lee Street at the same corner.
+                current_street = self._lines_for(current).centerlines[street].label
+                for other in neighbors:
+                    if other not in chain and self._lines_for(other).centerlines[street].label == current_street:
                         chain.add(other)
                         waiting.append(other)
             for member in chain:
