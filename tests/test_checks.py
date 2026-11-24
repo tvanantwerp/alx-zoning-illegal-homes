@@ -747,6 +747,18 @@ def test_older_lot_rule_skips_apartments():
     assert "lot_width" in kinds and _rows(findings)["width"].status == "fails"
 
 
+@pytest.mark.parametrize("units,status", [(3, "passes"), (4, "fails")])
+def test_rb_older_apartment_lot_area_is_per_home(units, status):
+    lot = box(0, 0, 60, 100)
+    _, findings = check(lot, box(16, 20, 44, 70), "RB", home_type="multi",
+                        units=units, year_built=1950, neighbors=between_neighbors(lot))
+    row = _rows(findings)["lot_area"]
+    assert row.name == "Land per home"
+    assert row.status == status
+    assert row.measured == 6000 / units
+    assert row.required == 1980
+
+
 def test_crmu_m_is_left_out_of_the_older_lot_rule():
     lot = box(0, 0, 40, 100)
     kinds, findings = check(lot, box(10, 35, 30, 65), "CRMU/M",
