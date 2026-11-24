@@ -815,13 +815,15 @@ def _yard_row(facts, role, status, gap=None, required=None, **fields) -> RuleRes
     """One yard's row, with the gap and the required strip to draw when known.
 
     The strip is the required depth measured in from that side's lot lines.
+    A row whose limit is a maximum gets no strip, since the lot drawing shades
+    the strip as land the home reaches into.
     """
     row = RuleResult(f"yard:{role}", YARD_NAMES[role], status, unit="ft",
                      required=required, **fields)
     if gap is not None:
         row.measured = gap.gap
         row.shapes["gap"] = gap.nearest
-        if required:
+        if required and row.limit == "min":
             row.shapes["strip"] = _strip(facts, gap.lines, required)
     return row
 
@@ -975,8 +977,8 @@ def _contextual_front_row(facts, record, closest, home):
     the front yards within the contextual block face": the neighboring lots
     with buildings beside the lot and across the street (see
     `block_faces.py`). Once the shallowest of those is deeper than the zone's
-    cap, the cap is enough. So the home must stand back at least as far as
-    the closest neighbor, or the cap, whichever is less.
+    cap, the cap is enough. Otherwise the closest and furthest setbacks
+    mark the two ends of the allowed range.
 
     The lot's own home isn't counted in the range. The ordinance defines the
     block face as the "abutting property", and its cap clause, the one place
@@ -1003,25 +1005,32 @@ def _contextual_front_row(facts, record, closest, home):
     def needs(front):
         return min(min(n.distance for n in front.neighbors), cap)
 
-    worst = min(judged, key=lambda front: front.gap.gap - needs(front))
-    too_deep = [front for front in judged
-                if front.gap.gap > max(n.distance for n in front.neighbors) + DISTANCE_MARGIN
-                and min(n.distance for n in front.neighbors) <= cap]
-    if worst.gap.gap + DISTANCE_MARGIN >= needs(worst) and too_deep:
-        worst = too_deep[0]
-    required = needs(worst)
+    # A street contributes its closest boundary or the one it falls beyond.
+    # When all neighbors sit past the cap, the ordinance sets only a minimum.
+    def limiting_bound(front):
+        measured = front.gap.gap
+        lower = needs(front)
+        setbacks = [neighbor.distance for neighbor in front.neighbors]
+        upper = max(setbacks)
+        if min(setbacks) > cap or measured - lower <= upper - measured:
+            return measured - lower, lower, "min"
+        return upper - measured, upper, "max"
+
+    worst = min(judged, key=lambda front: limiting_bound(front)[0])
+    clearance, required, limit = limiting_bound(worst)
     distances = [n.distance for n in worst.neighbors]
     homes_only = all(n.is_home for n in worst.neighbors)
-    fails = worst.gap.gap + DISTANCE_MARGIN < required
-    if fails:
-        record("front", required - worst.gap.gap, contextual_front_yard_reason(
+    fails = clearance < -DISTANCE_MARGIN
+    if fails and limit == "min":
+        record("front", -clearance, contextual_front_yard_reason(
             worst.label, worst.gap.gap, distances, homes_only, rules.label, cap))
+    elif fails:
+        record("front", -clearance,
+               f"Too far back from {worst.label}: set back about {_feet(worst.gap.gap)}, "
+               f"but the deepest neighboring setback is {_feet(required)}.")
     row = _yard_row(facts, "front", FAILS if fails else PASSES, worst.gap, required,
-                    detail="needs")
-    if not fails and too_deep:
-        row.status = NOT_CHECKED
+                    limit=limit, detail="needs" if limit == "min" else "at most")
     row.explanation = " ".join(filter(None, [
-        "The setback exceeds the measured range. Its upper bound is unverified." if too_deep and not fails else None,
         contextual_front_yard_explanation(worst.label, worst.gap.gap, distances, homes_only,
                                           rules.label, cap, len(judged) > 1, alone),
         margin_explanation(row)]))

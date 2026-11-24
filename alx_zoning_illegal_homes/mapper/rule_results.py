@@ -584,8 +584,6 @@ def contextual_front_yard_explanation(street: str, gap: float, distances: list[f
         parts.append(f"No neighbors share its frontage on {' and '.join(alone)}, so that "
                      "side wasn't judged.")
     parts.append(FRONT_MEASURED)
-    parts.append("The map checks only that the home stands back far enough, not that it "
-                 "stands no further back than its neighbors.")
     return " ".join(parts)
 
 

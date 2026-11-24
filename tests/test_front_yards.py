@@ -149,9 +149,17 @@ def test_corner_street_without_neighbors_is_left_out():
     assert row.status == PASSES and row.required == pytest.approx(20)
 
 
-def test_home_set_back_further_than_its_neighbors_is_unverified():
-    row, _ = _with_block_face("R-8", box(10, 40, 50, 80), [20, 28])
-    assert row.status == NOT_CHECKED
+def test_home_set_back_further_than_its_neighbors_fails():
+    row, findings = _with_block_face("R-8", box(10, 40, 50, 80), [20, 28])
+    assert row.status == FAILS and row.required == 28 and row.limit == "max"
+    assert "strip" not in row.shapes and row.shapes["gap"]
+    assert any(reason.text.startswith("Too far back from Main")
+               for reason in findings.reasons)
+
+
+def test_a_little_further_back_than_the_neighbors_passes_on_the_margin():
+    row, _ = _with_block_face("R-8", box(10, 30, 50, 65), [20, 28])
+    assert row.status == PASSES and row.required == 28 and row.limit == "max"
 
 
 def test_a_little_short_of_the_neighbors_passes_on_the_margin():
