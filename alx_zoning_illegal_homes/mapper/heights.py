@@ -12,7 +12,9 @@ pitched one on their own. They do give each block its own peak, so each
 block is estimated on its own: a low wing gets its own eaves, not the main
 house's. The guess for each block goes like this:
 
-- Apartment buildings are taken to have flat roofs, as most do.
+- Apartment buildings with five or more full stories, or no reported story
+  count, are taken to have flat roofs. Smaller apartment buildings with a
+  story count use the same estimate as houses.
 - Otherwise the eaves are put at about 10 ft per full story, plus 2 ft for
   a ground floor raised above the ground, using the city's count of
   stories. Half and quarter stories are rooms tucked under the roof, so
@@ -32,8 +34,9 @@ dormers, which in some zones move the measurement up, can't be seen in the
 data. Every pitched roof is treated as a gable or hip roof.
 """
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
+import shapely
 from shapely.ops import unary_union
 
 # Roof pieces smaller than this, in square feet, are dropped as slivers.
@@ -42,6 +45,8 @@ MIN_PART_AREA = 5.0
 STORY_HEIGHT = 10.0
 # How far a ground floor usually sits above the ground, in feet.
 FIRST_FLOOR_RISE = 2.0
+# Use the house roof estimate for apartment buildings below this many full stories.
+TALL_APARTMENT_STORIES = 5
 # A roof rising no more than this above the estimated eaves is taken as
 # flat. It covers the parapet up to 3 ft that the ordinance leaves out of a
 # flat roof's height, and stories that run a little taller than estimated.
@@ -53,6 +58,12 @@ MAX_ROOF_RISE = 15.0
 # With nothing better known, a pitched roof's height is taken as this share
 # of its peak.
 PITCHED_SHARE = 0.85
+# Section 6-403(B)(3) permits up to three 15-foot rooftop penthouses by right.
+MAX_ROOFTOP_RISE = 15.0
+MAX_ROOFTOP_PARTS = 3
+# Geometry used to identify likely rooftop equipment in the 3D layer.
+MAX_ROOFTOP_SHARE = 0.25
+ROOF_EDGE_TOLERANCE = 1.0
 
 FLAT, PITCHED, UNKNOWN = "flat", "pitched", "unknown"
 
@@ -151,15 +162,22 @@ def roof_height(peak: float, stories: float | None = None, apartment: bool = Fal
 
     `stories` is the city's count of stories for the whole building, or None
     when unknown. `apartment` marks an apartment building, whose roof is
-    taken as flat. `building_peak` is the peak of the whole building when
+    taken as flat when it is tall or its story count is unknown.
+    `building_peak` is the peak of the whole building when
     this roof covers only part of it: a lower part holds only as many full
     stories as fit under its own peak. See the module's description for how
     the guess is made.
     """
     peak = float(peak)
-    if apartment:
+    if apartment and not stories:
         return RoofHeight(peak, peak, FLAT, (
-            "Apartment buildings mostly have flat roofs, so it is measured at the top."),
+            "City records don't say how many stories this apartment building has. "
+            "The map assumes a flat roof and measures it at the top."),
+            outline=outline)
+    if apartment and stories >= TALL_APARTMENT_STORIES:
+        return RoofHeight(peak, peak, FLAT, (
+            f"City records give this apartment building {_stories_word(stories)}. "
+            "The map assumes a flat roof for a building this tall and measures it at the top."),
             outline=outline)
     if stories:
         full_stories = math.floor(stories)
@@ -209,7 +227,9 @@ def building_height(home, apartment: bool = False) -> BuildingHeight | None:
     height (see `roof_parts`) and each part is estimated with `roof_height`.
     A part taller than the home's own height is a chimney, stair tower or
     similar small piece the home's height already leaves out, so it is
-    lowered to that height. Returns None when the home's height is unknown.
+    lowered to that height. On an apartment building, small raised parts
+    enclosed by the main flat roof are taken as rooftop appurtenances (see
+    `_exclude_rooftop_parts`). Returns None when the home's height is unknown.
     """
     estimated = []
     for shape, peak in roof_parts(home.shape, home.sections, home.height or 0):
@@ -222,4 +242,47 @@ def building_height(home, apartment: bool = False) -> BuildingHeight | None:
             estimated.append(RoofHeight(height, height, UNKNOWN,
                                         "Height is estimated from the recorded stories. "
                                         "The roof height and shape are unknown.", outline=shape))
-    return BuildingHeight(estimated) if estimated else None
+    if not estimated:
+        return None
+    # On a flat-roofed house or townhouse, a raised part this size is as likely
+    # a rooftop room as a stair or elevator penthouse, and a room counts toward height.
+    return BuildingHeight(_exclude_rooftop_parts(estimated, home.shape) if apartment
+                          else estimated)
+
+
+def _exclude_rooftop_parts(parts: list[RoofHeight], footprint) -> list[RoofHeight]:
+    """Estimate the rooftop appurtenance exclusion under section 6-403(B).
+
+    The city maps heights and outlines without identifying use or construction.
+    A likely appurtenance is a small raised section surrounded by the largest
+    flat roof. Higher roof sections that extend to a wall count at full height.
+    """
+    if len(parts) < 2:
+        return parts
+    base = max(parts, key=lambda part: part.outline.area)
+    if base.shape != FLAT:
+        return parts
+    candidates = {}
+    max_area = MAX_ROOFTOP_SHARE * footprint.area
+    boundary = footprint.boundary
+    base_with_slack = base.outline.buffer(ROOF_EDGE_TOLERANCE)
+    for index, part in enumerate(parts):
+        rise = part.peak - base.peak
+        if not 0 < rise <= MAX_ROOFTOP_RISE or part.outline.area > max_area:
+            continue
+        islands = shapely.get_parts(part.outline)
+        if all(
+            island.distance(boundary) > ROOF_EDGE_TOLERANCE
+            and base_with_slack.covers(island.buffer(2 * ROOF_EDGE_TOLERANCE).difference(island))
+            for island in islands
+        ):
+            candidates[index] = part
+    count = sum(shapely.get_num_geometries(part.outline) for part in candidates.values())
+    area = sum(part.outline.area for part in candidates.values())
+    if not candidates or count > MAX_ROOFTOP_PARTS or area > max_area:
+        return parts
+    combined = replace(
+        base, outline=unary_union([base.outline, *(part.outline for part in candidates.values())]),
+        why=base.why + " The map treats small raised parts surrounded by this roof as "
+        "rooftop structures, which section 6-403(B) allows above the roofline.")
+    return [combined if part is base else part for i, part in enumerate(parts) if i not in candidates]

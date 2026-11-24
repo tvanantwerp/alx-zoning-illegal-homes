@@ -17,11 +17,11 @@ FAILS, PASSES, NOT_CHECKED, NO_RULE, NOT_REQUIRED = (
 # lots excuses. Counts as passing; the row keeps the shortfall on show.
 OLDER_LOT = "older_lot"
 
-RULE_IDS = ("lot_area", "frontage", "width", "yard:front", "yard:street", "yard:left", "yard:right",
-            "yard:rear", "yard:nearest", "floor_area", "height", "height_near_street",
+RULE_IDS = ("lot_area", "development_area", "frontage", "width", "yard:front", "yard:street", "yard:left", "yard:right",
+            "yard:rear", "yard:nearest", "yard:accessory", "floor_area", "height", "height_near_street", "height_at_rear",
             "coverage", "open_space", "home_type", "row_length")
 
-NO_STREET = ("The map couldn't find a public street next to this lot, so it "
+NO_STREET = ("The map couldn't find a street next to this lot, so it "
              "can't tell which edge is the front.")
 SHARED_LOT = ("Several homes share this one lot, so no single home has lot "
               "lines of its own to measure.")
@@ -44,14 +44,15 @@ MAPPING_ERROR = ("The city's map shows this home touching the lot line with no "
                  "wall on the line, so this yard wasn't checked.")
 CROSSES_LOT_LINE = ("A building outline on this lot crosses the lot line in the city's "
                     "map, so its yards weren't checked.")
-SIDE_COUNT_ON_CORNER = ("On corner lots the map doesn't count side yards in this zone.")
 NO_SIDE_LINE = "The map couldn't find a lot line on this side of the home."
 NO_FLOOR_AREA = ("City records don't give this home's floor space, and it couldn't be "
                  "estimated from the number of stories.")
 FLOOR_AREA_MEASURED = (
     "The zoning rules count all floor space under a roof, measured from the outside of "
-    "the walls, finished or not, but leave out basements, stairs, attic space under 7 ft "
-    "high and open porches up to 8 ft deep. The map uses each home's floor space from "
+    "the walls, finished or not. Stairs, attic space under 7 ft high and open porches "
+    "up to 8 ft deep are excluded. A basement counts when the bottom of the first "
+    "floor is at least 4 ft above the average finished ground level. The map can't "
+    "measure that height. It uses each home's floor space from "
     "the city's assessment records, or, where they give none, an estimate from its "
     "outline and number of stories. The city's figure seems to count only finished "
     "living space, leaving out attached garages and unfinished space, so the real "
@@ -63,7 +64,8 @@ HEIGHT_MEASURED = (
     "3D building data gives only the peak, so the map guesses the roof's shape and "
     "where its eaves are from the number of stories in city records. It can't see "
     "gambrel or mansard roofs, which the rules measure higher up, or wide dormers, "
-    "which in most house zones move the measurement up to the dormers.")
+    "which in most house zones move the measurement up to the dormers. Rooftop equipment "
+    "drawn as part of the same roof section may also be included in the mapped height.")
 HEIGHT_NEAR_STREET_ABOUT = (
     "In every height district, a building may be at most twice as tall at any point as "
     "the distance from its wall there to the center of the street it faces. A wall 25 ft "
@@ -72,8 +74,8 @@ HEIGHT_NEAR_STREET_ABOUT = (
     "height rule, against the center of every street the lot faces.")
 CENTERLINE_MEASURED = (
     "The center of the street comes from the city's street map, which traces the middle "
-    "of the pavement. The rule means the middle of the public street, which can sit a "
-    "few feet off it, and building outlines include roof overhangs, so the map allows "
+    "of the pavement. The middle of the street right-of-way can sit a few feet off it, "
+    "and building outlines include roof overhangs, so the map allows "
     "5 ft of distance (10 ft of height) before calling it a problem.")
 NO_OUTLINES = "The city's map has no building outlines on this lot."
 OPEN_SPACE_MEASURED = (
@@ -124,11 +126,13 @@ def reason_kind(rule: str) -> str:
         return "yards"
     return {
         "lot_area": "lot_size",
+        "development_area": "lot_size",
         "frontage": "lot_width",
         "width": "lot_width",
         "coverage": "open_space",
         "open_space": "open_space",
         "height_near_street": "height",
+        "height_at_rear": "height",
     }.get(rule, rule)
 
 
@@ -196,13 +200,6 @@ def older_lot_limit_explanation(zone_label: str, what: str, usual: str | None) -
                else "where the zone sets no limit of its own")
     return (f"This lot falls short of what the {zone_label} asks of new lots, so the rule "
             f"for older lots applies: {what}, {instead}.")
-
-
-CRMU_M_OLDER_LOT_NOTE = (
-    "This lot falls short of what the CRMU-M zone asks of new lots. The zoning rules "
-    "let older lots in many zones that fall short still hold a house, a two-unit house "
-    "or a townhouse (section 12-1000). That section's title names the CRMU-M zone, but "
-    "its text leaves CRMU-M out, and the text governs, so the map doesn't apply it here.")
 
 
 def eisenhower_special_permit_explanation(zone_label: str) -> str:
@@ -518,11 +515,10 @@ def no_front_yard_explanation(rules: ZoneRules) -> str:
     """Why no front yard is required in this lot's zone."""
     text = (f"The {rules.label} requires no front yard. Six streets have extra setbacks "
             "of their own (Duke Street, King Street, Seminary Road, Beauregard Street, "
-            "South Pickett Street and Mount Vernon Avenue), which the map doesn't "
-            "check yet.")
-    if rules.name == "RC":
-        text += (" RC lots along the George Washington Memorial Parkway also have a "
-                 "deep setback from Washington Street.")
+            "South Pickett Street and Mount Vernon Avenue), which the map checks "
+            "separately where they apply.")
+    if rules.no_front_yard_note:
+        text = f"{text} {rules.no_front_yard_note}"
     return text
 
 
@@ -584,8 +580,6 @@ def contextual_front_yard_explanation(street: str, gap: float, distances: list[f
         parts.append(f"No neighbors share its frontage on {' and '.join(alone)}, so that "
                      "side wasn't judged.")
     parts.append(FRONT_MEASURED)
-    parts.append("The map checks only that the home stands back far enough, not that it "
-                 "stands no further back than its neighbors.")
     return " ".join(parts)
 
 
@@ -662,8 +656,9 @@ def side_count_explanation(zone_label: str, width: float, needed: int) -> str:
     ending = {0: "none.", 1: "a 5 ft yard on at least one side."}.get(
         needed, "a 5 ft yard on both sides.")
     return (f"In the {zone_label}, side yards depend on lot width: none on lots under "
-            "25 ft wide, one 5 ft side yard from 25 to 35 ft, and two at 35 ft or more. "
-            f"This lot is about {format_feet(width)} wide, so it needs {ending}")
+            "25 ft wide, one 5 ft side yard from 25 ft up to 35 ft, and two at "
+            "35 ft or more. With the 5% margin for measuring width, "
+            f"this lot measures about {format_feet(width)} wide and needs {ending}")
 
 
 def under_special_approval(results: list[RuleResult],
@@ -677,7 +672,8 @@ def under_special_approval(results: list[RuleResult],
     """
     out = []
     for row in results:
-        plan_sets_it = row.rule in SITE_PLAN_RULES or row.rule.startswith("yard:")
+        plan_sets_it = (row.rule in SITE_PLAN_RULES
+                        or (row.rule.startswith("yard:") and row.rule != "yard:street"))
         if plan_sets_it and row.status in (NO_RULE, NOT_CHECKED):
             row = replace(row, status=NOT_REQUIRED, explanation=(
                 f"The approved site plan for {district.name} sets lot sizes and "
@@ -828,7 +824,7 @@ def _outbuilding_list(outbuildings: list[tuple[str, float]]) -> str:
 
 
 def outbuildings_explanation(zone_label: str, outbuildings: list[tuple[str, float]],
-                             allowance: float, added: float) -> str:
+                             allowance: float, added: float, *, house_allowance: bool = True) -> str:
     """Say which garages, sheds and other outbuildings count toward floor space, and how much.
 
     `outbuildings` holds a (label, floor space) pair for each, `allowance`
@@ -836,9 +832,16 @@ def outbuildings_explanation(zone_label: str, outbuildings: list[tuple[str, floa
     `added` is what the map adds to the homes' floor space.
     """
     one = len(outbuildings) == 1
+    if house_allowance:
+        excluded = (f"On a lot this size, up to {allowance:,.0f} sq ft in qualifying "
+                    "garages and sheds is excluded.")
+    elif allowance:
+        excluded = (f"This floor space rule counts garages in full and excludes up to "
+                    f"{allowance:,.0f} sq ft of qualifying small accessory buildings.")
+    else:
+        excluded = "For this kind of home, this floor space rule counts garages and sheds in full."
     found = (f"In the {zone_label}, floor space takes in every building on the lot, garages "
-             f"and sheds included. On a lot this size, up to {allowance:,.0f} sq ft in qualifying "
-             f"garages and sheds is excluded. Other than homes, the map found {_outbuilding_list(outbuildings)} "
+             f"and sheds included. {excluded} Other than homes, the map found {_outbuilding_list(outbuildings)} "
              "on this lot. ")
     measured = (f"{'Its' if one else 'Their'} floor space is estimated from "
                 f"{'its outline' if one else 'their outlines'}, less a fifth for eaves, as "
