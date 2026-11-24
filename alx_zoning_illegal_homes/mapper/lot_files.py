@@ -171,14 +171,14 @@ def lot_drawing(lot_id: int, record: dict, facts: LotFacts) -> dict:
         "buildings": _buildings(facts, frame),
         "results": {"label": results_label,
                     "rules": _rows(record["rule_results"], frame)},
-        "notes": list(record.get("notes") or []),
+        "notes": list(dict.fromkeys(record.get("notes") or [])),
     }
     if district:
         drawing["ordinary"] = {
             "label": f"Ordinary {fallback} zone",
             "rules": _rows(record["ordinary_rule_results"], frame),
         }
-        drawing["ordinary_notes"] = list(record.get("ordinary_notes") or [])
+        drawing["ordinary_notes"] = list(dict.fromkeys(record.get("ordinary_notes") or []))
     return drawing
 
 

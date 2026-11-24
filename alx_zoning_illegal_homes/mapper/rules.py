@@ -149,8 +149,9 @@ class ZoneRules:
     described_as: str = ""
     # Largest apartment building allowed, counted in homes. None = no cap.
     max_multi_units: int | None = None
-    # Minimum lot area. For townhouses this is per home.
+    # Minimum lot area. For these home types, the area is per home.
     lot_area: dict = field(default_factory=dict)
+    lot_area_per_home_for: frozenset = frozenset({"townhouse"})
     corner_lot_area: dict = field(default_factory=dict)
     lot_width: dict = field(default_factory=dict)
     corner_lot_width: dict = field(default_factory=dict)
@@ -360,19 +361,20 @@ ZONES = {
                     "multi": 45},
         min_open_space=0.35,
     ),
-    # The zone asks 1,980 sq ft of land for each home, apartments included.
-    # Apartments here are allowed only as older ones (see
-    # _RB_OLDER_APARTMENTS), and the map has no rule for land per apartment
-    # yet, so their lot size isn't checked.
+    # Section 3-705(B)(1) asks 1,980 sq ft per home, including apartments.
+    # The map has no records for the 1,600 sq ft exception on certain urban
+    # renewal land (section 3-707(C)).
     "RB": ZoneRules(
         name="RB",
         allowed=frozenset(HOUSE_LIKE),
         allowed_if_built_before={"multi": _RB_OLDER_APARTMENTS},
-        lot_area={"single": 1980, "semi": 1980, "two_unit": 3960, "townhouse": 1980},
-        lot_width={"single": 50, "semi": 25, "two_unit": 50, "townhouse": 18},
+        lot_area={"single": 1980, "semi": 1980, "two_unit": 3960, "townhouse": 1980,
+                  "multi": 1980},
+        lot_area_per_home_for=frozenset({"townhouse", "multi"}),
+        lot_width={"single": 50, "semi": 25, "two_unit": 50, "townhouse": 18, "multi": 50},
         end_lot_width={"townhouse": 26},
         corner_lot_width={"townhouse": 38},
-        frontage={"single": 50, "semi": 25, "two_unit": 50, "townhouse": 18},
+        frontage={"single": 50, "semi": 25, "two_unit": 50, "townhouse": 18, "multi": 50},
         width_measured_at=20,
         contextual_front_yard=20,
         side_yard={
@@ -1122,6 +1124,7 @@ RB_HISTORIC = ZoneRules(
     allowed=ZONES["RB"].allowed,
     allowed_if_built_before=ZONES["RB"].allowed_if_built_before,
     lot_area=ZONES["RB"].lot_area,
+    lot_area_per_home_for=ZONES["RB"].lot_area_per_home_for,
     lot_width=ZONES["RB"].lot_width,
     end_lot_width=ZONES["RB"].end_lot_width,
     corner_lot_width=ZONES["RB"].corner_lot_width,
