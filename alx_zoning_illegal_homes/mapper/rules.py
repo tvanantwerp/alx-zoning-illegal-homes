@@ -371,10 +371,10 @@ ZONES = {
         lot_area={"single": 1980, "semi": 1980, "two_unit": 3960, "townhouse": 1980,
                   "multi": 1980},
         lot_area_per_home_for=frozenset({"townhouse", "multi"}),
-        lot_width={"single": 50, "semi": 25, "two_unit": 50, "townhouse": 18},
+        lot_width={"single": 50, "semi": 25, "two_unit": 50, "townhouse": 18, "multi": 50},
         end_lot_width={"townhouse": 26},
         corner_lot_width={"townhouse": 38},
-        frontage={"single": 50, "semi": 25, "two_unit": 50, "townhouse": 18},
+        frontage={"single": 50, "semi": 25, "two_unit": 50, "townhouse": 18, "multi": 50},
         width_measured_at=20,
         contextual_front_yard=20,
         side_yard={
