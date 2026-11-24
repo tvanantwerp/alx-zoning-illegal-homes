@@ -115,6 +115,20 @@ def test_home_closer_than_every_neighbor_fails():
                for r in findings.reasons)
 
 
+@pytest.mark.parametrize("zone", ["R-8", "RA", "RB"])
+def test_neighbor_touching_front_line_does_not_set_house_zone_range(zone):
+    row, _ = _with_block_face(zone, box(10, 12, 50, 50), [0, 0.4, 20, 28])
+    assert row.status == FAILS and row.required == pytest.approx(20)
+
+
+def test_zero_setbacks_are_kept_where_buildings_may_stand_at_front_line():
+    row, _ = _with_block_face("CL", box(10, 12, 50, 50), [0, 20, 28])
+    assert row.status == PASSES and row.required == 0
+    row, _ = _with_block_face("RM", box(10, 10, 50, 50), [0, 0, 8],
+                              field="block_side")
+    assert row.required == 0
+
+
 def test_home_within_the_neighbors_range_passes():
     row, _ = _with_block_face("RA", box(10, 22, 50, 60), [20, 28])
     assert row.status == PASSES and row.required == pytest.approx(20)
