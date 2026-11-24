@@ -837,3 +837,23 @@ def test_shop_counts_in_full_alongside_an_exempt_shed():
                         outbuildings=[Outbuilding(1, 400, "commercial building"),
                                       Outbuilding(2, 100, "garage or shed")])
     assert _rows(findings)["floor_area"].measured == 3400
+
+
+def test_triangle_sites_plan_allows_residential_types():
+    from alx_zoning_illegal_homes.mapper.rules import ALL_TYPES, planned_district_rules
+
+    _, plan, ordinary = planned_district_rules("CDD#13")
+    assert plan.allowed == ALL_TYPES
+    assert ordinary.allowed == frozenset({"multi"})
+
+
+def test_eisenhower_ordinary_height_depends_on_hoffman_site():
+    from alx_zoning_illegal_homes.mapper.analyze import _district_fallback
+    from alx_zoning_illegal_homes.mapper.rules import planned_district_rules
+
+    tract = box(0, 0, 100, 100)
+    for point, expected in ((tract.centroid, 150), (box(150, 0, 200, 100).centroid, 100)):
+        zone, changes = _district_fallback("CDD#2", None, point, {"hoffman_tract": tract})
+        _, plan, ordinary = planned_district_rules("CDD#2", zone=zone, changes=changes)
+        assert "multi" in plan.allowed
+        assert ordinary.max_height["multi"] == expected

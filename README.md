@@ -231,6 +231,14 @@ those boundaries are approximated:
   Avenue, OC on the rest.
 - Duke Street / Carlyle: a looser floor space limit within 1,000 ft of the
   King Street Metro station.
+- Eisenhower Avenue Metro: the ordinary height limit is 150 ft on the
+  Hoffman Tract and 100 ft elsewhere. The map identifies the tract from
+  Hoffman sites in the city's development-projects layer.
+- Winkler Tract: the ordinary rules allow up to 100 ft in the area bounded
+  by Beauregard Street, Seminary Road, I-395 and Roanoke Avenue, with height
+  tied to the distance from the Beauregard curb and a 50 ft minimum
+  setback. The map lacks a curb line for this check and uses the RA height
+  limits there.
 - Braddock Gateway: CRMU-H on one acre at First and Fayette Streets, OCM(50)
   on the rest. The map approximates the corner parcel using a 250 ft radius
   from the street intersection.
