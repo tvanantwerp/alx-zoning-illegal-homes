@@ -19,7 +19,7 @@ from .rules import (HOME_TYPE_NAMES, MAX_TOWNHOUSES_IN_ROW, PLANNED_DISTRICTS,
                     braddock_gateway_fallback, duke_street_floor_area, height_map_limit,
                     king_street_retail_rules, normalize_zone, office_high_rules,
                     named_street_setbacks, planned_district_rules, potomac_yard_fallback,
-                    route_1_properties_fallback, rules_for)
+                    route_1_properties_fallback, rules_for, zoning_key)
 
 # A building counts as sitting on a second lot when this much of it does.
 STRADDLE_SHARE = 0.15
@@ -136,6 +136,21 @@ def _merge_lots_under_one_home(lots, pairs):
         merged.append(lead)
     return gpd.GeoDataFrame(
         merged, geometry="geometry", crs=lots.crs).reset_index(drop=True)
+
+
+def _mapped_zone_labels(lots: gpd.GeoSeries, zoning: gpd.GeoDataFrame) -> pd.Series:
+    """Select the zone covering the most area on each lot, if any."""
+    districts = zoning.assign(zone=zoning["zone"].map(zoning_key)).dissolve(by="zone")
+    lot_ids, district_ids = districts.sindex.query(lots, predicate="intersects")
+    overlap = shapely.area(shapely.intersection(
+        lots.values[lot_ids], districts.geometry.values[district_ids]))
+    candidates = pd.DataFrame({"lot": lot_ids,
+                               "zone": districts.index.to_numpy()[district_ids],
+                               "overlap": overlap})
+    largest = (candidates[candidates["overlap"] > 0]
+               .sort_values(["overlap", "zone"], ascending=[False, True])
+               .drop_duplicates("lot").set_index("lot"))
+    return pd.Series(largest["zone"].reindex(range(len(lots))).to_numpy(), index=lots.index)
 
 
 def _fold_units_into_their_lots(lots):
@@ -749,11 +764,17 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
     buildings["BSIZE"] = buildings["BSIZE"].fillna(0)
     buildings["STORIES"] = buildings["STORIES"].fillna(0)
 
-    amended = lots["address"].eq("1201 E ABINGDON DR")
-    lots.loc[amended & lots["zoning_label"].eq("OCM(50)"), "zoning_label"] = "CRMU/X"
     lots = _fold_units_into_their_lots(lots)
     pairs = _match_buildings_to_lots(lots, buildings)
     lots = _merge_lots_under_one_home(lots, pairs)
+    parcel_zones = lots["zoning_label"].map(zoning_key)
+    mapped_zones = _mapped_zone_labels(lots.geometry, loader.load_zoning())
+    lots["zoning_label"] = mapped_zones.fillna(parcel_zones)
+    # The city's downloaded zoning layer still shows the previous zone here.
+    # Ordinance 5526 applies while the map is awaiting an update (section 1-300(A)(2)).
+    amended = (lots["address"].eq("1201 E ABINGDON DR")
+               & lots["zoning_label"].eq("OCM(50)"))
+    lots.loc[amended, "zoning_label"] = "CRMU/X"
     pairs = _match_buildings_to_lots(lots, buildings)
     placed = _place_buildings(lots, buildings, pairs)
 
@@ -862,6 +883,13 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
             record["notes"].append(historic_note)
         label = lot["zoning_label"]
         zone = normalize_zone(label)
+        parcel_zone = parcel_zones.loc[lot_id]
+        if amended.loc[lot_id]:
+            record["notes"].append("The map applies CRMU/X to this lot per Ordinance 5526.")
+        elif pd.notna(mapped_zones.loc[lot_id]) and pd.notna(parcel_zone) and label != parcel_zone:
+            record["notes"].append(
+                f"The parcel record lists {parcel_zone}. "
+                f"The map applies {label} from the city's zoning layer.")
         district = fallback_rules = None
         if zone is not None:
             rules = rules_for(zone, is_historic)

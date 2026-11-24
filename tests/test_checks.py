@@ -827,6 +827,21 @@ def test_stories_only_cd_height_leaves_roof_qualification_open():
     assert row.status == "not_checked" and "roof shape is unknown" in row.explanation
 
 
+def test_rmf_apartments_use_their_own_bulk_rules():
+    lot = box(0, 0, 100, 100)
+    _, findings = check(lot, box(7, 10, 75, 80), "RMF", home_type="multi", units=10,
+                        floor_area=8500, height=45, neighbors=between_neighbors(lot))
+    rows = _rows(findings)
+    assert rows["home_type"].status == "passes"
+    assert rows["frontage"].status == "no_rule"
+    assert rows["yard:front"].status == "not_required"
+    assert rows["yard:left"].required == 8
+    assert rows["floor_area"].required == 7500
+    assert rows["open_space"].required == 0.25
+    assert rows["height"].status == "not_checked"
+    assert "governing small area plan" in rows["height"].explanation
+
+
 def test_rm_apartments_are_subject_to_the_structure_height_limit():
     _, row, _ = _roomy_height(home_type="multi", height=44, stories=4)
     assert row.status == "fails" and row.required == 35
