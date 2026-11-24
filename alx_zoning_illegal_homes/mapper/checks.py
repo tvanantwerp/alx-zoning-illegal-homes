@@ -881,8 +881,11 @@ def _check_yards(facts, findings, width):
         # Where side yards are simply counted (RM, historic RB), a wall on
         # the line is normal, so only the rear is screened there.
         screened = ("rear",) if rules.side_yards_by_lot_width else (-1, 1, "rear")
+        # A building can genuinely sit on its lot line in the historic
+        # districts. If the outline is local enough to measure, judge it.
         touching = [key for key in screened
-                    if key in gaps and gaps[key].gap < TOUCHING_GAP]
+                    if not facts.in_historic_district and key in gaps
+                    and gaps[key].gap < TOUCHING_GAP]
         for key in touching:
             del gaps[key]
         if touching:

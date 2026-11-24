@@ -97,6 +97,19 @@ def test_house_near_side_line_is_flagged():
     assert "Side yard" in findings.reasons[0].text
 
 
+@pytest.mark.parametrize("zone", ["CD", "CL"])
+@pytest.mark.parametrize("side,home", [
+    ("left", box(0, 35, 40, 75)),
+    ("rear", box(10, 80, 50, 120)),
+])
+def test_historic_home_on_lot_line_is_checked(zone, side, home):
+    lot = box(0, 0, 60, 120)
+    _, findings = check(lot, home, zone, neighbors=between_neighbors(lot), historic=True)
+    yard = next(row for row in findings.results if row.rule == f"yard:{side}")
+    assert yard.status == "fails"
+    assert yard.measured == 0
+
+
 def test_tall_house_needs_a_deeper_side_yard():
     lot = box(0, 0, 80, 120)
     home = box(11, 35, 51, 75)  # 11 ft side yard: fine at 20 ft tall
