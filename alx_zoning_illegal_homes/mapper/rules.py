@@ -151,6 +151,8 @@ class ZoneRules:
     max_multi_units: int | None = None
     # Minimum lot area. For townhouses this is per home.
     lot_area: dict = field(default_factory=dict)
+    # Minimum land per townhouse for the whole development, where applicable.
+    townhouse_development_area_per_home: float | None = None
     corner_lot_area: dict = field(default_factory=dict)
     lot_width: dict = field(default_factory=dict)
     corner_lot_width: dict = field(default_factory=dict)
@@ -713,7 +715,7 @@ ZONES |= {
         **(_MIXED_USE_HOUSES | {
             # Section 5-404 gives townhouses side and rear yards but no front yard.
             "no_front_yard_for": frozenset({"multi", "townhouse"}),
-            "lot_area": _MIXED_USE_HOUSES["lot_area"] | {"townhouse": 1452},
+            "townhouse_development_area_per_home": 1452,
             "lot_width": _MIXED_USE_HOUSES["lot_width"] | {"townhouse": 18},
             "frontage": _MIXED_USE_HOUSES["frontage"] | {"townhouse": 18},
             "side_yard": _MIXED_USE_HOUSES["side_yard"]

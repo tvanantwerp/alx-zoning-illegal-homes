@@ -837,3 +837,23 @@ def test_shop_counts_in_full_alongside_an_exempt_shed():
                         outbuildings=[Outbuilding(1, 400, "commercial building"),
                                       Outbuilding(2, 100, "garage or shed")])
     assert _rows(findings)["floor_area"].measured == 3400
+
+
+@pytest.mark.parametrize(("development_area", "status"), [(None, "not_checked"),
+                         (15000, "passes"), (12000, "fails")])
+def test_crmu_x_townhouse_area_belongs_to_the_development(development_area, status):
+    from alx_zoning_illegal_homes.mapper.checks import TownhouseDevelopment
+
+    lot = box(0, 0, 20, 60)
+    development = (TownhouseDevelopment("Test development", development_area, 10)
+                   if development_area is not None else None)
+    kinds, findings = check(lot, box(0, 10, 20, 40), "CRMU/X", home_type="townhouse",
+                            neighbors=between_neighbors(lot), height=60,
+                            townhouse_development=development)
+    rows = {row.rule: row for row in findings.results}
+    assert "lot_area" not in rows
+    row = rows["development_area"]
+    assert row.status == status and row.required == 1452
+    assert row.measured == (development_area / 10 if development_area is not None else None)
+    assert ("lot_size" in kinds) == (status == "fails")
+    assert rows["height"].required != 35

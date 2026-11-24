@@ -151,6 +151,15 @@ class TownhouseRow:
                 self.homes, self.length)
 
 
+@dataclass(frozen=True)
+class TownhouseDevelopment:
+    """Net site area and dwelling count documented in a development approval."""
+
+    name: str
+    area: float
+    homes: int
+
+
 @dataclass
 class LotFacts:
     """Everything known about a lot before checking it."""
@@ -198,6 +207,7 @@ class LotFacts:
     # The extra setbacks along named streets (section 7-1006) that cover this
     # lot's location, as NamedStreetSetbacks keyed by street name.
     street_setbacks: dict = field(default_factory=dict)
+    townhouse_development: TownhouseDevelopment | None = None
 
 
 @dataclass
@@ -248,7 +258,10 @@ def check_lot(facts: LotFacts) -> Findings:
             findings.results.append(RuleResult(rule, name, NOT_CHECKED, explanation=note))
         findings.results.sort(key=lambda row: RULE_IDS.index(row.rule))
         return findings
-    _check_lot_area(facts, findings, position)
+    development_minimum = (facts.rules.townhouse_development_area_per_home
+                           if facts.home_type == "townhouse" else None)
+    if development_minimum is None:
+        _check_lot_area(facts, findings, position)
     width = _check_width_and_frontage(facts, findings, position)
     older_lot = _excuse_older_lot(facts, findings)
     _check_yards(facts, findings, width)
@@ -271,6 +284,8 @@ def check_lot(facts: LotFacts) -> Findings:
                 findings.reasons = [reason for reason in findings.reasons if reason.kind != row.rule]
     _check_height_near_street(facts, findings)
     _check_open_space(facts, findings)
+    if development_minimum is not None:
+        _check_townhouse_development(facts.townhouse_development, findings, development_minimum)
     explain_margin(findings.results)
     findings.results.sort(key=lambda row: RULE_IDS.index(row.rule))
     return findings
@@ -471,6 +486,35 @@ def _check_lot_area(facts, findings, position):
             f"{rules.label} requires {_square_feet(required)}{corner}"
             f"{_for_whole_house(kind)}.",
         ))
+
+
+def _check_townhouse_development(development, findings, required):
+    """Section 5-404(A)(1) applies to development land, including common land."""
+    row = RuleResult(
+        "development_area", "Development land per home", NOT_CHECKED, required=required,
+        unit="sq ft", about="The CRMU-X zone measures land per home across "
+        "the whole townhouse development, including its common land.")
+    findings.results.append(row)
+    if development is None:
+        row.explanation = ("The map lacks a verified townhouse development boundary "
+                           "and home count for this lot.")
+        return
+    row.measured = development.area / development.homes
+    row.explanation = (f"The city's approval for {development.name} records "
+                       f"{_square_feet(development.area)} of land for "
+                       f"{development.homes} homes across the development.")
+    row.status = PASSES
+    if row.measured < required * (1 - AREA_MARGIN):
+        row.status = FAILS
+        findings.reasons.append(Reason(
+            "lot_size", f"{development.name} has {_square_feet(row.measured)} of "
+            f"land per home. The CRMU-X zone requires {_square_feet(required)} "
+            "per home across the townhouse development."))
+    else:
+        margin = margin_explanation(row)
+        if margin:
+            row.explanation += f" {margin}"
+
 
 
 def _check_width_and_frontage(facts, findings, position):

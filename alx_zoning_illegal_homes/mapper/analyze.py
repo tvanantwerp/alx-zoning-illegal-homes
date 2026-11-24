@@ -12,7 +12,8 @@ from shapely.ops import unary_union
 from . import loader
 from .block_faces import BlockFaces
 from .places import near_a_station, near_eisenhower_avenue, station_points
-from .checks import Home, LotFacts, Outbuilding, TownhouseRow, check_lot
+from .checks import (Home, LotFacts, Outbuilding, TownhouseDevelopment,
+                     TownhouseRow, check_lot)
 from .lot_lines import MAX_DIVIDED_GAP, MAX_STREET_DISTANCE, Street, classify
 from .rule_results import under_special_approval
 from .rules import (HOME_TYPE_NAMES, MAX_TOWNHOUSES_IN_ROW, PLANNED_DISTRICTS,
@@ -571,6 +572,24 @@ def _project_for(point, projects, project_tree):
     return f"{name} ({case})" if name and case else name or case or None
 
 
+# Two net blocks of 90,558 sq ft and 152 homes, including the stacked
+# townhouses in the approved residential development. The city's project
+# polygon locates the site but includes the public street between blocks.
+# https://dockets.alexandriava.gov/FY03/121402ph/di11.pdf
+TOWNHOUSE_DEVELOPMENTS = {
+    "DSP2002-00029": TownhouseDevelopment("Chatham Square", 181_116, 152),
+}
+
+
+def _townhouse_development_for(point, projects, project_tree):
+    """Find a development whose site area and home count have been verified."""
+    hits = project_tree.query(point, predicate="within")
+    found = [TOWNHOUSE_DEVELOPMENTS[case]
+             for case in projects.iloc[hits]["PERMIT_PLAN_CASE"].unique()
+             if case in TOWNHOUSE_DEVELOPMENTS]
+    return found[0] if len(found) == 1 else None
+
+
 def _add_district_totals(records):
     """Compare each planned district's home count with its approved cap.
 
@@ -886,6 +905,11 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
         elif home_type == "two_unit":
             units = 2
 
+        development = None
+        if home_type == "townhouse" and (rules.townhouse_development_area_per_home
+                                         or (fallback_rules is not None
+                                             and fallback_rules.townhouse_development_area_per_home)):
+            development = _townhouse_development_for(lot_points.loc[lot_id], projects, project_tree)
         facts = LotFacts(
             shape=shape,
             area=_lot_area(lot),
@@ -918,6 +942,7 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
             paved=paved,
             parking=parking,
             row=townhouse_rows.get(lot_id),
+            townhouse_development=development,
             street_setbacks=named_street_setbacks(lot_lon_lat.loc[lot_id].x,
                                                   lot_lon_lat.loc[lot_id].y),
         )

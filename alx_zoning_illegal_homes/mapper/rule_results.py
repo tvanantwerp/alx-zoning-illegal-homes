@@ -17,7 +17,7 @@ FAILS, PASSES, NOT_CHECKED, NO_RULE, NOT_REQUIRED = (
 # lots excuses. Counts as passing; the row keeps the shortfall on show.
 OLDER_LOT = "older_lot"
 
-RULE_IDS = ("lot_area", "frontage", "width", "yard:front", "yard:street", "yard:left", "yard:right",
+RULE_IDS = ("lot_area", "development_area", "frontage", "width", "yard:front", "yard:street", "yard:left", "yard:right",
             "yard:rear", "yard:nearest", "floor_area", "height", "height_near_street",
             "coverage", "open_space", "home_type", "row_length")
 
@@ -124,6 +124,7 @@ def reason_kind(rule: str) -> str:
         return "yards"
     return {
         "lot_area": "lot_size",
+        "development_area": "lot_size",
         "frontage": "lot_width",
         "width": "lot_width",
         "coverage": "open_space",

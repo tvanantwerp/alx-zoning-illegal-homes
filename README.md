@@ -52,6 +52,13 @@ CG, CD, CDX, OC, OCM, OCH, W-1, CRMU, KR) and in planned districts:
   the 45 ft many of these zones give townhouses. The section's title also
   names CRMU-M, but its text leaves CRMU-M out, so the map doesn't apply it
   there. Apartment buildings get no such excuse.
+- **Land per home for CRMU-X townhouses.** The 1,452 sq ft minimum applies
+  across the whole development, including shared land. The map uses verified
+  site area and dwelling counts from the development approval where available.
+  The city project layer currently identifies Chatham Square, whose count
+  includes its stacked townhouses. The rule stays unchecked without confirmed
+  development data. Separate lot width and frontage rules can still trigger
+  the older-lot allowance.
 - **Front yards.** In most zones (R-20 through R-2-5, RA, RB outside the
   historic districts, the commercial and office zones, and houses and
   townhouses in the CRMU zones and W-1) a home's front yard must fall within
