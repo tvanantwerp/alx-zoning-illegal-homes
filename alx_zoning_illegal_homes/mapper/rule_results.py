@@ -18,7 +18,7 @@ FAILS, PASSES, NOT_CHECKED, NO_RULE, NOT_REQUIRED = (
 OLDER_LOT = "older_lot"
 
 RULE_IDS = ("lot_area", "development_area", "frontage", "width", "yard:front", "yard:street", "yard:left", "yard:right",
-            "yard:rear", "yard:nearest", "floor_area", "height", "height_near_street", "height_at_rear",
+            "yard:rear", "yard:nearest", "yard:accessory", "floor_area", "height", "height_near_street", "height_at_rear",
             "coverage", "open_space", "home_type", "row_length")
 
 NO_STREET = ("The map couldn't find a street next to this lot, so it "

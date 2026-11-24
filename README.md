@@ -108,6 +108,11 @@ CG, CD, CDX, OC, OCM, OCH, W-1, CRMU, KR) and in planned districts:
   Where the lot backs onto open land but the map traces no paving there,
   as with a gravel, grass or untraced alley, the map counts half a typical
   alley, 5 ft.
+  Detached garages and sheds have a separate row for their own setbacks.
+  The map estimates whether they qualify for the small shed or rear garage
+  exception from their floor space, heights and placement. It leaves
+  garages within 1 to 3 ft of a lot line unchecked when the exception
+  depends on doors, windows or an alley.
 - **Floor space** compared with lot size. In the KR and OCH zones the limit
   is looser within 1,000 ft of a Metro station. Where a floor space limit
   applies, the map counts garages, sheds and other outbuildings. Outside

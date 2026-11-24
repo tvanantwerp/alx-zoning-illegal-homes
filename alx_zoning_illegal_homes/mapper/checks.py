@@ -121,11 +121,13 @@ class Outbuilding:
     index:      where its outline sits in LotFacts.all_buildings.
     floor_area: its floor space, from city records or estimated from its outline.
     label:      what to call it, e.g. "garage or shed".
+    height:     mapped height to the roof peak, when available.
     """
 
     index: int
     floor_area: float
     label: str = "outbuilding"
+    height: float | None = None
 
 
 @dataclass
@@ -273,6 +275,7 @@ def check_lot(facts: LotFacts) -> Findings:
     width = _check_width_and_frontage(facts, findings, position)
     older_lot = _excuse_older_lot(facts, findings)
     _check_yards(facts, findings, width, position)
+    _check_accessory_yards(facts, findings, width, position)
     _check_named_street_setbacks(facts, findings)
     marginal = (not older_lot and facts.rules.name in OLDER_LOTS.zones
                 and facts.home_type in HOUSE_LIKE and facts.home_type in facts.rules.allowed
@@ -1529,6 +1532,120 @@ def _check_yards_without_front(facts, findings, homes):
     row = _yard_row(facts, "nearest", FAILS if fails else PASSES, nearest, detail="needs")
     row.required = needed
     findings.results.append(row)
+
+
+def _accessory_yard_exception(facts, building, shed_area, other_garages,
+                              height, behind_house, nearest) -> tuple[str, str]:
+    """Check the possible shed and garage exceptions for an accessory in a yard."""
+    historic = facts.in_historic_district
+    kind = facts.home_type
+    shed_limit, shed_height = (65, 8) if historic else (100, 10)
+    shed_allowed = kind in {"single", "semi", "two_unit"} or (historic and kind == "townhouse")
+    shed = shed_allowed and building.floor_area <= shed_limit and shed_area <= shed_limit
+    if shed and height is not None and height <= shed_height:
+        return PASSES, "The outbuilding fits the small shed limits in section 7-202(C)(2)."
+    garage_limit = 500 if facts.area >= 8000 else 250 if facts.area >= 2500 else 0
+    garage_height = 13.5 if facts.area >= 8000 else 11.5
+    garage = (not historic and kind in facts.rules.house_floor_area_allowance_for
+              and building.floor_area <= garage_limit and not other_garages
+              and behind_house and nearest >= 1)
+    if garage and (height is None or height <= garage_height):
+        if nearest < 3:
+            return NOT_CHECKED, ("A garage within 3 ft of the lot line needs an alley there "
+                                 "or a facing wall without doors or windows. The map can't see that.")
+        if height is not None:
+            return PASSES, "The outbuilding fits the measured garage limits in section 7-2501."
+    if height is None and (shed or garage):
+        return NOT_CHECKED, "The city's height data is missing, so the exception couldn't be checked."
+    return FAILS, ("The outbuilding is in a required yard and falls outside the measured "
+                   "size, location or setback limits for sheds and freestanding garages.")
+
+
+def _check_accessory_yards(facts, findings, width, position):
+    """Check the yards around detached garages and sheds under sections 7-103 and 7-202."""
+    buildings = [building for building in facts.outbuildings
+                 if building.label == "garage or shed"]
+    if not buildings:
+        return
+    name = "Garage and shed setbacks"
+    about = ("Accessory buildings must be behind the main building's front wall and outside "
+             "required yards. Sections 7-202 and 7-2501 allow some small sheds and rear garages "
+             "in side and rear yards. The city records garages and sheds together.")
+    if facts.lines.front_line is None:
+        findings.results.append(RuleResult("yard:accessory", name, NOT_CHECKED,
+                                           about=about, explanation=NO_STREET))
+        return
+    if facts.rules.long_townhouse_rows == "plan":
+        findings.results.append(RuleResult("yard:accessory", name, NOT_CHECKED, about=about))
+        return
+    inward = facts.lines.inward
+    homes = unary_union([home.shape for home in facts.homes])
+    home_depths = shapely.get_coordinates(homes)[:, :2] @ inward
+    facts_without_attached = replace(facts, attached_neighbors=None)
+    front_minimums = [row.required for row in findings.results
+                      if row.rule == "yard:front" and row.limit == "min" and row.required is not None]
+    front_minimum = max(front_minimums, default=0)
+    limit = 65 if facts.in_historic_district else 100
+    small = [building for building in buildings if building.floor_area <= limit]
+    shed_area = sum(building.floor_area for building in small)
+    garage_count = len(buildings) - len(small)
+    # Where the home needs no side yard (a shared wall, an interior townhouse
+    # lot, a narrow lot), there is no required side yard for an outbuilding to sit in.
+    no_side_yard = {row.rule for row in findings.results
+                    if row.rule in {"yard:left", "yard:right"} and row.status == NOT_REQUIRED}
+    results = {}
+
+    def ignore_reason(*_):
+        pass
+
+    for building in buildings:
+        outline = facts.all_buildings[building.index]
+        accessory = Home(outline, height=building.height)
+        estimate = building_height(accessory)
+        parts = estimate.parts if estimate is not None else []
+        height = estimate.height if estimate is not None else None
+        gap, _ = _yard_gaps(facts_without_attached, accessory)
+        depths = shapely.get_coordinates(outline)[:, :2] @ inward
+        row = RuleResult("yard:accessory", name, PASSES, about=about, buildings=[building.index])
+        if outline.distance(homes) < TOUCHING_GAP:
+            row.status = NOT_CHECKED
+            row.explanation = "The outline touches the home, so the map can't tell if it is detached."
+        elif (depths.min() + DISTANCE_MARGIN < home_depths.min()
+              or gap["front"].gap + DISTANCE_MARGIN < front_minimum):
+            row.status = FAILS
+            row.explanation = "The outbuilding is forward of the main building or in a required front yard."
+            row.shapes["gap"] = gap["front"].nearest
+        else:
+            sides = [side for side in _side_rows(facts_without_attached, ignore_reason, gap, {}, [],
+                                                 parts, width, position)
+                     if side.rule not in no_side_yard]
+            rear = _rear_row(facts_without_attached, ignore_reason, gap.get("rear"), {}, [], parts)
+            short = [yard for yard in [*sides, rear] if yard.status == FAILS]
+            if short:
+                nearest = min((edge.gap for key, edge in gap.items() if key != "front"),
+                              default=float("inf"))
+                row.status, row.explanation = _accessory_yard_exception(
+                    facts, building, shed_area, garage_count - (building not in small),
+                    height, depths.min() + DISTANCE_MARGIN >= home_depths.max(), nearest)
+                worst = max(short, key=lambda yard: yard.required - (yard.measured or 0))
+                row.shapes = worst.shapes
+                if row.status == FAILS and worst.measured is not None:
+                    row.measured, row.required, row.unit = worst.measured, worst.required, "ft"
+                    row.explanation += (f" It is about {_feet(row.measured)} from the lot line "
+                                        f"where the {worst.name.lower()} needs {_feet(row.required)}.")
+            else:
+                row.explanation = "The map found no garage or shed inside the measured yard setbacks."
+                side_yard = facts.rules.side_yard.get(facts.home_type)
+                rear_yard = facts.rules.rear_yard_for(facts.home_type)
+                if height is None and any(yard and yard.per_foot_of_height
+                                          for yard in (side_yard, rear_yard)):
+                    row.status = NOT_CHECKED
+                    row.explanation = "The city has no height for this outbuilding. Its yard can depend on height."
+        _keep_worst(results, row)
+    row = results["yard:accessory"]
+    findings.results.append(row)
+    if row.status == FAILS:
+        findings.reasons.append(Reason("yards", row.explanation))
 
 
 def _home_indexes(facts) -> list[int]:
