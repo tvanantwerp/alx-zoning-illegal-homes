@@ -37,7 +37,7 @@ left out of git, so run `create-map` before serving the site.
 
 Every lot with a home is measured against the rules for its zone. That covers
 the residential zones (R-20, R-12, R-8, R-5, R-2-5, RA, RB, RCX, RC, RD, RM,
-RS, RT) and homes in the commercial, office and waterfront zones (CL, CC, CSL,
+RMF, RS, RT) and homes in the commercial, office and waterfront zones (CL, CC, CSL,
 CG, CD, CDX, OC, OCM, OCH, W-1, CRMU, KR) and in planned districts:
 
 - **Lot size**, **lot width** and **street frontage**. In RA, RB, RM, CL,
@@ -52,6 +52,13 @@ CG, CD, CDX, OC, OCM, OCH, W-1, CRMU, KR) and in planned districts:
   the 45 ft many of these zones give townhouses. The section's title also
   names CRMU-M, but its text leaves CRMU-M out, so the map doesn't apply it
   there. Apartment buildings get no such excuse.
+- **Land per home for CRMU-X townhouses.** The 1,452 sq ft minimum applies
+  across the whole development, including shared land. The map uses verified
+  site area and dwelling counts from the development approval where available.
+  The city project layer currently identifies Chatham Square, whose count
+  includes its stacked townhouses. The rule stays unchecked without confirmed
+  development data. Separate lot width and frontage rules can still trigger
+  the older-lot allowance.
 - **Front yards.** In most zones (R-20 through R-2-5, RA, RB outside the
   historic districts, the commercial and office zones, and houses and
   townhouses in the CRMU zones and W-1) a home's front yard must fall within
@@ -102,20 +109,31 @@ CG, CD, CDX, OC, OCM, OCH, W-1, CRMU, KR) and in planned districts:
   as with a gravel, grass or untraced alley, the map counts half a typical
   alley, 5 ft.
 - **Floor space** compared with lot size. In the KR and OCH zones the limit
-  is looser within 1,000 ft of a Metro station. In R-20 through R-2-5, and
-  for houses and two-unit houses in RA and RB outside the historic
-  districts, garages, sheds and other outbuildings count too, beyond an
-  allowance of 100 sq ft (lots under 2,500 sq ft), 350 sq ft, or 600 sq ft
-  (lots of 8,000 sq ft or more). Their floor space comes from their outlines,
-  as one story unless the city's 3D data shows a building tall enough for
-  more.
+  is looser within 1,000 ft of a Metro station. Where a floor space limit
+  applies, the map counts garages, sheds and other outbuildings. Outside
+  the historic districts, homes in R-20 through R-2-5 and houses and
+  two-unit houses in RA and RB get an allowance of 100 sq ft (lots under
+  2,500 sq ft), 350 sq ft, or 600 sq ft (lots of 8,000 sq ft or more).
+  Only qualifying sheds and garages get this allowance. The map estimates
+  eligibility from their floor space. On lots with a house or two-unit
+  house, sheds may total up to 100 sq ft. One garage of up to 250 sq ft
+  qualifies on lots of 2,500 to under 8,000 sq ft, or up to 500 sq ft on
+  larger lots. Their floor space comes from their outlines, as one story
+  unless the city's 3D data shows a building tall enough for more.
+  Elsewhere, section 2-145(B) counts garages in full. It leaves out small
+  sheds: up to 100 sq ft for houses and two-unit houses outside the
+  historic districts, and up to 65 sq ft for houses, two-unit houses and
+  townhouses inside them. Other homes get no shed exclusion. City records
+  group garages and sheds together, so the map uses floor space to
+  estimate which structures qualify.
 - **Height**, measured as the ordinance does: to the top of a flat roof, but
   only halfway between the eaves and the peak of a gable or hip roof. The
   city's 3D data gives only the peak, so the map guesses the roof's shape and
   the height of its eaves from the number of stories in city records (about
   10 ft per full story, plus 2 ft for a raised ground floor). A roof that
-  rises only a few feet above those eaves counts as flat, and apartment
-  buildings are taken to have flat roofs. A roof is never taken to rise
+  rises only a few feet above those eaves counts as flat. Apartment
+  buildings with at least five full stories or an unknown story count
+  are assumed to have flat roofs. A roof is never taken to rise
   more than 15 ft, since a story count that leaves a taller roof is
   probably short. With no story count, a pitched roof is measured at 85% of
   its peak. The limit is the lower of the zone's own and the city's height
@@ -192,6 +210,12 @@ Housing" changes.
 The test is always: *if the buildings vanished, could you legally put them
 back today?*
 
+### Zones that restrict ordinary homes
+
+The map flags ordinary home uses in I, UT, CR, NR, POS and WPR. NR allows
+up to four auxiliary dwellings associated with a commercial use and may
+allow townhouses with a special use permit.
+
 ### Planned districts
 
 Zones starting with CDD (Cameron Station, Potomac Yard, Carlyle and others)
@@ -202,15 +226,16 @@ governs the land in place of the ordinary zone rules. The ordinance (section
 
 - **With the approved plan:** which kinds of home are allowed, a maximum
   height, and a cap on homes or floor space across the whole district. Lot
-  sizes and yards are not set by rule; the approved site plan drawings fix
-  them.
+  sizes and ordinary yards are set by the approved site plan drawings. The
+  map checks named-street setbacks where the ordinance keeps them in force.
 - **Without it:** an ordinary zone's rules (R-8 for Cameron Station, for
   example), sometimes with a changed floor area or height limit.
 
 Homes there are judged by the first set, since that is what a rebuild would
 be held to. That means checking home type and height lot by lot, and
-reporting each district's home count against its cap. Lot sizes and yards are
-not judged, because the drawings that set them are not available as data.
+reporting each district's home count against its cap. The drawings that
+set lot sizes and ordinary yards are unavailable as data, so those checks
+are omitted.
 
 Each lot also records how it would fare under the second set, and the map has
 a checkbox to switch to that view. It shows how far these neighborhoods are
@@ -225,17 +250,25 @@ In a few districts the ordinary zone depends on where the lot sits, and
 those boundaries are approximated:
 
 - Potomac Yard: RB east of the Metro tracks and south of the Monroe Avenue
-  bridge; CRMU-L east of the tracks and north of the bridge; CSL near
-  Route 1; and industrial, which allows no homes, on the rest. The CRMU-L
-  part stands in for the "Piggyback Yard" (taken to be Potomac Greens) and
-  the Slaters Lane townhouses just north of Slaters Lane, which are drawn
-  only on a 1995 rezoning plat the map doesn't have. No home in the
-  district sits in the RB part. The ordinance caps the Piggyback Yard at
-  50 ft, but the map can't tell where it ends, so that cap isn't checked.
+  bridge; CSL near Route 1; and industrial, which allows no homes, elsewhere.
+  The map approximates the Slaters Lane and Piggyback Yard areas on the east
+  side of the tracks using the bridge line and shows the CRMU-L option
+  there. The Piggyback Yard option requires a special use permit and caps
+  development at 275 homes and 50 ft. The map lacks the 1995 rezoning plats
+  to narrow these conditions to the Piggyback Yard or to locate the utility
+  strip just west of the tracks.
 - Route 1 Properties: RB along Reed Avenue, RC within 100 ft of Commonwealth
   Avenue, OC on the rest.
 - Duke Street / Carlyle: a looser floor space limit within 1,000 ft of the
   King Street Metro station.
+- Eisenhower Avenue Metro: the ordinary height limit is 150 ft on the
+  Hoffman Tract and 100 ft elsewhere. The map identifies the tract from
+  Hoffman sites in the city's development-projects layer.
+- Winkler Tract: the ordinary rules allow up to 100 ft in the area bounded
+  by Beauregard Street, Seminary Road, I-395 and Roanoke Avenue, with height
+  tied to the distance from the Beauregard curb and a 50 ft minimum
+  setback. The map lacks a curb line for this check and uses the RA height
+  limits there.
 - Braddock Gateway: CRMU-H on one acre at First and Fayette Streets, OCM(50)
   on the rest. The map approximates the corner parcel using a 250 ft radius
   from the street intersection.
@@ -272,6 +305,14 @@ lot's front, sides and rear from shape alone:
 
 Other details that matter:
 
+- The city’s zoning map supplies the zone covering the most area on each
+  lot. The parcel record supplies a fallback where the maps have no area in
+  common. A split lot can be subject to more than one zone in practice.
+- In RMF, the map applies the by-right floor area limit and estimates the
+  residential open space requirement lot by lot. It cannot measure yards or
+  height from a governing small area plan, or confirm a permit that allows
+  additional floor area for committed affordable housing.
+
 - Condo units are stacked on one polygon in the parcel layer, or drawn as
   small outlines on top of the land they share; either way they are folded
   into one lot.
@@ -281,6 +322,9 @@ Other details that matter:
   (a strip left where a lot line runs a few feet inside a building) stays
   with the larger piece it touches, so the building keeps its full outline
   where it meets its neighbor.
+- A lot is treated as historic when more than half its area is inside the
+  historic districts. The pop-up gives the percentage for lots the boundary
+  crosses. This is how the map handles split lots.
 - Lots that one owner has built a single house across are joined.
 - Homes that share a wall (twins, townhouses) are not expected to have a yard
   on that side. The exception is half of a twin on a lot of its own in R-20,
@@ -308,12 +352,21 @@ Other details that matter:
   reach into a yard. It applies to every home, even ones with little or no
   overhang. A home drawn touching or crossing a
   lot line is assumed to be a mapping error and its yards are skipped.
+- Other measurements also get some slack:
+  - **Building height:** 5 ft for uncertainty in the city's 3D data and in
+    estimating where a sloped roof's eaves are.
+  - **Floor space:** 10% because assessment records and the ordinance count
+    different kinds of space.
+  - **Lot width:** 5% for differences between mapped lot edges and a survey.
+  - **Lot size and open space:** 3% for uncertainty in drawing lot boundaries,
+    building outlines and paving.
+  - **Building coverage:** 3% of the limit for uncertainty in the mapped lot
+    and roof outlines.
 - Front yards set by the neighbors are measured from building outlines
   traced from roofs, so a porch roof or overhang counts as part of the
   building, for a home and its neighbors alike. A home with a deep porch
-  next to homes without one can look closer to the street than it is. The
-  rule also says a home may stand no further back than its neighbors, which
-  the map doesn't check. Corner lots get judged on both streets, as the
+  next to homes without one can look closer to the street than it is.
+  Corner lots get judged on both streets, as the
   ordinance asks, and fail more often than other lots, mostly along the
   side street. Where the street map changes a street's name partway along a
   lot, the lot is treated as a corner lot.
@@ -348,12 +401,17 @@ Other details that matter:
 - Some rules are left out on purpose; `rules.py` says why beside each one.
   Across zones: threshold height (how high the front door sits), homes per
   acre across a whole development, and anything a special permit or the
-  planning commission could loosen. In single zones: the RB zone's 1,980
-  sq ft of land per apartment for its older apartment buildings, the RT
-  zone's rules for a townhouse row as a whole, the KR zone's 150 sq ft of
+  planning commission could loosen. In single zones: the RB zone's lower
+  land-per-home minimum on certain urban renewal land, the RT zone's rules
+  for a townhouse row as a whole, the KR zone's 150 sq ft of
   open space per home (balconies and roofs count), the extra floor space
   for shops in W-1, CRMU-M and CRMU-H, and the deep setback from Washington
   Street for RC lots along the parkway.
+- In Old Town North, section 6-503(D) gives sites in designated retail focus
+  areas extra floor space equal to the space required for retail focus uses
+  (one-twelfth of the site's allowable floor area ratio). The increase is
+  capped at 0.25, and the total at 2.5. The map's zoning data doesn't include
+  the designated areas, so it uses the base limit there.
 - Floor space comes from the city's assessment records, which seem to count
   only finished living space. The ordinance counts all space under a roof,
   finished or not, attached garages included, so a home's real floor space
@@ -432,7 +490,7 @@ From the [City of Alexandria open data site](https://cityofalexandria-alexgis.op
 - [Height Districts](https://cityofalexandria-alexgis.opendata.arcgis.com/datasets/AlexGIS::height-districts/explore)
   (height limits that apply on top of each zone's own)
 - [Zoning Map](https://cityofalexandria-alexgis.opendata.arcgis.com/datasets/AlexGIS::zoning/explore)
-  (downloaded but not yet used; zoning comes from the parcel layer)
+  (the main source for each lot’s zone)
 
 The Zoning Ordinance is published at
 [library.municode.com](https://library.municode.com/va/alexandria/codes/zoning).

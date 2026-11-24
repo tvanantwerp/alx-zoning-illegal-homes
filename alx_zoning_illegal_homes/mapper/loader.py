@@ -200,6 +200,11 @@ def load_paving() -> gpd.GeoDataFrame:
     return paving[["is_parking", "is_alley", "geometry"]].reset_index(drop=True)
 
 
+def load_zoning() -> gpd.GeoDataFrame:
+    """Read the city's zoning districts as polygons with their zone labels."""
+    return load_layer("Zoning")[["ZONING", "geometry"]].rename(columns={"ZONING": "zone"})
+
+
 def load_height_districts() -> gpd.GeoDataFrame:
     """Load the height district map: one row per area, with its district code and limit text.
 
