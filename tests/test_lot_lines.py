@@ -133,3 +133,67 @@ def test_width_line_sits_the_measuring_depth_back():
     assert line.length == pytest.approx(60, abs=0.5)
     assert all(y == pytest.approx(25, abs=0.5) for _, y in line.coords)
     assert lot_width_line(lot, lines, 0) is None
+
+
+# A street that changes its name partway along, at x = 25. The lot straddles
+# the change, with neighbors on both sides.
+WEST_PART = ("WEST", LineString([(-300, -25), (25, -25)]))
+EAST_PART = ("EAST", LineString([(25, -25), (400, -25)]))
+STRADDLING_LOT = box(0, 0, 50, 100)
+STRADDLING_NEIGHBORS = unary_union([box(-50, 0, 0, 100), box(50, 0, 100, 100)])
+
+
+@pytest.mark.parametrize("side_street", [False, True])
+def test_street_that_only_changes_its_name_is_not_a_corner(side_street):
+    # A third street leaving the junction on the far side doesn't change that
+    # the lot sits along one straight road.
+    streets = [WEST_PART, EAST_PART]
+    if side_street:
+        streets.append(("SOUTH", LineString([(25, -25), (25, -300)])))
+    lines = classify(STRADDLING_LOT, STRADDLING_NEIGHBORS, streets, "WEST")
+    assert set(lines.fronts) == {"WEST", "EAST"}
+    assert not lines.is_corner and not lines.is_through
+
+
+# A road running west along y = -25 to x = 0, where it is renamed and bends
+# 45 degrees to the north-west.
+BEND_WEST = ("ROAD", LineString([(400, -25), (0, -25)]))
+BEND_ON = ("RENAMED", LineString([(0, -25), (-200, 175)]))
+
+
+def test_lot_line_that_turns_a_corner_where_a_street_is_renamed_is_a_corner():
+    # The lot's own edge turns square where the road bends and is renamed.
+    lot = Polygon([(10, 0), (60, 0), (60, 100), (10, 100), (10, 60), (-20, 30)])
+    lines = classify(lot, None, [BEND_WEST, BEND_ON], "ROAD")
+    assert set(lines.fronts) == {"ROAD", "RENAMED"}
+    assert lines.is_corner
+
+
+def test_lot_line_that_runs_straight_past_a_renamed_bend_is_not_a_corner():
+    # On the outside of the bend, the lot's edge runs straight across it.
+    lot = box(-60, -120, 10, -50)
+    lines = classify(lot, None, [BEND_WEST, BEND_ON], "ROAD")
+    assert set(lines.fronts) == {"ROAD", "RENAMED"}
+    assert not lines.is_corner
+
+
+# Main runs east-west along y = -25. Side St runs south from Main at x = -40,
+# so the lot north of Main sits across the street from where Side St ends.
+SIDE_ENDS_AT_MAIN = ("SIDE", LineString([(-40, -25), (-40, -300)]))
+# The lot's south-west corner is cut off by an edge facing toward the end of Side St.
+CUT_CORNER_LOT = Polygon([(8, 0), (50, 0), (50, 100), (0, 100), (0, 30)])
+
+
+def test_lot_across_the_street_from_where_a_street_ends_is_not_a_corner():
+    lines = classify(CUT_CORNER_LOT, box(50, 0, 100, 100), [MAIN, SIDE_ENDS_AT_MAIN], "MAIN")
+    assert list(lines.fronts) == ["MAIN"]
+    assert not lines.is_corner
+
+
+def test_edge_looking_across_at_a_street_end_keeps_its_front_when_another_street_is_nearer():
+    # A street closer to that edge, which the map couldn't match it to, means the
+    # lot really does sit at a second street; dropping the front would hide that.
+    nearer = ("NEARER", LineString([(-20, 50), (-300, 50)]))
+    lines = classify(CUT_CORNER_LOT, box(50, 0, 100, 100),
+                     [MAIN, SIDE_ENDS_AT_MAIN, nearer], "MAIN")
+    assert "SIDE" in lines.fronts
