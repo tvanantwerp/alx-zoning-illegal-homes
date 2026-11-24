@@ -349,6 +349,11 @@ Other details that matter:
   open space per home (balconies and roofs count), the extra floor space
   for shops in W-1, CRMU-M and CRMU-H, and the deep setback from Washington
   Street for RC lots along the parkway.
+- In Old Town North, section 6-503(D) gives sites in designated retail focus
+  areas extra floor space equal to the space required for retail focus uses
+  (one-twelfth of the site's allowable floor area ratio). The increase is
+  capped at 0.25, and the total at 2.5. The map's zoning data doesn't include
+  the designated areas, so it uses the base limit there.
 - Floor space comes from the city's assessment records, which seem to count
   only finished living space. The ordinance counts all space under a roof,
   finished or not, attached garages included, so a home's real floor space
