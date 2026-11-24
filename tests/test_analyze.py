@@ -30,23 +30,6 @@ def place(lot_shapes, building_shapes, is_home=True):
     return _place_buildings(lots, buildings, pairs)
 
 
-def test_mount_vernon_overlay_uses_the_frontage_between_its_two_cross_streets():
-    from alx_zoning_illegal_homes.mapper.analyze import (
-        _fronts_mount_vernon_overlay, _mount_vernon_overlay)
-    from alx_zoning_illegal_homes.mapper.lot_lines import LotLines
-
-    streets = gpd.GeoDataFrame(
-        {"name": ["MOUNT VERNON", "NELSON", "COMMONWEALTH"]},
-        geometry=[LineString([(0, 0), (0, 300)]), LineString([(-100, 50), (100, 50)]),
-                  LineString([(-100, 200), (100, 200)])],
-    )
-    overlay = _mount_vernon_overlay(streets)
-    for y, applies in [(20, False), (90, True), (250, False)]:
-        fronts = {"MOUNT VERNON": LineString([(20, y), (20, y + 10)])}
-        assert _fronts_mount_vernon_overlay(LotLines([], fronts), overlay) is applies
-    assert not _fronts_mount_vernon_overlay(LotLines([]), overlay)
-
-
 def test_disconnected_scrap_does_not_follow_its_adjacent_component():
     from shapely.geometry import MultiPolygon
     from alx_zoning_illegal_homes.mapper.analyze import _join_small_pieces
@@ -166,3 +149,20 @@ def test_outbuilding_sliver_stays_with_the_rest_of_the_building():
     placed = place(lots, [box(20, 50, 80, 101)], is_home=False)
     assert sorted(placed.lot_id) == [0, 1]
     assert placed.share.sum() == pytest.approx(1.0)
+
+
+def test_mount_vernon_overlay_uses_the_frontage_between_its_two_cross_streets():
+    from alx_zoning_illegal_homes.mapper.analyze import (
+        _fronts_mount_vernon_overlay, _mount_vernon_overlay)
+    from alx_zoning_illegal_homes.mapper.lot_lines import LotLines
+
+    streets = gpd.GeoDataFrame(
+        {"name": ["MOUNT VERNON", "NELSON", "COMMONWEALTH"]},
+        geometry=[LineString([(0, 0), (0, 300)]), LineString([(-100, 50), (100, 50)]),
+                  LineString([(-100, 200), (100, 200)])],
+    )
+    overlay = _mount_vernon_overlay(streets)
+    for y, applies in [(20, False), (90, True), (250, False)]:
+        fronts = {"MOUNT VERNON": LineString([(20, y), (20, y + 10)])}
+        assert _fronts_mount_vernon_overlay(LotLines([], fronts), overlay) is applies
+    assert not _fronts_mount_vernon_overlay(LotLines([]), overlay)

@@ -166,10 +166,10 @@ class ZoneRules:
     eisenhower_older_homes: OlderHomeAllowance | None = None
     # How messages refer to these rules, after the word "the".
     described_as: str = ""
-    # Largest apartment building allowed, counted in homes. None = no cap.
-    max_multi_units: int | None = None
     # Units in a commercial building checked under the nonresidential bulk rules.
     auxiliary_dwellings: AuxiliaryDwellingRule | None = None
+    # Largest apartment building allowed, counted in homes. None = no cap.
+    max_multi_units: int | None = None
     # Minimum lot area. For townhouses this is per home.
     lot_area: dict = field(default_factory=dict)
     corner_lot_area: dict = field(default_factory=dict)
