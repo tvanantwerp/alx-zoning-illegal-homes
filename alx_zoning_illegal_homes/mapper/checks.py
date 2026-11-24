@@ -272,15 +272,27 @@ def check_lot(facts: LotFacts) -> Findings:
     _check_height_near_street(facts, findings)
     _check_open_space(facts, findings)
     if facts.home_type in {"multi", "townhouse"}:
-        for row in findings.results:
-            if row.status == FAILS and (row.rule in {"frontage", "open_space"}
-                                       or (row.rule.startswith("yard:") and row.rule != "yard:street")):
-                note = ("An approved site plan may relax this minimum under section 11-416. "
-                        "The map has no record of any change to the requirement.")
-                row.explanation = " ".join(filter(None, [row.explanation, note]))
+        _note_site_plan_relief(findings.results)
     explain_margin(findings.results)
     findings.results.sort(key=lambda row: RULE_IDS.index(row.rule))
     return findings
+
+
+def _note_site_plan_relief(results):
+    """Note that a site plan may relax a failed minimum under section 11-416.
+
+    Section 11-416(A)(1) lets a site plan relax minimum frontage, yards, open
+    space and other minimums, but (A)(2) rules out maximums. Lot size is left
+    out because (A)(2) also rules out density rules that mix the two.
+    """
+    for row in results:
+        if row.status != FAILS or row.limit == "max":
+            continue
+        if (row.rule in {"frontage", "width", "open_space"}
+                or (row.rule.startswith("yard:") and row.rule != "yard:street")):
+            note = ("An approved site plan may relax this minimum under section 11-416. "
+                    "The map has no record of any change to the requirement.")
+            row.explanation = " ".join(filter(None, [row.explanation, note]))
 
 
 def _side_of(facts: LotFacts, point, home) -> int:
