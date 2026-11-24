@@ -251,6 +251,18 @@ def test_townhouse_position_is_unknown_without_a_detected_shared_wall():
     assert all(row.status == "not_checked" for row in sides)
 
 
+def test_townhouse_row_on_one_lot_still_checks_its_side_yards():
+    # A whole 3-home row on one lot: 8 ft from the left lot line, 2 ft from the right.
+    lot = box(0, 0, 60, 110)
+    row = box(8, 15, 58, 55)
+    _, findings = check(lot, row, "RA", home_type="townhouse", units=3,
+                        neighbors=between_neighbors(lot))
+    rows = {row.rule: row for row in findings.results}
+    assert findings.measurements["position"] == "interior"
+    assert rows["yard:left"].status == "passes"
+    assert rows["yard:right"].status == "fails"
+
+
 def test_end_townhouse_needs_a_wider_lot():
     lot = box(0, 0, 20, 110)
     home = box(0, 15, 12, 55)

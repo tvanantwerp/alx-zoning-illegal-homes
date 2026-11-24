@@ -346,10 +346,15 @@ def _attached_sides(facts: LotFacts) -> set[int]:
 
 
 def _position(facts: LotFacts) -> str:
-    """Classify the lot as corner, end-of-row, or interior."""
+    """Classify the lot as corner, end-of-row, interior, or unknown.
+
+    A townhouse lot with no attached homes on other lots holds its whole row,
+    so it is judged as an interior lot and both side yards are checked. It is
+    "unknown" only when attached homes exist but no shared wall was placed.
+    """
     if facts.lines.is_corner:
         return "corner"
-    if facts.home_type == "townhouse":
+    if facts.home_type == "townhouse" and facts.attached_neighbors is not None:
         return ("unknown", "end", "interior")[len(_attached_sides(facts))]
     return "interior"
 
