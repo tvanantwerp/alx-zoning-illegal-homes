@@ -28,10 +28,15 @@ zone that has them:
   measured over a site plan's land, streets and common areas included,
   which the parcel map can't rebuild. Each zone's lot size per home asks
   about the same of a single lot.
-- Anything the ordinance lets a special permit, the planning commission or
-  the board of architectural review loosen, such as smaller townhouse lots
-  or narrower lots on a curved street. The map holds every home to the
-  limit that applies without that approval.
+- Site-specific relief from the planning commission, City Council, the board
+  of architectural review or the board of zoning appeals. For example, the
+  latter can grant a special exception under section 11-1302(D) for a taller
+  house in some residential zones. The map generally applies the limit that
+  applies without an approval. An RB front yard in a historic district is
+  left unchecked when its setback could have been approved by the board of
+  architectural review. Site plans can change certain minimums under section
+  11-416. Cluster approvals can also change yard and lot requirements and
+  count common open space under sections 11-603 and 11-604.
 - Rules for shops, offices and other non-home uses, and site plan rules
   for a whole new development (parking, landscaping, building form).
 
@@ -106,8 +111,11 @@ _RB_OLDER_APARTMENTS = OlderHomeAllowance(
     rule=("The RB zone lets land that was zoned RB by February 27, 1973 be used "
           "for apartment buildings if it had apartment buildings on it before "
           "March 28, 1978."),
-    unconfirmed=("The map has no record of past zoning, so it couldn't confirm "
-                 "this land was zoned RB by 1973."),
+    unconfirmed=("Section 3-707(A) also covers qualifying land in an urban "
+                 "renewal project established before February 22, 1973, or "
+                 "with a site plan submitted before March 28, 1978 and an "
+                 "approved special use permit. The map cannot verify that a lot was "
+                 "zoned RB by 1973, urban renewal boundaries or these approvals."),
 )
 
 
@@ -451,8 +459,8 @@ ZONES = {
         max_height={"townhouse": 150, "multi": 150},
         min_open_space=0.35,
     ),
-    # The zone also caps homes at 100 an acre. None of its few home lots
-    # comes near that, so it isn't checked.
+    # Section 3-1005 also caps density at 100 homes per acre. The map
+    # does not check this cap.
     "RD": ZoneRules(
         name="RD",
         allowed=frozenset({"multi"}),

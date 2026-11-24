@@ -990,3 +990,17 @@ def test_shop_counts_in_full_alongside_an_exempt_shed():
                         outbuildings=[Outbuilding(1, 400, "commercial building"),
                                       Outbuilding(2, 100, "garage or shed")])
     assert _rows(findings)["floor_area"].measured == 3400
+
+
+def test_site_plan_note_covers_failed_minimums_but_not_maximums():
+    from alx_zoning_illegal_homes.mapper.checks import _note_site_plan_relief
+    from alx_zoning_illegal_homes.mapper.rule_results import FAILS, RuleResult
+    rows = {
+        "width": RuleResult("width", "Lot width", FAILS),
+        "too_close": RuleResult("yard:front", "Front yard", FAILS),
+        "too_far": RuleResult("yard:front", "Front yard", FAILS, limit="max"),
+        "lot_area": RuleResult("lot_area", "Lot size", FAILS),
+    }
+    _note_site_plan_relief(rows.values())
+    noted = {key for key, row in rows.items() if "11-416" in (row.explanation or "")}
+    assert noted == {"width", "too_close"}

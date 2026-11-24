@@ -54,7 +54,7 @@ def test_no_street_leaves_frontage_and_width_unchecked():
                      lines=classify(lot, None, [], None), all_buildings=[box(20, 35, 60, 75)])
     r = rows(check_lot(facts))
     assert r["frontage"].status == r["width"].status == NOT_CHECKED
-    assert "public street" in r["frontage"].explanation
+    assert "street next to this lot" in r["frontage"].explanation
 
 
 def test_failing_rows_match_reasons_for_lot_rules():
@@ -351,7 +351,7 @@ def test_no_street_leaves_yards_unchecked_but_measures_the_nearest_line():
                      lines=classify(lot, None, [], None), all_buildings=[box(3, 35, 43, 75)])
     f = check_lot(facts)
     r = rows(f)
-    assert r["yard:left"].status == NOT_CHECKED and "public street" in r["yard:left"].explanation
+    assert r["yard:left"].status == NOT_CHECKED and "street next to this lot" in r["yard:left"].explanation
     assert r["yard:nearest"].name == "Closest lot line"
     assert r["yard:nearest"].status == FAILS and r["yard:nearest"].required == 8
     assert r["yard:nearest"].shapes["gap"].length == pytest.approx(3)

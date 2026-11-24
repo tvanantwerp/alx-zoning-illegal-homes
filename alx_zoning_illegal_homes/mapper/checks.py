@@ -273,9 +273,28 @@ def check_lot(facts: LotFacts) -> Findings:
                 findings.reasons = [reason for reason in findings.reasons if reason.kind != row.rule]
     _check_height_near_street(facts, findings)
     _check_open_space(facts, findings)
+    if facts.home_type in {"multi", "townhouse"}:
+        _note_site_plan_relief(findings.results)
     explain_margin(findings.results)
     findings.results.sort(key=lambda row: RULE_IDS.index(row.rule))
     return findings
+
+
+def _note_site_plan_relief(results):
+    """Note that a site plan may relax a failed minimum under section 11-416.
+
+    Section 11-416(A)(1) lets a site plan relax minimum frontage, yards, open
+    space and other minimums, but (A)(2) rules out maximums. Lot size is left
+    out because (A)(2) also rules out density rules that mix the two.
+    """
+    for row in results:
+        if row.status != FAILS or row.limit == "max":
+            continue
+        if (row.rule in {"frontage", "width", "open_space"}
+                or (row.rule.startswith("yard:") and row.rule != "yard:street")):
+            note = ("An approved site plan may relax this minimum under section 11-416. "
+                    "The map has no record of any change to the requirement.")
+            row.explanation = " ".join(filter(None, [row.explanation, note]))
 
 
 def _side_of(facts: LotFacts, point, home) -> int:
@@ -370,7 +389,10 @@ def _check_home_type(facts, findings) -> OlderHomeAllowance | None:
         ]))
     elif kind not in rules.allowed:
         status, summary = FAILS, f"{name} not allowed in the {rules.label}"
-        explanation = rules.home_type_restriction_note or None
+        older = rules.allowed_if_built_before.get(kind)
+        explanation = " ".join(filter(None, [
+            older.rule if older else None, older.unconfirmed if older else None,
+            rules.home_type_restriction_note])) or None
         findings.reasons.append(Reason(
             "home_type",
             f"This kind of home ({name}) is not allowed in the "
@@ -518,7 +540,7 @@ def _check_width_and_frontage(facts, findings, position):
         if need_frontage:
             frontage_row.explanation = NO_STREET
         findings.notes.append(
-            "Could not find a public street next to this lot, so its width "
+            "Could not find a street next to this lot, so its width "
             "and street frontage were not checked."
         )
         return None
