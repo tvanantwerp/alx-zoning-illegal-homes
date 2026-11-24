@@ -1117,18 +1117,31 @@ def _block_average_front_row(facts, home):
     corner lot (both streets count, the RM zone says) the street where the
     home is furthest off its line is shown.
     """
+    lot_vertices = shapely.points(shapely.get_coordinates(largest_polygon(facts.shape).exterior))
     found = []
-    for front in _street_fronts(facts, home, facts.block_side):
-        others = [n.distance for n in front.neighbors]
+    fronts = _street_fronts(facts, home, facts.block_side)
+    for front in fronts:
+        lot_depth = max(shapely.distance(unary_union(front.gap.lines), lot_vertices))
+        # A large parcel can meet this block while its buildings sit far
+        # away. Those distances cannot set a building line on this lot.
+        others = [n.distance for n in front.neighbors if n.distance <= lot_depth]
+        if not others and front.neighbors:
+            continue
         set_back = sum(distance > DISTANCE_MARGIN for distance in others)
         target = sum(others) / len(others) if set_back * 2 > len(others) else 0.0
-        found.append((front, target, set_back))
-    front, target, set_back = max(found, key=lambda each: abs(each[0].gap.gap - each[1]))
+        found.append((front, target, set_back, len(others)))
+    if not found:
+        return _yard_row(facts, "front", NOT_CHECKED, min(fronts, key=lambda f: f.gap.gap).gap,
+                         explanation=("The nearby buildings are set back farther than this lot "
+                                      "extends, so the map could not estimate a front building line."))
+    front, target, set_back, count = max(found, key=lambda each: abs(each[0].gap.gap - each[1]))
     row = _yard_row(facts, "front", NOT_CHECKED, front.gap, detail="should be about",
                     limit="max" if front.gap.gap > target else "min")
     row.required = target
     row.explanation = block_average_front_yard_explanation(
-        front.label, front.gap.gap, target, len(front.neighbors), set_back, facts.rules.label)
+        front.label, front.gap.gap, target, count, set_back, facts.rules.label)
+    if count < len(front.neighbors):
+        row.explanation += " The estimate leaves out buildings set back beyond this lot's depth."
     return row
 
 

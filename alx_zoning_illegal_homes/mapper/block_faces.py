@@ -206,8 +206,15 @@ class BlockFaces:
         if key not in self._block_sides:
             chain, waiting = {lot_id}, [lot_id]
             while waiting:
-                for other in self.beside(waiting.pop(), street):
-                    if other not in chain:
+                current = waiting.pop()
+                neighbors = self.beside(current, street)
+                if not neighbors:
+                    continue
+                # The short street key can join different streets, such
+                # as Lee Court and South Lee Street at the same corner.
+                current_street = self._lines_for(current).centerlines[street].label
+                for other in neighbors:
+                    if other not in chain and self._lines_for(other).centerlines[street].label == current_street:
                         chain.add(other)
                         waiting.append(other)
             for member in chain:
