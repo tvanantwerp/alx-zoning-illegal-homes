@@ -125,9 +125,9 @@ def test_undersized_lot_needs_a_close_match():
     tags = [case("SUP1990-00001", ["undersized_lot"], 1990)]
     findings = check(lot, box(8, 30, 32, 70), "R-5", neighbors=between_neighbors(lot))[1]
     assert by_rule(findings, "lot_area").status == FAILS
-    apply_permits(findings, tags, [CaseMatch("SUP1990-00001", "outline")])
+    apply_permits(findings, tags, [CaseMatch("SUP1990-00001", "outline")], year_built=1991)
     assert by_rule(findings, "lot_area").status == FAILS
-    apply_permits(findings, tags, [CaseMatch("SUP1990-00001", "parcel")])
+    apply_permits(findings, tags, [CaseMatch("SUP1990-00001", "parcel")], year_built=1991)
     assert by_rule(findings, "lot_area").status == PERMIT_ON_FILE
     assert by_rule(findings, "width").status == PERMIT_ON_FILE
     assert not [r for r in findings.reasons if r.kind in ("lot_size", "lot_width")]
@@ -229,6 +229,45 @@ def test_undersized_lot_settled_drops_the_cant_count_sentence():
         "that permit."), permit_tags=("undersized_lot",), permit_can_allow=True)
     findings = Findings(results=[row])
     apply_permits(findings, [case("SUP2001-00002", ["undersized_lot"])],
-                  [CaseMatch("SUP2001-00002", "address")])
+                  [CaseMatch("SUP2001-00002", "address")], year_built=2011)
     assert "can't verify" not in row.explanation
     assert row.explanation.endswith("12-402. City case SUP2001-00002 is on file for this.")
+
+
+def undersized_row():
+    from alx_zoning_illegal_homes.mapper.checks import Findings
+    from alx_zoning_illegal_homes.mapper.rule_results import RuleResult
+
+    row = RuleResult("lot_area", "Lot size", FAILS, permit_tags=("undersized_lot",),
+                     permit_can_allow=True)
+    return Findings(results=[row]), row
+
+
+def test_undersized_lot_permit_newer_than_the_house_settles_nothing():
+    findings, row = undersized_row()
+    apply_permits(findings, [case("SUP2011-00064", ["undersized_lot"], 2011)],
+                  [CaseMatch("SUP2011-00064", "address")], year_built=1918)
+    assert row.status == FAILS and row.permit is None
+
+
+def test_undersized_lot_permit_settles_a_house_built_from_the_year_before():
+    for built in (2014, 2015):
+        findings, row = undersized_row()
+        apply_permits(findings, [case("SUP2015-00090", ["undersized_lot"], 2015)],
+                      [CaseMatch("SUP2015-00090", "address")], year_built=built)
+        assert row.status == PERMIT_ON_FILE
+
+
+def test_undersized_lot_permit_needs_both_years_known():
+    for built, year in ((None, 2015), (2016, None)):
+        findings, row = undersized_row()
+        apply_permits(findings, [case("SUP2015-00090", ["undersized_lot"], year)],
+                      [CaseMatch("SUP2015-00090", "address")], year_built=built)
+        assert row.status == FAILS
+
+
+def test_variances_are_not_gated_by_year_built():
+    findings = narrow_side_yards()
+    apply_permits(findings, [case("BZA2015-00003", ["variance:yard:left"], 2015)],
+                  [CaseMatch("BZA2015-00003", "parcel")], year_built=1920)
+    assert by_rule(findings, "yard:left").status == PERMIT_ON_FILE

@@ -21,6 +21,12 @@ way settles only the rules a whole development is approved for
 (`DEVELOPMENT_WIDE`). Everything else needs a parcel, address or hand-made
 override match.
 
+A permit for building a new home (`BUILT_UNDER_PERMIT`) settles a row only
+when the home on the lot is the one it allowed: the year the oldest home
+was built must be known and no earlier than the year before the case's
+year, since a case is numbered by the year it was filed. With either year
+unknown it settles nothing, though the case is still listed on the lot.
+
 A row past the permit's ceiling still fails, and its explanation says the
 case is on file. Either way, the sentences saying the map has no record of
 such a permit are dropped, since now it has one. With no cases, nothing
@@ -40,6 +46,9 @@ from .rule_results import FAILS, NOT_CHECKED, PERMIT_ON_FILE, RuleResult, reason
 DEVELOPMENT_WIDE = frozenset({
     "tract", "townhouse_row", "homes_near_eisenhower", "extra_height", "extra_floor_area"})
 CLOSE_MATCHES = frozenset({"override", "parcel", "address"})
+# Tags for permits that allow building a new home. An older home on the lot
+# isn't the one the permit allowed.
+BUILT_UNDER_PERMIT = frozenset({"undersized_lot", "no_frontage"})
 
 
 def _close_enough(tag: str, how: str) -> bool:
@@ -47,7 +56,14 @@ def _close_enough(tag: str, how: str) -> bool:
     return how in CLOSE_MATCHES or (how == "outline" and tag in DEVELOPMENT_WIDE)
 
 
-def _covering(row: RuleResult, cases: list[dict], how_by_case: dict[str, str]):
+def _home_built_under(case: dict, year_built: int | None) -> bool:
+    """Whether a home built in `year_built` can be the one this case allowed."""
+    year = case.get("year")
+    return year_built is not None and year is not None and year_built >= year - 1
+
+
+def _covering(row: RuleResult, cases: list[dict], how_by_case: dict[str, str],
+              year_built: int | None):
     """The cases that speak to this row, each as (case, how, whether it can settle the row)."""
     found = []
     for case in cases:
@@ -57,6 +73,8 @@ def _covering(row: RuleResult, cases: list[dict], how_by_case: dict[str, str]):
         settles = None
         for tag in case.get("tags") or ():
             if row.rule not in TAG_RULE_IDS.get(tag, ()) or not _close_enough(tag, how):
+                continue
+            if tag in BUILT_UNDER_PERMIT and not _home_built_under(case, year_built):
                 continue
             if tag.startswith("variance:"):
                 settles = True
@@ -88,11 +106,14 @@ def _add(explanation: str | None, text: str) -> str:
     return " ".join([*kept, text])
 
 
-def apply_permits(findings: Findings, cases: list[dict], matches: list[CaseMatch]) -> None:
+def apply_permits(findings: Findings, cases: list[dict], matches: list[CaseMatch],
+                  year_built: int | None = None) -> None:
     """Settle the rows of `findings` that a permit on file for the lot allows.
 
     `cases` are the lot's cases, each with its "case" number, "year" and
-    "tags"; `matches` say how each was matched to the lot. Settled rows get
+    "tags"; `matches` say how each was matched to the lot. `year_built` is
+    the year the lot's oldest home was built, if known; without it, permits
+    for building a new home settle nothing. Settled rows get
     `PERMIT_ON_FILE` and `permit`, and the failing reasons go once no row
     of their kind still fails.
     """
@@ -105,7 +126,7 @@ def apply_permits(findings: Findings, cases: list[dict], matches: list[CaseMatch
     for row in findings.results:
         if row.status not in (FAILS, NOT_CHECKED):
             continue
-        found = _covering(row, cases, how_by_case)
+        found = _covering(row, cases, how_by_case, year_built)
         settling = [item for item in found if item[2]]
         if settling:
             case, how, _ = _surest(settling)

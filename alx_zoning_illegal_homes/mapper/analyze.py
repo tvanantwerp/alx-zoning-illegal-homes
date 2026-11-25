@@ -1105,7 +1105,7 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
         findings.notes.extend(record["notes"])
         matches = permit_matches.get(lot_id, [])
         cases = [permits[match.case] for match in matches]
-        apply_permits(findings, cases, matches)
+        apply_permits(findings, cases, matches, facts.year_built)
         if lot["land_use"] == TWIN_LAND_USE and home_type in ("two_unit", "single"):
             findings.notes.append(
                 TWO_UNIT_NOTE if home_type == "two_unit" else LONE_HOUSE_NOTE)
@@ -1116,7 +1116,7 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
             # would apply if the district's approved plan did not exist.
             ordinary = check_lot(replace(facts, rules=fallback_rules))
             ordinary.notes.extend(record["notes"])
-            apply_permits(ordinary, cases, matches)
+            apply_permits(ordinary, cases, matches, facts.year_built)
             if label.strip().upper() == "CDD#10" and fallback_rules.name == "CRMU-L":
                 ordinary.notes.append(
                     "The map estimates where the Slaters Lane and Piggyback Yard "
