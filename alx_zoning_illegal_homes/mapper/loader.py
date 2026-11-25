@@ -9,6 +9,7 @@ import geopandas as gpd
 import pandas as pd
 
 from alx_zoning_illegal_homes.permits.catalog import load_catalog
+from alx_zoning_illegal_homes.permits.tags import apply_overrides, load_overrides, tags_for
 
 DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 FEET_CRS = "EPSG:2283"
@@ -141,8 +142,16 @@ def load_lots() -> gpd.GeoDataFrame:
 
 
 def load_permits() -> dict[str, dict]:
-    """Load the permit catalog, keyed by case number."""
-    return load_catalog()
+    """Load the permit catalog, keyed by case number, with each case's tags.
+
+    Every case gets a sorted "tags" list of the rules it can settle, then the
+    hand-made overrides are applied. Cases an override ignores are left out.
+    The tags live only in memory; the catalog file never stores them.
+    """
+    cases = load_catalog()
+    for record in cases.values():
+        record["tags"] = sorted(tags_for(record))
+    return apply_overrides(cases, load_overrides())
 
 
 def load_buildings() -> gpd.GeoDataFrame:
