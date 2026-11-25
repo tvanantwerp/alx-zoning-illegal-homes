@@ -20,6 +20,8 @@ import json
 from datetime import date
 from pathlib import Path
 
+import requests
+
 from alx_zoning_illegal_homes.downloader.download import DATA_DIR
 from alx_zoning_illegal_homes.permits import catalog
 from alx_zoning_illegal_homes.permits.archive import ArchiveClient, ArchiveDocument
@@ -193,7 +195,8 @@ def download_documents(client: ArchiveClient, cases: dict[str, dict],
     """Save every document of each case in ``needed_path`` as ``pdf_dir/<case>/<id>.pdf``.
 
     Files already saved are skipped and nothing is ever deleted. A document
-    the archive won't export is reported and skipped. Returns how many PDFs
+    the archive won't export, or that fails over the network after the
+    client's retries, is reported and skipped. Returns how many PDFs
     were saved this time.
     """
     needed = json.loads(needed_path.read_text(encoding="utf-8"))
@@ -209,7 +212,12 @@ def download_documents(client: ArchiveClient, cases: dict[str, dict],
             if destination.exists():
                 continue
             folder.mkdir(parents=True, exist_ok=True)
-            if client.export_pdf(document["id"], destination):
+            try:
+                exported = client.export_pdf(document["id"], destination)
+            except requests.RequestException as error:
+                print(f"Network error on {number} document {document['id']}: {error}", flush=True)
+                continue
+            if exported:
                 saved += 1
                 print(f"Saved {number} document {document['id']}", flush=True)
             else:

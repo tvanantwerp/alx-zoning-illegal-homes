@@ -207,3 +207,24 @@ def test_documents_are_exported_only_for_needed_cases_and_skip_saved_ones(tmp_pa
     assert (pdf_dir / "SUP2020-00001" / "1.pdf").read_bytes() == b"%PDF-1.4 saved before"
     assert not (pdf_dir / "DSP2010-00001").exists()
     assert "BZA2015-00003" in capsys.readouterr().out
+
+
+def test_a_network_error_on_one_document_does_not_stop_the_rest(tmp_path, capsys):
+    import requests
+
+    from alx_zoning_illegal_homes.permits.collect import download_documents
+
+    class FlakyExporter(FakeExporter):
+        def export_pdf(self, doc_id, destination):
+            if doc_id == 1:
+                self.asked.append(doc_id)
+                raise requests.ConnectionError("the network went away")
+            return super().export_pdf(doc_id, destination)
+
+    cases = {"SUP2020-00001": {"case": "SUP2020-00001", "documents": [{"id": 1}, {"id": 2}]}}
+    needed = tmp_path / "needed.json"
+    needed.write_text(json.dumps(["SUP2020-00001"]))
+    client = FlakyExporter()
+    assert download_documents(client, cases, needed, tmp_path / "pdf") == 1
+    assert client.asked == [1, 2]
+    assert "SUP2020-00001 document 1" in capsys.readouterr().out
