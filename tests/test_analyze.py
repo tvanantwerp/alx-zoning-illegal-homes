@@ -216,3 +216,52 @@ def test_folding_units_into_a_lot_keeps_their_parcel_ids_and_addresses():
     assert len(folded) == 1
     assert folded.at[0, "parcel_ids"] == ["A0", "A1", "P0", "P1"]
     assert folded.at[0, "addresses"] == ["0 MAIN ST", "1 MAIN ST"]
+
+
+def test_permit_matches_drop_cases_the_catalog_leaves_out():
+    from alx_zoning_illegal_homes.mapper.analyze import _permit_matches
+    from alx_zoning_illegal_homes.permits.match import CaseMatch
+
+    lots = gpd.GeoDataFrame({"address": ["1 MAIN ST"], "parcel_ids": [["P1"]],
+                             "addresses": [["1 MAIN ST"]]}, geometry=[box(0, 0, 50, 100)])
+    projects = gpd.GeoDataFrame(
+        {"PERMIT_PLAN_CASE": ["DSUP2005-0001", "DSUP2006-0002"]},
+        geometry=[box(-10, -10, 60, 110), box(-10, -10, 60, 110)])
+    cases = {"DSUP2005-00001": {"case": "DSUP2005-00001", "parcel_ids": ["P1"]}}
+    assert _permit_matches(lots, cases, projects) == {
+        0: [CaseMatch("DSUP2005-00001", "parcel")]}
+    assert _permit_matches(lots, {}, projects) == {}
+
+
+def test_lot_permits_list_newest_first_with_what_each_settled():
+    from alx_zoning_illegal_homes.mapper.permits import lot_permits
+    from alx_zoning_illegal_homes.mapper.rule_results import RuleResult
+    from alx_zoning_illegal_homes.permits.match import CaseMatch
+
+    cases = [
+        {"case": "SUP2001-00001", "kind": "SUP", "year": 2001, "descriptions": [],
+         "project_names": ["Old Mill"], "documents": []},
+        {"case": "BZA2015-00003", "kind": "BZA", "year": 2015, "descriptions": [],
+         "project_names": [], "documents": [{"id": 5, "name": "BZA2015-00003 decision"}]},
+        {"case": "DSP2015-00001", "kind": "DSP", "year": 2015, "descriptions": ["Townhouses"],
+         "documents": [{"id": 6, "name": "plan"}, {"id": 7, "name": "letter"}]},
+        {"case": "SUP1990-00001", "kind": "SUP", "year": None},
+    ]
+    matches = [CaseMatch("SUP2001-00001", "outline"), CaseMatch("BZA2015-00003", "parcel"),
+               CaseMatch("DSP2015-00001", "address"), CaseMatch("SUP1990-00001", "point")]
+    settled = RuleResult("yard:left", "Left side yard", "permit_on_file",
+                         permit={"case": "BZA2015-00003", "how": "parcel"})
+    also = RuleResult("height", "Height", "permit_on_file",
+                      permit={"case": "BZA2015-00003", "how": "parcel"})
+    listed = lot_permits(cases, matches, [settled], [also, settled])
+    assert [p["case"] for p in listed] == [
+        "BZA2015-00003", "DSP2015-00001", "SUP2001-00001", "SUP1990-00001"]
+    bza, dsp, sup, old = listed
+    assert bza["grants"] == ["height", "yard:left"] and dsp["grants"] == []
+    assert bza["description"] == "BZA2015-00003 decision"
+    assert dsp["description"] == "Townhouses" and sup["description"] == "Old Mill"
+    assert old["description"] == "" and old["links"] == []
+    assert [link["name"] for link in dsp["links"]] == ["plan", "letter"]
+    assert dsp["links"][0]["url"].endswith("DocView.aspx?id=6&dbid=0")
+    assert sup["how"] == "outline" and sup["kind"] == "SUP" and sup["year"] == 2001
+    assert "SUP2001-00001" in sup["search_url"]

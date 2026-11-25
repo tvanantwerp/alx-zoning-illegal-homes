@@ -22,8 +22,15 @@ way settles only the rules a whole development is approved for
 override match.
 
 A row past the permit's ceiling still fails, and its explanation says the
-case is on file. With no cases, nothing changes.
+case is on file. Either way, the sentences saying the map has no record of
+such a permit are dropped, since now it has one. With no cases, nothing
+changes.
+
+`lot_permits` lists every case matched to a lot for the lot's file.
 """
+import re
+
+from alx_zoning_illegal_homes.permits.archive import document_url, search_url
 from alx_zoning_illegal_homes.permits.match import HOW_ORDER, CaseMatch
 from alx_zoning_illegal_homes.permits.tags import TAG_RULE_IDS
 
@@ -65,8 +72,20 @@ def _surest(found):
     return min(found, key=lambda item: (HOW_ORDER.index(item[1]), -(item[0].get("year") or 0)))
 
 
+# Sentences in the checks' explanations that say the map can't see a permit.
+_NO_RECORD = ("has no record of", "can't verify eligibility or count that permit")
+# A sentence ends at a period followed by a space and a capital letter, so a
+# number like "30.5 ft" doesn't split one.
+_SENTENCE_END = re.compile(r"(?<=\.)\s+(?=[A-Z])")
+
+
 def _add(explanation: str | None, text: str) -> str:
-    return f"{explanation} {text}" if explanation else text
+    """Add `text` to an explanation, first dropping any sentence saying there's no record of it."""
+    if not explanation:
+        return text
+    kept = [sentence for sentence in _SENTENCE_END.split(explanation)
+            if not any(phrase in sentence for phrase in _NO_RECORD)]
+    return " ".join([*kept, text])
 
 
 def apply_permits(findings: Findings, cases: list[dict], matches: list[CaseMatch]) -> None:
@@ -103,3 +122,39 @@ def apply_permits(findings: Findings, cases: list[dict], matches: list[CaseMatch
     gone = settled_kinds - still_failing
     if gone:
         findings.reasons = [reason for reason in findings.reasons if reason.kind not in gone]
+
+
+def _description(case: dict) -> str:
+    """One line saying what a case is about: its description, project name, or first document."""
+    for value in (*(case.get("descriptions") or ()), *(case.get("project_names") or ())):
+        if value:
+            return value
+    documents = case.get("documents") or ()
+    return (documents[0].get("name") or "") if documents else ""
+
+
+def lot_permits(cases: list[dict], matches: list[CaseMatch], *results: list) -> list[dict]:
+    """The lot file's list of the cases matched to a lot, newest year first, then by case.
+
+    `cases` and `matches` are the lot's, as for `apply_permits`. `results`
+    are the lot's lists of rule rows after `apply_permits`; each case's
+    "grants" are the rules it settled in any of them.
+    """
+    how_by_case = {match.case: match.how for match in matches}
+    grants: dict[str, set[str]] = {}
+    for rows in results:
+        for row in rows:
+            if row.permit:
+                grants.setdefault(row.permit["case"], set()).add(row.rule)
+    listed = [{
+        "case": case["case"],
+        "kind": case.get("kind"),
+        "year": case.get("year"),
+        "description": _description(case),
+        "how": how_by_case.get(case["case"]),
+        "grants": sorted(grants.get(case["case"], ())),
+        "links": [{"name": document.get("name") or "", "url": document_url(document["id"])}
+                  for document in case.get("documents") or ()],
+        "search_url": search_url(case["case"]),
+    } for case in cases]
+    return sorted(listed, key=lambda item: (-(item["year"] or 0), item["case"]))

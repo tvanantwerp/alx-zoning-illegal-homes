@@ -169,3 +169,41 @@ def test_collect_never_drops_a_case(tmp_path, monkeypatch):
     assert merged["sources"] == ["archive", "sup_layer"]
     assert merged["points"] == [[-77.05, 38.8]] and len(merged["documents"]) == 2
     assert catalog.load_catalog(path) == result
+
+
+class FakeExporter:
+    """Stands in for ArchiveClient's PDF export: writes a tiny PDF and notes each id asked for."""
+
+    def __init__(self, refuse=()):
+        self.asked = []
+        self.refuse = set(refuse)
+
+    def export_pdf(self, doc_id, destination):
+        self.asked.append(doc_id)
+        if doc_id in self.refuse:
+            return False
+        destination.write_bytes(b"%PDF-1.4 fake")
+        return True
+
+
+def test_documents_are_exported_only_for_needed_cases_and_skip_saved_ones(tmp_path, capsys):
+    from alx_zoning_illegal_homes.permits.collect import download_documents
+
+    cases = {
+        "SUP2020-00001": {"case": "SUP2020-00001", "documents": [{"id": 1}, {"id": 2}]},
+        "BZA2015-00003": {"case": "BZA2015-00003", "documents": [{"id": 3}, {"id": 4}]},
+        "DSP2010-00001": {"case": "DSP2010-00001", "documents": [{"id": 9}]},
+    }
+    needed = tmp_path / "needed.json"
+    needed.write_text(json.dumps(["BZA2015-00003", "SUP2020-00001", "SUP1999-00001"]))
+    pdf_dir = tmp_path / "pdf"
+    (pdf_dir / "SUP2020-00001").mkdir(parents=True)
+    (pdf_dir / "SUP2020-00001" / "1.pdf").write_bytes(b"%PDF-1.4 saved before")
+    client = FakeExporter(refuse={4})
+    saved = download_documents(client, cases, needed, pdf_dir)
+    assert sorted(client.asked) == [2, 3, 4]
+    assert saved == 2
+    assert (pdf_dir / "BZA2015-00003" / "3.pdf").exists()
+    assert (pdf_dir / "SUP2020-00001" / "1.pdf").read_bytes() == b"%PDF-1.4 saved before"
+    assert not (pdf_dir / "DSP2010-00001").exists()
+    assert "BZA2015-00003" in capsys.readouterr().out

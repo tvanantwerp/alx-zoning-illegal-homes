@@ -39,3 +39,26 @@ def test_checked_lots_carry_no_skip_reason(tmp_path):
         address="A", status="ok", land_use="DETACHED HOUSE",
         home_type="detached house", skipped=None, zone="R-8")])
     assert "skipped" not in checked and "use" not in checked
+
+
+def test_permit_count_shows_only_when_a_lot_has_cases(tmp_path):
+    with_cases, without = _export(tmp_path, [
+        dict(address="A", status="ok", zone="R-8", permit_count=2),
+        dict(address="B", status="ok", zone="R-8", permit_count=0),
+    ])
+    assert with_cases["permits"] == 2 and "permits" not in without
+
+
+def test_needed_permits_lists_cases_on_checked_lots_once(tmp_path):
+    import pandas as pd
+
+    from alx_zoning_illegal_homes.mapper.main import write_needed_permits
+
+    results = pd.DataFrame({
+        "status": ["ok", "illegal", "not_checked"],
+        "permits": [[{"case": "SUP2001-00001"}, {"case": "BZA2015-00003"}],
+                    [{"case": "SUP2001-00001"}], [{"case": "DSP2010-00001"}]],
+    })
+    path = tmp_path / "permits" / "needed.json"
+    assert write_needed_permits(results, path) == 2
+    assert json.loads(path.read_text()) == ["BZA2015-00003", "SUP2001-00001"]

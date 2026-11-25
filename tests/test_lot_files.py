@@ -167,3 +167,30 @@ def test_failed_replace_keeps_the_old_folder(tmp_path):
     with pytest.raises(KeyError):
         replace_lot_files(frame, {}, folder)
     assert sorted(p.name for p in folder.iterdir()) == ["999.json"]
+
+
+def test_matched_cases_are_listed_with_links_and_settled_rows_carry_the_case():
+    from alx_zoning_illegal_homes.mapper.permits import apply_permits, lot_permits
+    from alx_zoning_illegal_homes.permits.match import CaseMatch
+
+    facts = facts_for(box(0, 0, 80, 120), building=box(4.3, 35, 75.7, 75))
+    findings = check_lot(facts)
+    case = {"case": "BZA2015-00003", "kind": "BZA", "year": 2015,
+            "descriptions": ["Variance to side yard"], "tags": ["variance:yard:left"],
+            "documents": [{"id": 17803, "name": "BZA2015-00003", "type": "Other", "pages": 4}]}
+    matches = [CaseMatch("BZA2015-00003", "parcel")]
+    apply_permits(findings, [case], matches)
+    record = {**record_for(facts), "rule_results": findings.results,
+              "permits": lot_permits([case], matches, findings.results)}
+    drawing = lot_drawing(7, record, facts)
+    listed = drawing["permits"][0]
+    assert listed["links"][0]["url"].startswith("https://imaging.alexandriava.gov/")
+    assert listed["grants"] == ["yard:left"] and listed["how"] == "parcel"
+    left = next(r for r in drawing["results"]["rules"] if r["rule"] == "yard:left")
+    assert left["permit"] == {"case": "BZA2015-00003", "how": "parcel"}
+    json.dumps(drawing)
+
+
+def test_lot_without_cases_has_no_permits_list():
+    facts = facts_for(box(0, 0, 40, 100))
+    assert "permits" not in lot_drawing(7, {**record_for(facts), "permits": []}, facts)

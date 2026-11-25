@@ -190,3 +190,45 @@ def test_lot_files_carry_the_permit_but_not_the_workings():
     after = _row(by_rule(findings, "home_type"), lambda shape: shape)
     assert after["status"] == "permit_on_file"
     assert after["permit"] == {"case": "SUP2010-00005", "how": "parcel"}
+
+
+def test_settled_row_drops_the_no_record_sentence():
+    findings = eisenhower_home()
+    assert "has no record" in by_rule(findings, "home_type").explanation
+    apply_permits(findings, [case("SUP2010-00005", ["homes_near_eisenhower"])],
+                  [CaseMatch("SUP2010-00005", "parcel")])
+    explanation = by_rule(findings, "home_type").explanation
+    assert "no record" not in explanation and "can't tell" not in explanation
+    assert "Eisenhower Avenue only with a special permit" in explanation
+    assert explanation.endswith("City case SUP2010-00005 is on file for this.")
+
+
+def test_settled_variance_drops_the_site_plan_no_record_sentence():
+    from alx_zoning_illegal_homes.mapper.rule_results import RuleResult
+    from alx_zoning_illegal_homes.mapper.checks import Findings
+
+    row = RuleResult("yard:left", "Left side yard", FAILS, measured=4.3, required=7.0,
+                     explanation=("Needs 7 ft. An approved site plan may relax this minimum "
+                                  "under section 11-416. The map has no record of any change "
+                                  "to the requirement."))
+    findings = Findings(results=[row])
+    apply_permits(findings, [case("BZA2015-00003", ["variance:yard:left"], 2015)],
+                  [CaseMatch("BZA2015-00003", "parcel")])
+    assert row.explanation == ("Needs 7 ft. An approved site plan may relax this minimum "
+                               "under section 11-416. City case BZA2015-00003 is on file "
+                               "for this.")
+
+
+def test_undersized_lot_settled_drops_the_cant_count_sentence():
+    from alx_zoning_illegal_homes.mapper.rule_results import RuleResult
+    from alx_zoning_illegal_homes.mapper.checks import Findings
+
+    row = RuleResult("lot_area", "Lot size", FAILS, explanation=(
+        "City Council can allow a home on a qualifying older undersized lot by special use "
+        "permit under sections 12-401 and 12-402. The map can't verify eligibility or count "
+        "that permit."), permit_tags=("undersized_lot",), permit_can_allow=True)
+    findings = Findings(results=[row])
+    apply_permits(findings, [case("SUP2001-00002", ["undersized_lot"])],
+                  [CaseMatch("SUP2001-00002", "address")])
+    assert "can't verify" not in row.explanation
+    assert row.explanation.endswith("12-402. City case SUP2001-00002 is on file for this.")

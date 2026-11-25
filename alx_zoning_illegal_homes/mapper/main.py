@@ -4,12 +4,13 @@ from pathlib import Path
 
 import shapely
 
-from alx_zoning_illegal_homes.downloader.download import get_data
+from alx_zoning_illegal_homes.downloader.download import DATA_DIR, get_data
 from alx_zoning_illegal_homes.mapper.analyze import analyze
 from alx_zoning_illegal_homes.mapper.lot_files import LOTS_DIR, replace_lot_files
 
 SITE_DIR = Path(__file__).resolve().parent.parent.parent / "site"
 OUTPUT = SITE_DIR / "lots.geojson"
+NEEDED_PERMITS = DATA_DIR / "permits" / "needed.json"
 
 # Short property names keep the file the browser downloads small.
 PROPERTY_NAMES = {
@@ -32,7 +33,10 @@ PROPERTY_NAMES = {
     "ordinary_reasons": "ordinary_reasons",
     "case": "case",
     "skipped": "skipped",
+    "permit_count": "permits",
 }
+# Properties where 0 means there is nothing to show, so it's left out like other empty values.
+ZERO_IS_EMPTY = {"permit_count"}
 
 
 # Plain descriptions for the assessor's land use codes, shown on lots that
@@ -150,6 +154,8 @@ def export(results, path: Path = OUTPUT) -> None:
             properties["id"] = int(row.Index)
         for column, name in PROPERTY_NAMES.items():
             value = _clean(record.get(column))
+            if column in ZERO_IS_EMPTY and value == 0:
+                continue
             if value is not None:
                 properties[name] = value
         # A home skipped for its zone already shows its home type, which the
@@ -179,6 +185,19 @@ def export(results, path: Path = OUTPUT) -> None:
     )
 
 
+def write_needed_permits(results, path: Path = NEEDED_PERMITS) -> int:
+    """Write the sorted case numbers matched to a checked home lot, for `collect-permits --documents`.
+
+    Returns how many there are.
+    """
+    checked = results[results["status"].isin(["illegal", "ok"])]
+    cases = sorted({permit["case"] for permits in checked["permits"]
+                    if isinstance(permits, list) for permit in permits})
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(cases, indent=0) + "\n", encoding="utf-8")
+    return len(cases)
+
+
 def main() -> None:
     """Command line entry point."""
     get_data()
@@ -187,6 +206,7 @@ def main() -> None:
     # The map links each lot to its file by id, so the files go in place first.
     count = replace_lot_files(results, facts)
     export(results)
+    needed = write_needed_permits(results)
     checked = results[results["status"].isin(["illegal", "ok"])]
     illegal = (checked["status"] == "illegal").sum()
     planned = checked["district"].notna().sum()
@@ -197,6 +217,9 @@ def main() -> None:
           "of today's zoning rules.")
     print(f"Wrote {OUTPUT}")
     print(f"Wrote {count:,} lot files to {LOTS_DIR}")
+    with_permits = (checked["permit_count"] > 0).sum()
+    print(f"{with_permits:,} checked lots have city cases on file; "
+          f"wrote {needed:,} case numbers to {NEEDED_PERMITS}")
 
 
 if __name__ == "__main__":

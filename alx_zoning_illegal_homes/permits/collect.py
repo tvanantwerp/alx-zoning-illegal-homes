@@ -10,10 +10,13 @@ later run, saved pages are skipped, except page 1 (which tells us how many
 pages there are now) and the last 3 pages (where newly added cases tend to
 land), and every page from the earlier crawl's last page onward.
 ``--full`` fetches every page again.
+
+``--documents`` instead downloads, as PDFs, every document of every case the
+map build matched to a checked home lot (the build lists them in
+``NEEDED_PATH``).
 """
 import argparse
 import json
-import sys
 from datetime import date
 from pathlib import Path
 
@@ -27,6 +30,7 @@ from alx_zoning_illegal_homes.permits.layers import cases_from_projects, cases_f
 PREFIXES = ("SUP*", "BZA*", "DSUP*", "DSP*")
 RAW_DIR = DATA_DIR / "permits" / "raw"
 PDF_DIR = DATA_DIR / "permits" / "pdf"
+NEEDED_PATH = DATA_DIR / "permits" / "needed.json"
 SUP_LAYER_PATH = DATA_DIR / "Special_Use_Permits.geojson"
 PROJECTS_PATH = DATA_DIR / "Development_Projects.geojson"
 REFETCH_LAST_PAGES = 3
@@ -184,6 +188,35 @@ def collect(client: ArchiveClient, today: str, full: bool = False) -> dict[str, 
     return result
 
 
+def download_documents(client: ArchiveClient, cases: dict[str, dict],
+                       needed_path: Path = NEEDED_PATH, pdf_dir: Path = PDF_DIR) -> int:
+    """Save every document of each case in ``needed_path`` as ``pdf_dir/<case>/<id>.pdf``.
+
+    Files already saved are skipped and nothing is ever deleted. A document
+    the archive won't export is reported and skipped. Returns how many PDFs
+    were saved this time.
+    """
+    needed = json.loads(needed_path.read_text(encoding="utf-8"))
+    saved = 0
+    for number in needed:
+        record = cases.get(number)
+        if record is None:
+            print(f"{number} is not in the catalog; skipping it.", flush=True)
+            continue
+        folder = pdf_dir / number
+        for document in record.get("documents") or ():
+            destination = folder / f"{document['id']}.pdf"
+            if destination.exists():
+                continue
+            folder.mkdir(parents=True, exist_ok=True)
+            if client.export_pdf(document["id"], destination):
+                saved += 1
+                print(f"Saved {number} document {document['id']}", flush=True)
+            else:
+                print(f"Could not export {number} document {document['id']}", flush=True)
+    return saved
+
+
 def main() -> None:
     """Run ``collect-permits`` from the command line."""
     parser = argparse.ArgumentParser(
@@ -193,11 +226,15 @@ def main() -> None:
                              "Use it now and then: results are sorted by name, so documents "
                              "filed into the middle of the list are only found this way")
     parser.add_argument("--documents", action="store_true",
-                        help="also download each case's documents as PDFs (not built yet)")
+                        help="instead of collecting, download as PDFs the documents of every "
+                             "case the last map build matched to a home lot")
     args = parser.parse_args()
     if args.documents:
-        print("Downloading documents is not built yet.")
-        sys.exit(2)
+        if not NEEDED_PATH.exists():
+            parser.exit(2, f"{NEEDED_PATH} is missing. Run create-map first.\n")
+        saved = download_documents(ArchiveClient(), load_catalog(catalog.CATALOG_PATH))
+        print(f"Saved {saved} new PDFs to {PDF_DIR}.")
+        return
     result = collect(ArchiveClient(), today=date.today().isoformat(), full=args.full)
     print(f"The catalog now holds {len(result)} cases.")
 
