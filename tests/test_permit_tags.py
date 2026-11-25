@@ -47,6 +47,16 @@ def test_variance_wording_on_an_sup_is_not_a_variance():
     assert not any(t.startswith("variance:") for t in tags_for({"kind": "SUP", "descriptions": ["side yard"], "documents": []}))
 
 
+@pytest.mark.parametrize("status, expected", [
+    ("Denied", set()), ("Withdrawn", set()), ("Approved", {"undersized_lot"}),
+    ("approved", {"undersized_lot"}), ("", {"undersized_lot"}), (None, {"undersized_lot"}),
+])
+def test_only_approved_or_unknown_cases_get_keyword_tags(status, expected):
+    case = {"kind": "SUP", "status": status, "documents": [],
+            "descriptions": ["construct a single family dwelling on a substandard lot"]}
+    assert tags_for(case) == expected
+
+
 def test_override_replaces_tags_and_needs_a_source():
     cases = {"SUP2001-00001": {"case": "SUP2001-00001", "descriptions": ["restaurant"]}}
     out = apply_overrides(cases, {"cases": {"SUP2001-00001": {"tags": ["extra_height"], "source": "docket 2001"}}})

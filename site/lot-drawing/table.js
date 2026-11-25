@@ -22,10 +22,14 @@ export function chooseResults(lot, ordinary) {
     : { main: lot.results, extra: lot.ordinary };
 }
 
-/** The first document of the case with this number, or null when the lot has no such case on file. */
+/**
+ * The first document of the case with this number, or the city's search page when the case has
+ * none. Null when the lot has no such case on file.
+ */
 function caseLink(permits, number) {
   const found = (permits || []).find((p) => p.case === number);
-  return found && found.links && found.links.length ? found.links[0].url : null;
+  if (!found) return null;
+  return found.links && found.links.length ? found.links[0].url : found.search_url || null;
 }
 
 /** The status word as a coloured pill. A row with an explanation gets a hover tip. */
@@ -45,12 +49,12 @@ function ruleSays(row) {
 
 /**
  * The measured value against the limit, with a mark at the limit. Red when the row fails,
- * and in the older-lot colour when the rule for older lots excuses a shortfall.
+ * and in the older-lot colour when the rule for older lots or a permit on file excuses a shortfall.
  */
 function bar(row) {
   if (row.measured == null || row.required == null) return "";
   const scale = Math.max(row.measured, row.required) * 1.15 || 1;
-  const cls = { fails: "fail", older_lot: "older" }[row.status] || "";
+  const cls = { fails: "fail", older_lot: "older", permit_on_file: "older" }[row.status] || "";
   return `<div class="bar"><i class="${cls}" style="width:${(row.measured / scale) * 100}%"></i><b style="left:${(row.required / scale) * 100}%"></b></div>`;
 }
 
@@ -115,14 +119,14 @@ export function rulesTable(main, extra, permits) {
 export function lotSquares(row) {
   if (row.required == null || row.measured == null) return "";
   const fails = row.status === "fails";
-  const older = row.status === "older_lot";
+  const older = row.status === "older_lot" || row.status === "permit_on_file";
   const max = Math.max(row.measured, row.required);
   const box = (area, cls, label) => {
     const side = Math.max(18, Math.sqrt(area / max) * 170);
     return `<div class="sq"><svg class="box ${cls}" width="${side}" height="${side}" viewBox="0 0 ${side} ${side}" aria-hidden="true"><rect x="1" y="1" width="${side - 2}" height="${side - 2}"/></svg><span>${label}<br><b>${sqft(area)}</b></span></div>`;
   };
   const note = sizeNote(row);
-  return `<div class="inset lot-squares" data-rule="${esc(row.rule)}"><div class="inset-title">Lot size, drawn to scale</div><div class="squares">${box(row.measured, "", "This lot")}${box(row.required, fails ? "over" : older ? "older" : "ghost", older ? "Smallest for a new lot" : "Smallest allowed")}</div>${note ? `<p class="sq-note">${note}</p>` : ""}</div>`;
+  return `<div class="inset lot-squares" data-rule="${esc(row.rule)}"><div class="inset-title">Lot size, drawn to scale</div><div class="squares">${box(row.measured, "", "This lot")}${box(row.required, fails ? "over" : older ? "older" : "ghost", row.status === "older_lot" ? "Smallest for a new lot" : "Smallest allowed")}</div>${note ? `<p class="sq-note">${note}</p>` : ""}</div>`;
 }
 
 /** One sentence under the lot-size squares comparing the lot with the smallest allowed. */
@@ -143,7 +147,7 @@ export function notesList(notes) {
   return `<ul class="notes">${Array.from(new Set(notes)).map((n) => `<li>${esc(n)}</li>`).join("")}</ul>`;
 }
 
-const KIND_WORDS = { SUP: "special use permit", BZA: "variance", DSP: "site plan", DSUP: "site plan" };
+const KIND_WORDS = { SUP: "special use permit", BZA: "Board of Zoning Appeals case", DSP: "site plan", DSUP: "site plan" };
 
 /**
  * The city cases on file for the lot, as a heading and a list. Each case number links to

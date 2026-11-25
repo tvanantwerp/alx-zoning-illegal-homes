@@ -26,7 +26,7 @@ from pyproj import Transformer
 from alx_zoning_illegal_homes.mapper.loader import FEET_CRS
 from alx_zoning_illegal_homes.permits.catalog import normalize_case
 
-HOW_ORDER = ("override", "parcel", "outline", "address", "point")
+HOW_ORDER = ("parcel", "outline", "address", "point")
 
 STREET_TYPES = {
     "AV": "AVE", "AVE": "AVE", "AVENUE": "AVE",

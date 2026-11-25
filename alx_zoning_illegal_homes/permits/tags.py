@@ -145,7 +145,12 @@ def tags_for(case: dict) -> set[str]:
     A description that mentions anything in ``NOT_THE_HOME`` gives the whole
     case no tags. Document types are only matched for tags, since they name
     kinds of files ("Staff Report to BZA/BAR"), not what the case is about.
+    A case whose status is anything but "Approved" or blank (denied,
+    withdrawn and so on) gets no tags, since it granted nothing.
     """
+    status = (case.get("status") or "").strip().lower()
+    if status and status != "approved":
+        return set()
     descriptions = [text for text in case.get("descriptions") or [] if text]
     if any(NOT_THE_HOME.search(text) for text in descriptions):
         return set()

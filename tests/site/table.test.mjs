@@ -112,6 +112,12 @@ test("permit rows read as passing and name the case", () => {
   assert.match(html, /class="pill permit/);
   assert.equal(verdict({ rules: [r] }), "Passes every rule the map checks");
 });
+test("a permit row with no documents links its case to the city search", () => {
+  const r = row({ status: "permit_on_file", permit: { case: "SUP2010-00005", how: "parcel" } });
+  const permits = [{ case: "SUP2010-00005", links: [], search_url: "https://imaging.alexandriava.gov/s" }];
+  const html = rulesTable({ label: "x", rules: [r] }, null, permits);
+  assert.match(html, /<a [^>]*href="https:\/\/imaging.alexandriava.gov\/s"[^>]*>SUP2010-00005<\/a>/);
+});
 test("a permit row links its case to the case's first document", () => {
   const r = row({ status: "permit_on_file", permit: { case: "SUP2010-00005", how: "parcel" } });
   const permits = [{ case: "SUP2010-00005", links: [{ name: "a", url: "https://imaging.alexandriava.gov/d" }] }];
@@ -132,10 +138,15 @@ test("a case with no documents links to the city search", () => {
   const html = permitsList([{ case: "BZA2001-00001", kind: "BZA", year: null, description: "", grants: [], links: [],
     search_url: "https://imaging.alexandriava.gov/s?a=1&b=2" }]);
   assert.match(html, /href="https:\/\/imaging.alexandriava.gov\/s\?a=1&amp;b=2"/);
-  assert.match(html, /variance/);
+  assert.match(html, /Board of Zoning Appeals case/);
   assert.doesNotMatch(html, /Settles|null/);
 });
 test("no permits, no section", () => {
   assert.equal(permitsList([]), null);
   assert.equal(permitsList(undefined), null);
+});
+test("permit on file keeps the shortfall in the bar and squares", () => {
+  const on = row({ status: "permit_on_file", measured: 3000, required: 8000, explanation: "SUP1" });
+  assert.match(rulesTable({ label: "x", rules: [on] }, null), /<i class="older"/);
+  assert.match(lotSquares(on), /box older/);
 });

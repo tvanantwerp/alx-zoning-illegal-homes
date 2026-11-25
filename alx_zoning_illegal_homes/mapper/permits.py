@@ -18,8 +18,9 @@ The match has to be close enough. A case found only by a map point inside
 the lot never settles a row, since points sometimes land on the lot next
 door. A site plan outline can cover hundreds of lots, so a case found that
 way settles only the rules a whole development is approved for
-(`DEVELOPMENT_WIDE`). Everything else needs a parcel, address or hand-made
-override match.
+(`DEVELOPMENT_WIDE`). Everything else needs a parcel or address match. A
+hand-made override works through the parcel IDs it adds, which then match as
+"parcel".
 
 A permit for building a new home (`BUILT_UNDER_PERMIT`) settles a row only
 when the home on the lot is the one it allowed: the year the oldest home
@@ -45,7 +46,7 @@ from .rule_results import FAILS, NOT_CHECKED, PERMIT_ON_FILE, RuleResult, reason
 
 DEVELOPMENT_WIDE = frozenset({
     "tract", "townhouse_row", "homes_near_eisenhower", "extra_height", "extra_floor_area"})
-CLOSE_MATCHES = frozenset({"override", "parcel", "address"})
+CLOSE_MATCHES = frozenset({"parcel", "address"})
 # Tags for permits that allow building a new home. An older home on the lot
 # isn't the one the permit allowed.
 BUILT_UNDER_PERMIT = frozenset({"undersized_lot", "no_frontage"})
