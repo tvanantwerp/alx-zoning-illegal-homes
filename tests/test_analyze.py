@@ -5,8 +5,8 @@ import pytest
 from shapely.geometry import LineString, box
 
 from alx_zoning_illegal_homes.mapper.analyze import (
-    _home_type, _mapped_zone_labels, _match_buildings_to_lots, _outbuilding,
-    _place_buildings, _row_sizes)
+    _fold_units_into_their_lots, _home_type, _mapped_zone_labels, _match_buildings_to_lots,
+    _merge_lots_under_one_home, _outbuilding, _place_buildings, _row_sizes)
 
 
 def place(lot_shapes, building_shapes, is_home=True):
@@ -187,3 +187,32 @@ def test_mount_vernon_overlay_uses_the_frontage_between_its_two_cross_streets():
         fronts = {"MOUNT VERNON": LineString([(20, y), (20, y + 10)])}
         assert _fronts_mount_vernon_overlay(LotLines([], fronts), overlay) is applies
     assert not _fronts_mount_vernon_overlay(LotLines([]), overlay)
+
+
+def _id_lots(shapes, land_uses):
+    return gpd.GeoDataFrame({
+        "owner": ["SMITH"] * len(shapes),
+        "land_use": land_uses,
+        "condo_units": [0] * len(shapes),
+        "recorded_area": [1000.0] * len(shapes),
+        "parcel_ids": [[f"P{i}", f"A{i}"] for i in range(len(shapes))],
+        "addresses": [[f"{i} MAIN ST"] for i in range(len(shapes))],
+    }, geometry=list(shapes))
+
+
+def test_merging_lots_under_one_home_keeps_every_parcel_id_and_address():
+    lots = _id_lots([box(0, 0, 50, 100), box(50, 0, 100, 100)], ["DETACHED HOUSE"] * 2)
+    pairs = pd.DataFrame({"building_id": [0, 0], "lot_id": [0, 1], "is_home": [True, True],
+                          "overlap": [1200.0, 800.0], "footprint": [2000.0, 2000.0]})
+    merged = _merge_lots_under_one_home(lots, pairs)
+    assert len(merged) == 1
+    assert merged.at[0, "parcel_ids"] == ["A0", "A1", "P0", "P1"]
+    assert merged.at[0, "addresses"] == ["0 MAIN ST", "1 MAIN ST"]
+
+
+def test_folding_units_into_a_lot_keeps_their_parcel_ids_and_addresses():
+    lots = _id_lots([box(0, 0, 100, 100), box(10, 10, 30, 30)], ["CONDO (GARDEN)"] * 2)
+    folded = _fold_units_into_their_lots(lots)
+    assert len(folded) == 1
+    assert folded.at[0, "parcel_ids"] == ["A0", "A1", "P0", "P1"]
+    assert folded.at[0, "addresses"] == ["0 MAIN ST", "1 MAIN ST"]

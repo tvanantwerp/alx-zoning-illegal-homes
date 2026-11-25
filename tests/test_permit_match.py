@@ -4,7 +4,7 @@ import pandas as pd
 from pyproj import Transformer
 from shapely.geometry import box
 
-from alx_zoning_illegal_homes.mapper.loader import FEET_CRS, parcel_ids_of
+from alx_zoning_illegal_homes.mapper.loader import FEET_CRS, addresses_of, parcel_ids_of
 from alx_zoning_illegal_homes.permits.match import CaseMatch, match_cases, normalize_address
 
 TO_LON_LAT = Transformer.from_crs(FEET_CRS, "EPSG:4326", always_xy=True)
@@ -13,9 +13,13 @@ TO_LON_LAT = Transformer.from_crs(FEET_CRS, "EPSG:4326", always_xy=True)
 X, Y = 11_900_000, 6_990_000
 
 
-def make_lots(first_address="105 N UNION ST", second_address="200 KING ST"):
+def make_lots(first_address="105 N UNION ST", second_address="200 KING ST",
+              first_others=(), second_others=()):
+    """Two lots; the "others" are addresses of records stacked under each lead address."""
     return gpd.GeoDataFrame(
         {"address": [first_address, second_address],
+         "addresses": [sorted({first_address, *first_others}),
+                       sorted({second_address, *second_others})],
          "parcel_ids": [["075.01-04-08", "50618820"], ["075.01-04-09", "50618830"]]},
         geometry=[box(X, Y, X + 50, Y + 100), box(X + 50, Y, X + 100, Y + 100)],
         crs=FEET_CRS,
@@ -59,6 +63,14 @@ def test_address_odd_spellings():
     assert normalize_address("4600 DUKE ST # 621") == "4600 DUKE ST"
     assert normalize_address("King Street") is None
     assert normalize_address("") is None and normalize_address(None) is None
+
+
+def test_address_trailing_words_and_city():
+    assert normalize_address("100 KING ST REAR") == "100 KING ST REAR"
+    assert normalize_address("100 KING ST, ALEXANDRIA, VA 22314") == "100 KING ST"
+    assert normalize_address("100 King St Alexandria VA 22314-1234") == "100 KING ST"
+    assert normalize_address("412 ALEXANDRIA AV") == "412 ALEXANDRIA AVE"
+    assert normalize_address("628 N ST ASAPH ST") == "628 N SAINT ASAPH ST"
 
 
 def test_parcel_match_beats_address():
@@ -106,10 +118,27 @@ def test_address_without_direction_skips_when_both_directions_exist():
     assert m == {}
 
 
+def test_address_matches_a_stacked_record_not_only_the_lead():
+    stacked = make_lots(first_others=["1 CAMERON MEWS UNIT 3"])
+    m = match_cases(stacked, {"SUP2010-00001": case(addresses=["1 Cameron Mews"])}, no_projects)
+    assert m[0] == [CaseMatch("SUP2010-00001", "address")]
+
+
+def test_address_without_direction_skips_when_other_direction_is_only_a_stacked_record():
+    hidden = make_lots("106 N UNION ST", "500 KING ST", second_others=["106 S UNION ST UNIT 2"])
+    m = match_cases(hidden, {"SUP2001-00013": case(addresses=["106 UNION ST"])}, no_projects)
+    assert m == {}
+
+
 def test_point_inside_lot_matches_when_nothing_else_does():
     lon, lat = to_lon_lat(lots.geometry.iloc[1].centroid)
     m = match_cases(lots, {"SUP2003-00007": case(points=[[lon, lat]])}, no_projects)
     assert m[1] == [CaseMatch("SUP2003-00007", "point")] and 0 not in m
+
+
+def test_lot_addresses_take_every_record():
+    group = pd.DataFrame({"ADDRESS_GI": ["1 A ST UNIT 2", " 1 A ST", None, "", "1 A ST UNIT 2"]})
+    assert addresses_of(group) == ["1 A ST", "1 A ST UNIT 2"]
 
 
 def test_lot_parcel_ids_take_both_forms():

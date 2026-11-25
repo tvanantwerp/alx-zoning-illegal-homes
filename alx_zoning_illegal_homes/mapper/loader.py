@@ -91,6 +91,12 @@ def parcel_ids_of(group: pd.DataFrame) -> list[str]:
     return sorted(ids - {None})
 
 
+def addresses_of(group: pd.DataFrame) -> list[str]:
+    """Every address of the records stacked on one lot, sorted, blanks dropped."""
+    addresses = {value.strip() for value in group["ADDRESS_GI"] if isinstance(value, str)}
+    return sorted(addresses - {""})
+
+
 def load_lots() -> gpd.GeoDataFrame:
     """Load parcels and collapse stacked records into one row per lot.
 
@@ -119,6 +125,7 @@ def load_lots() -> gpd.GeoDataFrame:
             "land_uses": sorted(set(land_uses)),
             "condo_units": int(group["is_condo_unit"].sum()),
             "address": lead["ADDRESS_GI"],
+            "addresses": addresses_of(group),
             "address_street": lead["ST_NAME"],
             "owner": lead["OWN_NAME"],
             "parcel_ids": parcel_ids_of(group),

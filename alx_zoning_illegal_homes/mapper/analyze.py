@@ -91,6 +91,15 @@ def _match_buildings_to_lots(lots, buildings):
     return pairs[pairs["overlap"] > 1.0]
 
 
+# Lot columns holding lists that must be pooled when lots are joined.
+LIST_COLUMNS = ("parcel_ids", "addresses")
+
+
+def _pooled(lists) -> list:
+    """Every item from several lists, sorted, with each item once."""
+    return sorted(set().union(*(items for items in lists if isinstance(items, list))))
+
+
 def _merge_lots_under_one_home(lots, pairs):
     """Join lots that one owner uses as a single home site.
 
@@ -130,6 +139,9 @@ def _merge_lots_under_one_home(lots, pairs):
             lead["geometry"] = unary_union(group.geometry.values)
             lead["recorded_area"] = group["recorded_area"].sum()
             lead["condo_units"] = group["condo_units"].sum()
+            for column in LIST_COLUMNS:
+                if column in group:
+                    lead[column] = _pooled(group[column])
         merged.append(lead)
     return gpd.GeoDataFrame(
         merged, geometry="geometry", crs=lots.crs).reset_index(drop=True)
@@ -187,6 +199,10 @@ def _fold_units_into_their_lots(lots):
             unit_rows["condo_units"].clip(lower=1).sum())
         if lots.at[lot_id, "land_use"] not in loader.HOME_TYPE_BY_LAND_USE:
             lots.at[lot_id, "land_use"] = unit_rows["land_use"].mode().iloc[0]
+        for column in LIST_COLUMNS:
+            if column in lots:
+                lots.at[lot_id, column] = _pooled(
+                    [lots.at[lot_id, column], *unit_rows[column]])
     return lots.drop(index=inside["unit_id"]).reset_index(drop=True)
 
 
