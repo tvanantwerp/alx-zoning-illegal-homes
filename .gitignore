@@ -6,3 +6,4 @@ __pycache__
 site/lots.geojson
 site/lots/
 site/lots.tmp/
+.superpowers
