@@ -8,7 +8,8 @@ Each archive result page is saved under ``RAW_DIR/<prefix>/<page>.json`` as
 soon as it arrives, so an interrupted crawl picks up where it stopped. On a
 later run, saved pages are skipped, except page 1 (which tells us how many
 pages there are now) and the last 3 pages (where newly added cases tend to
-land). ``--full`` fetches every page again.
+land), and every page from the earlier crawl's last page onward.
+``--full`` fetches every page again.
 """
 import argparse
 import json
@@ -31,15 +32,25 @@ PROJECTS_PATH = DATA_DIR / "Development_Projects.geojson"
 REFETCH_LAST_PAGES = 3
 
 
+PLACEHOLDERS = {"-- Blank --"}
+
+
 def _clean(value) -> str:
-    return " ".join(str(value).split()) if value else ""
+    """Collapse spaces, and turn the archive's "-- Blank --" placeholder into an empty string."""
+    text = " ".join(str(value).split()) if value else ""
+    return "" if text in PLACEHOLDERS else text
+
+
+class EmptyPageError(RuntimeError):
+    """A result page that should hold documents came back with none."""
 
 
 def cases_from_documents(documents: list[ArchiveDocument]) -> list[dict]:
     """Group archive documents into case records, one per case number.
 
     Documents whose "Case/Permit #" is not a case we track are skipped. A
-    parcel ID of "0" means the archive has none, so it is dropped. A master
+    parcel ID of "0" means the archive has none, so it is dropped, as is the
+    archive's "-- Blank --" placeholder in any field. A master
     case number is given its standard spelling when it has one, and kept as
     written otherwise.
     """
@@ -54,7 +65,7 @@ def cases_from_documents(documents: list[ArchiveDocument]) -> list[dict]:
             "addresses": [], "parcel_ids": [], "project_names": [], "master_cases": [],
             "applicants": [], "documents": [], "sources": ["archive"],
         })
-        address = _clean(f"{fields.get('Address #', '')} {fields.get('Address Street', '')}")
+        address = _clean(f"{_clean(fields.get('Address #'))} {_clean(fields.get('Address Street'))}")
         parcel = _clean(fields.get("Parcel ID"))
         master = _clean(fields.get("Master Case #"))
         values = {
@@ -87,9 +98,21 @@ def _save_page(path: Path, documents: list[ArchiveDocument]) -> None:
     part.replace(path)
 
 
-def _load_page(path: Path) -> list[ArchiveDocument]:
-    rows = json.loads(path.read_text(encoding="utf-8"))
-    return [ArchiveDocument(r["doc_id"], r["name"], r["pages"], r["fields"]) for r in rows]
+def _load_page(path: Path) -> list[ArchiveDocument] | None:
+    """Read a saved page, or None if it is missing, unreadable, or empty (so it is fetched again)."""
+    try:
+        rows = json.loads(path.read_text(encoding="utf-8"))
+        documents = [ArchiveDocument(r["doc_id"], r["name"], r["pages"], r["fields"])
+                     for r in rows]
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    return documents or None
+
+
+def _saved_last_page(folder: Path) -> int:
+    """The highest page number saved by an earlier crawl, or 0 if there is none."""
+    numbers = [int(p.stem) for p in folder.glob("*.json") if p.stem.isdigit()]
+    return max(numbers, default=0)
 
 
 def crawl(client: ArchiveClient, prefixes=PREFIXES, raw_dir: Path = RAW_DIR,
@@ -98,27 +121,40 @@ def crawl(client: ArchiveClient, prefixes=PREFIXES, raw_dir: Path = RAW_DIR,
 
     Each page is saved as ``raw_dir/<prefix without "*">/<page>.json``.
     Unless ``full``, a page already saved is read from disk instead, except
-    page 1 and the last 3 pages, which are always fetched again. Documents
+    page 1, the last 3 pages, and every page from the earlier crawl's last
+    page onward (that page was likely only partly full, and may have gained
+    documents). A saved file that can't be read is fetched again. Documents
     are returned once each, even if a page boundary moved and one shows up
-    on two saved pages.
+    on two pages.
+
+    Raises EmptyPageError if a page that should hold documents comes back
+    empty, rather than saving it and trusting it on later runs.
     """
     documents: dict[int, ArchiveDocument] = {}
     for prefix in prefixes:
         folder = raw_dir / prefix.rstrip("*")
+        refetch_from = _saved_last_page(folder)
         first = client.search(prefix, 1)
+        if first.page_count and not first.documents:
+            raise EmptyPageError(f"{prefix} page 1 came back with no documents")
         _save_page(folder / "1.json", first.documents)
         page_count = max(first.page_count, 1)
+        refetch_from = min(refetch_from or 1, page_count - REFETCH_LAST_PAGES + 1)
         print(f"{prefix} page 1 of {page_count}: {len(first.documents)} documents", flush=True)
+        pages = [first.documents]
         for page in range(2, page_count + 1):
-            path = folder / f"{page}.json"
-            if path.exists() and not full and page <= page_count - REFETCH_LAST_PAGES:
-                continue
-            result = client.search(prefix, page)
-            _save_page(path, result.documents)
-            print(f"{prefix} page {page} of {page_count}: {len(result.documents)} documents",
-                  flush=True)
-        for path in sorted(folder.glob("*.json")):
-            for document in _load_page(path):
+            saved = None if full or page >= refetch_from else _load_page(folder / f"{page}.json")
+            if saved is None:
+                saved = client.search(prefix, page).documents
+                if not saved:
+                    raise EmptyPageError(
+                        f"{prefix} page {page} of {page_count} came back with no documents")
+                _save_page(folder / f"{page}.json", saved)
+                print(f"{prefix} page {page} of {page_count}: {len(saved)} documents",
+                      flush=True)
+            pages.append(saved)
+        for page_documents in pages:
+            for document in page_documents:
                 documents[document.doc_id] = document
     return [documents[key] for key in sorted(documents)]
 
@@ -150,9 +186,12 @@ def collect(client: ArchiveClient, today: str, full: bool = False) -> dict[str, 
 
 def main() -> None:
     """Run ``collect-permits`` from the command line."""
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(
+        description="Gather every permit source into the catalog.")
     parser.add_argument("--full", action="store_true",
-                        help="fetch every archive result page again, not just new ones")
+                        help="fetch every archive result page again, not just new ones. "
+                             "Use it now and then: results are sorted by name, so documents "
+                             "filed into the middle of the list are only found this way")
     parser.add_argument("--documents", action="store_true",
                         help="also download each case's documents as PDFs (not built yet)")
     args = parser.parse_args()
