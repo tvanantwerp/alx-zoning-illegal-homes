@@ -48,7 +48,7 @@ def test_last_search_page_knows_where_it_is():
 
 def test_empty_search_has_no_documents():
     page = parse_search_page(read_fixture("search_none.html"))
-    assert page.documents == [] and page.page_count in (0, 1)
+    assert page.documents == [] and page.page_count == 0
 
 
 def test_search_with_one_hit_opens_the_document_itself():

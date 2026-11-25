@@ -79,6 +79,7 @@ ARCHIVE = "https://imaging.alexandriava.gov/weblink7PZSUP/"
 USER_AGENT = "alx-zoning-illegal-homes permit collector"
 RESULTS_PER_PAGE = 20
 COOKIE_WARNING = "Cookies are not enabled"
+NO_RESULTS = re.compile(r"Results\s*<em>\s*0\s*-\s*0\s*</em>\s*of\s+0\b")
 
 
 @dataclass(frozen=True)
@@ -299,7 +300,8 @@ def parse_search_page(html: str) -> SearchPage:
     """Read the documents and the page position from a search page.
 
     A search with a single hit returns that document's viewer page; it is
-    read as one page holding one document.
+    read as one page holding one document. A search with no hits still says
+    "Page 1 of 1", so its "Results 0 - 0 of 0" line is what gives it zero pages.
     """
     parser = _SearchResultsParser()
     parser.feed(html)
@@ -310,6 +312,8 @@ def parse_search_page(html: str) -> SearchPage:
                                                viewer.pages, viewer.fields)], 1, 1)
     documents = [ArchiveDocument(row["doc_id"], row["name"], row["pages"], row["fields"])
                  for row in parser.rows if row["doc_id"] is not None]
+    if NO_RESULTS.search(html):
+        return SearchPage(documents, 1, 0)
     return SearchPage(documents, parser.page or 1, parser.page_count or 0)
 
 
