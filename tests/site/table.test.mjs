@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chooseResults, rulesTable, lotSquares, notesList, verdict } from "../../site/lot-drawing/table.js";
+import { chooseResults, rulesTable, lotSquares, notesList, verdict, permitsList } from "../../site/lot-drawing/table.js";
 
 const row = (o) => ({ rule: "lot_area", name: "Lot size", status: "fails", measured: 4000, required: 8000, unit: "sq ft", limit: "min", ...o });
 const plain = { results: { label: "R-8 zone rules", rules: [row()] } };
@@ -103,4 +103,39 @@ test("table parts name their roles, so screen readers keep the table on narrow s
 test("notes show repeated text once, in first-seen order", () => {
   assert.equal(notesList(["A roof crosses the lot line.", "Another note.", "A roof crosses the lot line."]),
     '<ul class="notes"><li>A roof crosses the lot line.</li><li>Another note.</li></ul>');
+});
+
+test("permit rows read as passing and name the case", () => {
+  const r = row({ status: "permit_on_file", permit: { case: "SUP2010-00005", how: "parcel" } });
+  const html = rulesTable({ label: "x", rules: [r] }, null);
+  assert.match(html, /PERMIT ON FILE/);
+  assert.match(html, /class="pill permit/);
+  assert.equal(verdict({ rules: [r] }), "Passes every rule the map checks");
+});
+test("a permit row links its case to the case's first document", () => {
+  const r = row({ status: "permit_on_file", permit: { case: "SUP2010-00005", how: "parcel" } });
+  const permits = [{ case: "SUP2010-00005", links: [{ name: "a", url: "https://imaging.alexandriava.gov/d" }] }];
+  const html = rulesTable({ label: "x", rules: [r] }, null, permits);
+  assert.match(html, /<a [^>]*href="https:\/\/imaging.alexandriava.gov\/d"[^>]*>SUP2010-00005<\/a>/);
+});
+test("permits list links each case to the city", () => {
+  const html = permitsList([{ case: "SUP2005-00035", kind: "SUP", year: 2005, description: "convenience store",
+    grants: ["lot_area", "yard:left"], links: [{ name: "Staff report", url: "https://imaging.alexandriava.gov/x" }],
+    search_url: "https://imaging.alexandriava.gov/s" }], { lot_area: "Lot size", "yard:left": "Left side yard" });
+  assert.match(html, /Permits and approvals on file/);
+  assert.match(html, /href="https:\/\/imaging.alexandriava.gov\/x"/);
+  assert.match(html, /special use permit/);
+  assert.match(html, /2005/);
+  assert.match(html, /Settles: Lot size, Left side yard/);
+});
+test("a case with no documents links to the city search", () => {
+  const html = permitsList([{ case: "BZA2001-00001", kind: "BZA", year: null, description: "", grants: [], links: [],
+    search_url: "https://imaging.alexandriava.gov/s?a=1&b=2" }]);
+  assert.match(html, /href="https:\/\/imaging.alexandriava.gov\/s\?a=1&amp;b=2"/);
+  assert.match(html, /variance/);
+  assert.doesNotMatch(html, /Settles|null/);
+});
+test("no permits, no section", () => {
+  assert.equal(permitsList([]), null);
+  assert.equal(permitsList(undefined), null);
 });

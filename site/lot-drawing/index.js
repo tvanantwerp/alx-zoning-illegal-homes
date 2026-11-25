@@ -1,5 +1,5 @@
 import { esc } from "./format.js";
-import { chooseResults, rulesTable, lotSquares, notesList, verdict } from "./table.js";
+import { chooseResults, rulesTable, lotSquares, notesList, verdict, permitsList } from "./table.js";
 const LOAD_ERROR = "The drawing for this lot couldn't be loaded. Try reloading the page.";
 const NO_DRAWING = "The 3D drawing couldn't be shown here, but the rule results below are complete.";
 const CAPTION = "Measured from the city's map data, not a survey. Drag to turn it.";
@@ -93,13 +93,15 @@ export function setUpLotDrawing({ isOrdinary, setOrdinary, onReport = () => {} }
 
     const sizeRow = main.rules.find((row) => row.rule === "lot_area");
     const squares = sizeRow ? lotSquares(sizeRow) : "";
+    const ruleNames = Object.fromEntries([...main.rules, ...(extra ? extra.rules : [])].map((r) => [r.rule, r.name]));
     const notes = ordinary && lot.ordinary_notes && lot.ordinary_notes.length ? lot.ordinary_notes : lot.notes;
     body.innerHTML =
       `<div class="ld-top${squares ? " with-squares" : ""}">` +
       `<figure class="ld-figure"><div class="ld-three"></div><figcaption>${esc(CAPTION)}</figcaption></figure>` +
       squares +
       `</div>` +
-      `<div class="ld-table${extra ? " has-extra" : ""}">${rulesTable(main, extra)}</div>` +
+      `<div class="ld-table${extra ? " has-extra" : ""}">${rulesTable(main, extra, lot.permits)}</div>` +
+      (permitsList(lot.permits, ruleNames) || "") +
       notesList(notes);
 
     const square = body.querySelector(".lot-squares");

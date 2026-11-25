@@ -306,6 +306,21 @@ The city's records identify ground-floor shops but cannot verify the homes'
 positions relative to the shops. The named-street and height district rules
 still apply.
 
+### City permits
+
+The city's records hold special use permits, variances and site plans. The
+map matches them to lots, by address or by parcel, and lists them in the lot's
+pop-up with a link to each case's documents. When a permit approved a shortfall
+the map would flag, such as a smaller lot, a narrower lot or a closer side
+yard, that rule shows as "permit on file", which counts as passing. A permit
+counts for a rule only when the case plainly covers it, and only for a home built
+under it. Hand-checked corrections are kept in
+`alx_zoning_illegal_homes/permits/overrides.json`.
+
+A permit that is missing proves nothing. The city's records have gaps, and
+older cases are often filed by hand under a different address. A lot with no
+permit listed may still have one.
+
 ## How lots are measured
 
 The parcel map is only a set of polygons, so `lot_lines.py` works out each
@@ -518,6 +533,14 @@ From the [City of Alexandria open data site](https://cityofalexandria-alexgis.op
   (height limits that apply on top of each zone's own)
 - [Zoning Map](https://cityofalexandria-alexgis.opendata.arcgis.com/datasets/AlexGIS::zoning/explore)
   (the main source for each lot’s zone)
+
+City permit cases come from the city's
+[land development document archive](https://imaging.alexandriava.gov/weblink7PZSUP/).
+The list of cases, with their kinds, years, descriptions and links, is kept in
+`alx_zoning_illegal_homes/permits/catalog.jsonl` so the map builds without
+reaching the city's site. Run `uv run collect-permits` to refresh it. Adding
+`--documents` also downloads each case's PDFs into `data/permits/pdf/`, which
+git ignores. That is slow, about 105 seconds per document.
 
 The Zoning Ordinance is published at
 [library.municode.com](https://library.municode.com/va/alexandria/codes/zoning).
