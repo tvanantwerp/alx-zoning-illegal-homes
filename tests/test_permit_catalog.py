@@ -103,3 +103,44 @@ def test_saving_twice_changes_nothing(tmp_path):
 
 def test_missing_catalog_loads_empty(tmp_path):
     assert load_catalog(tmp_path / "nope.jsonl") == {}
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "SUP 2005-35 (amended)",
+        "SUP2005\u201335",
+        "SUP2005\u201435",
+        "SUP2005-000035",
+        "SUP 2005 - 35, revised",
+    ],
+)
+def test_extra_text_dashes_and_zeros_still_give_the_same_case(text):
+    assert normalize_case(text) == "SUP2005-00035"
+
+
+def test_old_letter_suffix_survives_trailing_text():
+    assert normalize_case("SUP1748A (old)") == "SUP1748A"
+
+
+@pytest.mark.parametrize("text", ["SUPERIOR", "DSPX", "BZAR2005-1"])
+def test_kind_must_be_followed_by_a_digit(text):
+    assert normalize_case(text) is None
+
+
+def test_duplicate_lines_are_merged_on_load(tmp_path):
+    path = tmp_path / "catalog.jsonl"
+    lines = [
+        {"case": "SUP2005-00035", "addresses": ["1 KING ST"], "status": "Approved",
+         "first_seen": "2026-11-05", "last_seen": "2026-11-06"},
+        {"case": "SUP2005-35", "addresses": ["2 KING ST"], "status": None,
+         "first_seen": "2026-11-01", "last_seen": "2026-11-20"},
+    ]
+    path.write_text("".join(json.dumps(l) + "\n" for l in lines))
+    cases = load_catalog(path)
+    assert list(cases) == ["SUP2005-00035"]
+    record = cases["SUP2005-00035"]
+    assert record["case"] == "SUP2005-00035"
+    assert record["addresses"] == ["1 KING ST", "2 KING ST"]
+    assert record["status"] == "Approved"
+    assert record["first_seen"] == "2026-11-01" and record["last_seen"] == "2026-11-20"

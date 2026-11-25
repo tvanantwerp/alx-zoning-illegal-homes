@@ -14,6 +14,12 @@ CATALOG_PATH = Path(__file__).with_name("catalog.jsonl")
 # Longest first, so DSUP is not read as DSP or SUP.
 _KINDS_LONGEST_FIRST = sorted(KINDS, key=len, reverse=True)
 _YEAR_FORM = re.compile(r"^([A-Z]+)(\d{4}|\d{2})-(\d+)(.*)$")
+_DASHES = str.maketrans({c: "-" for c in "\u2010\u2011\u2012\u2013\u2014\u2015\u2212"})
+_KIND_PATTERN = "|".join(_KINDS_LONGEST_FIRST)
+_NEW_FORM = re.compile(
+    rf"^\s*({_KIND_PATTERN})\s*(\d{{4}}|\d{{2}})\s*-\s*(\d+)([A-Z]?)(?![0-9A-Z])"
+)
+_PLAIN_FORM = re.compile(rf"^\s*({_KIND_PATTERN})\s*(\d+)([A-Z]?)(?![0-9A-Z])")
 
 
 def case_kind(case: str) -> str:
@@ -27,20 +33,24 @@ def case_kind(case: str) -> str:
 def normalize_case(text: str | None) -> str | None:
     """Give a case number its one standard spelling, or None if it is not one we track.
 
-    Spaces and "#" are dropped, letters are upper-cased, and the number after
-    the year is padded to 5 digits ("SUP 2005-35" becomes "SUP2005-00035").
-    Old plain numbers keep their letters ("SUP1232D", "BZA57").
+    Spaces and "#" are dropped, letters are upper-cased, dash lookalikes count
+    as "-", and the number after the year loses extra leading zeros and is
+    padded to 5 digits ("SUP 2005-35" becomes "SUP2005-00035"). Old plain
+    numbers keep their letters ("SUP1232D", "BZA57"). Anything after the case
+    number, such as "(amended)", is ignored.
     """
     if not text:
         return None
-    case = re.sub(r"[\s#]", "", text).upper()
-    if not any(case.startswith(kind) for kind in KINDS):
-        return None
-    match = _YEAR_FORM.match(case)
+    text = text.upper().translate(_DASHES).replace("#", " ")
+    match = _NEW_FORM.match(text)
     if match:
-        prefix, year, number, rest = match.groups()
-        return f"{prefix}{year}-{number.zfill(5)}{rest}"
-    return case
+        kind, year, number, letter = match.groups()
+        return f"{kind}{year}-{(number.lstrip('0') or '0').zfill(5)}{letter}"
+    match = _PLAIN_FORM.match(text)
+    if match:
+        kind, number, letter = match.groups()
+        return f"{kind}{number}{letter}"
+    return None
 
 
 def case_year(case: str) -> int | None:
@@ -55,14 +65,33 @@ def case_year(case: str) -> int | None:
 
 
 def load_catalog(path: Path = CATALOG_PATH) -> dict[str, dict]:
-    """Read the catalog into a dict keyed by case number. A missing file is an empty catalog."""
+    """Read the catalog into a dict keyed by case number. A missing file is an empty catalog.
+
+    If a case appears on more than one line (for example after a hand edit),
+    the lines are merged: fields are filled in, the oldest ``first_seen`` and
+    the newest ``last_seen`` win.
+    """
     if not path.exists():
         return {}
-    cases = {}
+    cases: dict[str, dict] = {}
     for line in path.read_text(encoding="utf-8").splitlines():
-        if line.strip():
-            record = json.loads(line)
-            cases[record["case"]] = record
+        if not line.strip():
+            continue
+        record = json.loads(line)
+        key = normalize_case(record["case"]) or record["case"]
+        record["case"] = key
+        if key not in cases:
+            cases[key] = record
+            continue
+        existing = cases[key]
+        firsts = [d for d in (existing.get("first_seen"), record.get("first_seen")) if d]
+        lasts = [d for d in (existing.get("last_seen"), record.get("last_seen")) if d]
+        merged = merge_case(existing, record, today=max(lasts, default=""))
+        if firsts:
+            merged["first_seen"] = min(firsts)
+        if not lasts:
+            merged.pop("last_seen")
+        cases[key] = merged
     return cases
 
 
