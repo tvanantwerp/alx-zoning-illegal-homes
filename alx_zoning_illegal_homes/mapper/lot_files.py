@@ -90,9 +90,15 @@ def _number(value):
     return value
 
 
+# What the checks note for `apply_permits` about which permits could settle a
+# row. The pop-up only needs the outcome, `status` and `permit`.
+_PERMIT_WORKINGS = ("permit_tags", "permit_can_allow")
+
+
 def _row(result: RuleResult, frame) -> dict:
     """One table row, with its shapes in lot coordinates and no empty values."""
-    row = {field.name: getattr(result, field.name) for field in fields(result)}
+    row = {field.name: getattr(result, field.name) for field in fields(result)
+           if field.name not in _PERMIT_WORKINGS}
     shapes = {}
     for name, shape in result.shapes.items():
         data = _shape_data(frame(shape))
