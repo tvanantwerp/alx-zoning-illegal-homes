@@ -9,8 +9,11 @@ import shapely
 import shapely.ops
 from shapely.ops import unary_union
 
+from alx_zoning_illegal_homes.permits.match import CaseMatch, match_cases
+
 from . import checks, loader
 from .block_faces import BlockFaces
+from .permits import apply_permits, lot_permits
 from .places import near_a_station, near_eisenhower_avenue, station_points
 from .checks import (Home, LotFacts, Outbuilding, TownhouseDevelopment,
                      TownhouseRow, check_lot)
@@ -91,6 +94,15 @@ def _match_buildings_to_lots(lots, buildings):
     return pairs[pairs["overlap"] > 1.0]
 
 
+# Lot columns holding lists that must be pooled when lots are joined.
+LIST_COLUMNS = ("parcel_ids", "addresses")
+
+
+def _pooled(lists) -> list:
+    """Every item from several lists, sorted, with each item once."""
+    return sorted(set().union(*(items for items in lists if isinstance(items, list))))
+
+
 def _merge_lots_under_one_home(lots, pairs):
     """Join lots that one owner uses as a single home site.
 
@@ -130,6 +142,9 @@ def _merge_lots_under_one_home(lots, pairs):
             lead["geometry"] = unary_union(group.geometry.values)
             lead["recorded_area"] = group["recorded_area"].sum()
             lead["condo_units"] = group["condo_units"].sum()
+            for column in LIST_COLUMNS:
+                if column in group:
+                    lead[column] = _pooled(group[column])
         merged.append(lead)
     return gpd.GeoDataFrame(
         merged, geometry="geometry", crs=lots.crs).reset_index(drop=True)
@@ -187,6 +202,10 @@ def _fold_units_into_their_lots(lots):
             unit_rows["condo_units"].clip(lower=1).sum())
         if lots.at[lot_id, "land_use"] not in loader.HOME_TYPE_BY_LAND_USE:
             lots.at[lot_id, "land_use"] = unit_rows["land_use"].mode().iloc[0]
+        for column in LIST_COLUMNS:
+            if column in lots:
+                lots.at[lot_id, column] = _pooled(
+                    [lots.at[lot_id, column], *unit_rows[column]])
     return lots.drop(index=inside["unit_id"]).reset_index(drop=True)
 
 
@@ -793,6 +812,24 @@ def _historic_shares(lot_shapes: gpd.GeoSeries, historic) -> pd.Series:
     return shares.clip(upper=1.0)
 
 
+def _permit_matches(lots: gpd.GeoDataFrame, permits: dict[str, dict],
+                    projects: gpd.GeoDataFrame) -> dict[int, list[CaseMatch]]:
+    """The permit cases on each lot, keeping only cases in `permits`.
+
+    Site plan outlines name cases the catalog may lack or the overrides
+    ignore; those are dropped, so every match left has a case record.
+    With no permits there are no matches.
+    """
+    if not permits:
+        return {}
+    found = {}
+    for lot_id, matches in match_cases(lots, permits, projects).items():
+        kept = [match for match in matches if match.case in permits]
+        if kept:
+            found[lot_id] = kept
+    return found
+
+
 def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
     """Return one row per lot with its status and the reasons it fails.
 
@@ -830,6 +867,10 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
     pairs = _match_buildings_to_lots(lots, buildings)
     placed = _place_buildings(lots, buildings, pairs)
 
+    projects = loader.load_development_projects()
+    permits = loader.load_permits()
+    permit_matches = _permit_matches(lots, permits, projects)
+
     lot_shapes = lots.geometry.values
     lot_tree = shapely.STRtree(lot_shapes)
     street_shapes = streets.geometry.values
@@ -861,7 +902,6 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
         "first_and_fayette": _street(streets, "FIRST").intersection(
             _street(streets, "FAYETTE")),
     }
-    projects = loader.load_development_projects()
     # Use the city's mapped Hoffman project sites as evidence of tract location.
     # Other CDD #2 projects, such as Mill Race, keep the district-wide 100 ft limit.
     places["hoffman_tract"] = projects.loc[
@@ -913,6 +953,8 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
             "kinds": [],
             "notes": [],
             "skipped": "no_building",
+            "permits": [],
+            "permit_count": 0,
         }
         records.append(record)
         on_lot = parts_by_lot.get(lot_id)
@@ -1061,6 +1103,9 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
         label, home_type = lot["zoning_label"], facts.home_type
         findings = check_lot(facts)
         findings.notes.extend(record["notes"])
+        matches = permit_matches.get(lot_id, [])
+        cases = [permits[match.case] for match in matches]
+        apply_permits(findings, cases, matches, facts.year_built)
         if lot["land_use"] == TWIN_LAND_USE and home_type in ("two_unit", "single"):
             findings.notes.append(
                 TWO_UNIT_NOTE if home_type == "two_unit" else LONE_HOUSE_NOTE)
@@ -1071,6 +1116,7 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
             # would apply if the district's approved plan did not exist.
             ordinary = check_lot(replace(facts, rules=fallback_rules))
             ordinary.notes.extend(record["notes"])
+            apply_permits(ordinary, cases, matches, facts.year_built)
             if label.strip().upper() == "CDD#10" and fallback_rules.name == "CRMU-L":
                 ordinary.notes.append(
                     "The map estimates where the Slaters Lane and Piggyback Yard "
@@ -1099,7 +1145,11 @@ def analyze(keep_facts: dict | None = None) -> gpd.GeoDataFrame:
                 "lot by lot on the approved site plans, not set by general "
                 "rules, so they are not judged."
                 + (f" City case file: {project}." if project else "")))
+        listed = lot_permits(cases, matches, findings.results,
+                             record.get("ordinary_rule_results") or [])
         record.update({
+            "permits": listed,
+            "permit_count": len(listed),
             "zone": label.strip() if district else facts.rules.name,
             "status": "illegal" if findings.reasons else "ok",
             "reasons": [reason.text for reason in findings.reasons],

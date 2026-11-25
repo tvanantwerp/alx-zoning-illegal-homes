@@ -8,6 +8,9 @@ from pathlib import Path
 import geopandas as gpd
 import pandas as pd
 
+from alx_zoning_illegal_homes.permits.catalog import load_catalog
+from alx_zoning_illegal_homes.permits.tags import apply_overrides, load_overrides, tags_for
+
 DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 FEET_CRS = "EPSG:2283"
 
@@ -65,6 +68,36 @@ def _most_common(values: pd.Series):
     return values.mode().iloc[0] if len(values) else None
 
 
+def _id_text(value) -> str | None:
+    """Spell a parcel ID as plain text, or None if it is blank or "0".
+
+    Account numbers can arrive as numbers, so 50618820.0 becomes "50618820".
+    """
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return None
+    if isinstance(value, float) and value.is_integer():
+        value = int(value)
+    text = str(value).strip()
+    return text if text and text != "0" else None
+
+
+def parcel_ids_of(group: pd.DataFrame) -> list[str]:
+    """Every ID the city uses for the records stacked on one lot, sorted.
+
+    Both the map, block and lot number (PID_RE, "075.01-04-08") and the
+    assessor's account number (ACCOUNTNO, "50618820") are kept, since permit
+    records use either.
+    """
+    ids = {_id_text(value) for column in ("PID_RE", "ACCOUNTNO") for value in group[column]}
+    return sorted(ids - {None})
+
+
+def addresses_of(group: pd.DataFrame) -> list[str]:
+    """Every address of the records stacked on one lot, sorted, blanks dropped."""
+    addresses = {value.strip() for value in group["ADDRESS_GI"] if isinstance(value, str)}
+    return sorted(addresses - {""})
+
+
 def load_lots() -> gpd.GeoDataFrame:
     """Load parcels and collapse stacked records into one row per lot.
 
@@ -93,8 +126,10 @@ def load_lots() -> gpd.GeoDataFrame:
             "land_uses": sorted(set(land_uses)),
             "condo_units": int(group["is_condo_unit"].sum()),
             "address": lead["ADDRESS_GI"],
+            "addresses": addresses_of(group),
             "address_street": lead["ST_NAME"],
             "owner": lead["OWN_NAME"],
+            "parcel_ids": parcel_ids_of(group),
             "recorded_area": float(group["LAND_SF"].fillna(0).max()),
         })
 
@@ -104,6 +139,19 @@ def load_lots() -> gpd.GeoDataFrame:
     shapes = parcels.drop_duplicates("shape_key").set_index("shape_key").geometry
     lots = gpd.GeoDataFrame(info, geometry=shapes.reindex(info.index), crs=FEET_CRS)
     return lots.reset_index(drop=True)
+
+
+def load_permits() -> dict[str, dict]:
+    """Load the permit catalog, keyed by case number, with each case's tags.
+
+    Every case gets a sorted "tags" list of the rules it can settle, then the
+    hand-made overrides are applied. Cases an override ignores are left out.
+    The tags live only in memory; the catalog file never stores them.
+    """
+    cases = load_catalog()
+    for record in cases.values():
+        record["tags"] = sorted(tags_for(record))
+    return apply_overrides(cases, load_overrides())
 
 
 def load_buildings() -> gpd.GeoDataFrame:

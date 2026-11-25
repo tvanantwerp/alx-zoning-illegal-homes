@@ -16,6 +16,10 @@ FAILS, PASSES, NOT_CHECKED, NO_RULE, NOT_REQUIRED = (
 # A lot rule this older lot falls short of, but which the rule for older
 # lots excuses. Counts as passing; the row keeps the shortfall on show.
 OLDER_LOT = "older_lot"
+# A rule this lot falls short of, but which a city permit on file for the lot
+# allows. Counts as passing, as OLDER_LOT does; the row keeps the shortfall
+# on show and names the case.
+PERMIT_ON_FILE = "permit_on_file"
 
 RULE_IDS = ("lot_area", "development_area", "frontage", "width", "yard:front", "yard:street", "yard:left", "yard:right",
             "yard:rear", "yard:nearest", "yard:accessory", "floor_area", "height", "height_near_street", "height_at_rear",
@@ -108,7 +112,7 @@ class RuleResult:
 
     rule: str                 # fixed id, see RULE_IDS
     name: str                 # as the table shows it, e.g. "Lot size"
-    status: str               # one of the five labels above
+    status: str               # one of the status labels above
     measured: float | None = None
     required: float | None = None
     unit: str = ""            # "sq ft", "ft", "share" or ""
@@ -119,6 +123,14 @@ class RuleResult:
     summary: str | None = None      # one-line text where numbers don't fit (home type)
     shapes: dict = field(default_factory=dict)   # name -> shapely geometry, lot coordinates
     buildings: list[int] = field(default_factory=list)  # indexes into LotFacts.all_buildings
+    # The permit tags (see permits/tags.py) the ordinance lets settle this row on
+    # this lot. Set only where the row fails, or can't be judged, for want of a
+    # permit the map can't see.
+    permit_tags: tuple[str, ...] = ()
+    # True when the building is also within the most such a permit can allow.
+    # A row with permit_tags but not this flag is past that ceiling.
+    permit_can_allow: bool = False
+    permit: dict | None = None  # {"case", "how"} once a permit on file settles the row
 
 
 def reason_kind(rule: str) -> str:

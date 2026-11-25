@@ -99,6 +99,10 @@ YARD_NAMES = {"front": "Front yard", "left": "Left side yard",
               "right": "Right side yard", "rear": "Rear yard",
               "nearest": "Closest lot line"}
 _STATUS_RANK = {NO_RULE: 0, NOT_REQUIRED: 1, NOT_CHECKED: 2, PASSES: 3, FAILS: 4}
+# Zones where floor space and land per home may be judged across a whole
+# development tract under a development special use permit (section
+# 1-400(B)(3)(c)), rather than lot by lot.
+TRACT_ZONES = frozenset({"CRMU-L", "CRMU-M", "CRMU-H", "CRMU-X"})
 
 
 @dataclass
@@ -486,7 +490,7 @@ def _check_home_type(facts, findings) -> OlderHomeAllowance | None:
     name = HOME_TYPE_NAMES[kind]
     status, summary = PASSES, f"{name} allowed in the {rules.label}"
     allowance = None if kind in rules.allowed else _older_home_allowance(facts)
-    explanation = None
+    explanation, permit_tags = None, ()
     if allowance is not None:
         summary = f"older {name} allowed in the {rules.label}"
         explanation = " ".join(filter(None, [
@@ -519,6 +523,7 @@ def _check_home_type(facts, findings) -> OlderHomeAllowance | None:
         status = FAILS
         summary = f"{name} near Eisenhower Avenue needs a special permit in the {rules.label}"
         explanation = eisenhower_special_permit_explanation(rules.label)
+        permit_tags = ("homes_near_eisenhower",)
         findings.reasons.append(Reason(
             "home_type",
             f"This kind of home ({name}) is on a lot within 1,000 ft of the centerline of "
@@ -533,9 +538,21 @@ def _check_home_type(facts, findings) -> OlderHomeAllowance | None:
             findings.notes.append(note)
     if rules.home_type_note:
         explanation = " ".join(filter(None, [explanation, rules.home_type_note]))
-    findings.results.append(RuleResult(
-        "home_type", "Home type", status, summary=summary, explanation=explanation))
+    row = RuleResult("home_type", "Home type", status, summary=summary, explanation=explanation)
+    if permit_tags:
+        _permit_could_allow(row, permit_tags)
+    findings.results.append(row)
     return allowance
+
+
+def _permit_could_allow(row: RuleResult, tags: tuple[str, ...], within: bool = True) -> None:
+    """Note that a city permit with one of `tags` could settle this failing row.
+
+    `within` is False when the building goes past the most such a permit can
+    allow, so a permit on file can't settle the row (see `mapper.permits`).
+    """
+    row.permit_tags = tags
+    row.permit_can_allow = within
 
 
 def _check_twin_wall(facts, findings):
@@ -595,6 +612,8 @@ def _check_row_length(facts, findings):
     result.status = FAILS
     result.explanation = long_row_explanation(rules.label, row.homes, row.length,
                                               permit, too_long)
+    if permit:
+        _permit_could_allow(result, ("townhouse_row",), within=not too_long)
     result.buildings = _home_indexes(facts)
     if row.outlines:
         result.shapes["row"] = shapely.MultiPolygon(
@@ -622,6 +641,8 @@ def _check_lot_area(facts, findings, position):
     row.status, row.measured, row.required = PASSES, area, required
     if area < required * (1 - AREA_MARGIN):
         row.status = FAILS
+        if rules.name in TRACT_ZONES:
+            _permit_could_allow(row, ("tract",))
         what = "Land per home" if per_home else "Lot"
         corner = " on a corner" if (position == "corner"
                                     and required != rules.lot_area.get(kind)) else ""
@@ -797,6 +818,7 @@ def _excuse_older_lot(facts, findings) -> bool:
                 "City Council can allow a home on a qualifying older undersized lot "
                 "by special use permit under sections 12-401 and 12-402. "
                 "The map can't verify eligibility or count that permit.")
+            _permit_could_allow(row, ("undersized_lot",))
     if rules.name not in OLDER_LOTS.zones:
         if rules.undersized_lot_note:
             findings.notes.append(rules.undersized_lot_note)
@@ -1896,6 +1918,8 @@ def _check_floor_area(facts, findings, older_lot=False):
     row.buildings = _home_indexes(facts) + [building.index for building in outbuildings]
     if ratio > limit * (1 + FLOOR_AREA_MARGIN):
         row.status = FAILS
+        if facts.rules.name in TRACT_ZONES:
+            _permit_could_allow(row, ("tract",))
         allows = (f"On an older lot that falls short of the {facts.rules.label}'s "
                   "minimums for new lots, floor space may be" if older_lot
                   else f"The {facts.rules.label} allows floor space")
@@ -1944,11 +1968,14 @@ class HeightLimit:
     allows: what the limit allows, for a reason ("the RC zone allows 150 ft").
     source: the limit's name, for saying which limit set the height
             ("the limit in the RC zone").
+    permit_feet: the most a special permit from City Council can raise this
+                 limit to, or None where no permit can.
     """
 
     feet: float
     allows: str
     source: str
+    permit_feet: float | None = None
 
 
 def _check_accessory_sizes(facts, findings):
@@ -2026,7 +2053,8 @@ def _map_height_limit(facts: LotFacts, home: Home) -> HeightLimit | None:
                    "need a special permit from City Council")
     elif area.along_street:
         allows += f" away from {area.along_name}"
-    return HeightLimit(area.height, allows, source)
+    return HeightLimit(area.height, allows, source,
+                       permit_feet=None if area.retail_height else area.permit_height)
 
 
 def _height_limits(facts: LotFacts, home: Home, older_lot: bool,
@@ -2132,6 +2160,7 @@ def _check_height(facts, findings, older_lot=False):
         measured = (f"about {_feet(height)} measured the ordinance's way (roof peak about "
                     f"{_feet(estimate.peak)})" if shrunk else f"about {_feet(height)}")
         findings.reasons.append(Reason("height", f"Too tall: {measured}, but {deciding.allows}."))
+        _note_height_permit(row, candidates)
     if row.status == PASSES and (missing_plan or missing_height):
         row.status = NOT_CHECKED
     others = [(other.source, other.feet) for other in limits if other is not deciding]
@@ -2158,6 +2187,21 @@ def _check_height(facts, findings, older_lot=False):
         height_map_explanation(area, facts.lines.fronts) if on_map else None,
         height_explanation(estimate),
         margin_explanation(row)]))
+
+
+def _note_height_permit(row: RuleResult, candidates: list) -> None:
+    """Note on a failing height row whether a special permit could allow the height.
+
+    Only when every limit the homes go over is one a permit can raise. The
+    row is within the permit's reach when no home goes over the most the
+    permit can allow. `candidates` are the (home, height, limits, map area)
+    the height check weighed.
+    """
+    over = [(estimate.height, limit) for _, estimate, limits, _ in candidates
+            for limit in limits if estimate.height > limit.feet + HEIGHT_MARGIN]
+    if over and all(limit.permit_feet for _, limit in over):
+        _permit_could_allow(row, ("extra_height",), within=all(
+            height <= limit.permit_feet + HEIGHT_MARGIN for height, limit in over))
 
 
 @dataclass

@@ -361,8 +361,16 @@
   .pill.fail { background: var(--accent-soft); color: var(--accent); }
   .pill.pass { background: var(--pass-soft); color: var(--pass); }
   .pill.older { background: var(--older-soft); color: var(--older); }
+  .pill.permit { background: var(--older-soft); color: var(--older); }
   .pill.skip, .pill.none, .pill.notreq { background: var(--paper); color: var(--muted); }
   .pill.explain { text-decoration: none; box-shadow: inset 0 -1px 0 var(--muted); }
+  .permit-note { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+  .permit-note a, #lot-drawing .permits a { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
+  #lot-drawing .permits { margin-top: 14px; }
+  #lot-drawing .permits ul { margin: 0; padding-left: 18px; font-size: 13px; }
+  #lot-drawing .permits li + li { margin-top: 8px; }
+  .permit-detail { color: var(--muted); }
+  .permit-settles { font-size: 12.5px; margin-top: 2px; }
   .bar { position: relative; height: 8px; background: var(--paper); border-radius: 4px; min-width: 80px; }
   .bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; background: var(--pass); }
   .bar i.fail { background: var(--accent); }

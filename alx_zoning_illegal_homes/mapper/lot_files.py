@@ -90,9 +90,15 @@ def _number(value):
     return value
 
 
+# What the checks note for `apply_permits` about which permits could settle a
+# row. The pop-up only needs the outcome, `status` and `permit`.
+_PERMIT_WORKINGS = ("permit_tags", "permit_can_allow")
+
+
 def _row(result: RuleResult, frame) -> dict:
     """One table row, with its shapes in lot coordinates and no empty values."""
-    row = {field.name: getattr(result, field.name) for field in fields(result)}
+    row = {field.name: getattr(result, field.name) for field in fields(result)
+           if field.name not in _PERMIT_WORKINGS}
     shapes = {}
     for name, shape in result.shapes.items():
         data = _shape_data(frame(shape))
@@ -143,7 +149,11 @@ def _buildings(facts: LotFacts, frame) -> list[dict]:
 
 
 def lot_drawing(lot_id: int, record: dict, facts: LotFacts) -> dict:
-    """Everything the pop-up needs for one lot, as plain JSON-ready data."""
+    """Everything the pop-up needs for one lot, as plain JSON-ready data.
+
+    "permits", when the lot has any, is the record's list of city cases
+    matched to the lot (see `mapper.permits.lot_permits`).
+    """
     frame = lot_frame(facts)
     district = record.get("district")
     district = district if isinstance(district, str) else None
@@ -179,6 +189,9 @@ def lot_drawing(lot_id: int, record: dict, facts: LotFacts) -> dict:
             "rules": _rows(record["ordinary_rule_results"], frame),
         }
         drawing["ordinary_notes"] = list(dict.fromkeys(record.get("ordinary_notes") or []))
+    permits = record.get("permits")
+    if isinstance(permits, list) and permits:
+        drawing["permits"] = permits
     return drawing
 
 

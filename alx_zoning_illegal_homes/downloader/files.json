@@ -44,5 +44,11 @@
         "url": "https://maps.alexandriava.gov/arcgis/rest/services/alxBasemapWm/MapServer/17/query?where=FEATURE+IN+%281%2C2%2C3%2C5%2C7%29&outFields=FEATURE%2CSURFACE%2CPARKING&orderByFields=OBJECTID&outSR=4326&f=geojson",
         "filetype": "geojson",
         "page_size": 1000
+    },
+    {
+        "name": "Special_Use_Permits",
+        "url": "https://maps.alexandriava.gov/arcgis/rest/services/alxSUPWm/MapServer/1/query?where=1%3D1&outFields=*&orderByFields=OBJECTID&outSR=4326&f=geojson",
+        "filetype": "geojson",
+        "page_size": 1000
     }
 ]

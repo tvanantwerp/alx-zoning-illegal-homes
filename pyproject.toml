@@ -17,6 +17,7 @@ Repository = "https://github.com/tvanantwerp/alx-zoning-illegal-homes"
 
 [project.scripts]
 create-map = "alx_zoning_illegal_homes.mapper.main:main"
+collect-permits = "alx_zoning_illegal_homes.permits.collect:main"
 
 [dependency-groups]
 dev = [
