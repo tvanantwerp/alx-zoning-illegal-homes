@@ -17,18 +17,26 @@ How it works:
   says "height" or "floor area", because a restaurant's permit doesn't excuse
   the apartments above it.
 
+Tags that settle a building's size (``extra_height``, ``extra_floor_area``,
+``tract`` and ``homes_near_eisenhower``) also need wording that names homes
+("residential", "dwelling", "apartment" and so on). A request for "additional
+height" that never says what the building is for gives no tag.
+
 Two tags only make sense in certain zones, but tags only see a case's text:
 
 - ``homes_near_eisenhower`` matches homes mentioned alongside Eisenhower
-  Avenue. It settles the home type rule, which only exists in the OCM(100)
-  and OCH zones near Eisenhower.
+  Avenue. It is meant for homes in the OCM(100) and OCH zones near
+  Eisenhower.
 - ``tract`` matches a development special use permit (or the word "tract")
-  for homes. "See DSUP #2005-0001" is a pointer to another case, not this
-  one, so a "DSUP" followed by a case number doesn't count. It settles floor area and lot area across a whole development,
-  which the rules only allow in the CRMU zones.
+  for homes. It is meant for the CRMU zones, where floor area and lot area
+  can be judged across a whole development. "See DSUP #2005-0001" is a
+  pointer to another case, not this one, so a "DSUP" followed by a case
+  number doesn't count.
 
-The zone check happens where a tag is applied to a lot's rule: a lot outside
-those zones has no such rule for the tag to settle.
+The home type, floor area and lot area rules exist in every zone, so the zone
+check can't happen here. It happens when a tag is applied to a lot's rule:
+``tract`` only counts on lots in a CRMU zone, and ``homes_near_eisenhower``
+only on lots in the OCM(100) or OCH zones.
 
 Overrides, kept in ``overrides.json``, are hand-made corrections that win over
 the keywords. Each one needs a ``source`` note saying where it came from.
@@ -65,10 +73,15 @@ def _all_of(*patterns: str) -> re.Pattern:
 
 
 _HOMES = (r"\bresidential\b|\bdwellings?\b|\bapartments?\b|\bcondominiums?\b|\bhomes\b"
-          r"|\bmulti-?family\b|\btown\s?(?:houses?|homes?)\b")
+          r"|\bmulti-?family\b|\bsingle[-\s]family\b|\bsemi-?detached\b|\btown\s?(?:houses?|homes?)\b")
 _MORE_THAN_EIGHT = r"\b(?:more\s+than|exceeding|over)\s+(?:eight|8)\s+(?:units|town\s?(?:houses|homes)|dwellings)\b"
 _FLOOR_AREA = r"\bfloor\s+area\b|\bf\.a\.r\b|(?-i:\bFAR\b)"
 _SIDE_YARD = r"\bside\s+yards?\b"
+_MORE_HEIGHT = (r"\b(?:increased?|increasing|additional|extra|bonus)\s+"
+                r"(?:(?:in|of|the)\s+)*(?:building\s+|maximum\s+)?height\b"
+                r"|\bheight\s+(?:increase|modification|bonus|district)s?\b")
+_MORE_FLOOR_AREA = (r"\b(?:increased?|increasing|additional|bonus)\s+"
+                    r"(?:(?:in|of|the)\s+)*(?:f\.a\.r\b|(?-i:FAR\b)|floor\s+area\b)")
 
 KEYWORDS: list[tuple[str, re.Pattern]] = [
     # Special use permits and site plans
@@ -79,11 +92,8 @@ KEYWORDS: list[tuple[str, re.Pattern]] = [
                                      r"|\bprivate\s+streets?\b")),
     ("townhouse_row",         _all_of(r"\btown\s?(?:houses?|homes?)\b", _MORE_THAN_EIGHT)),
     ("homes_near_eisenhower", _all_of(r"\beisenhower\b", _HOMES)),
-    ("extra_height",          _words(r"\b(?:increased?|increasing|additional|extra|bonus)\s+"
-                                     r"(?:(?:in|of|the)\s+)*(?:building\s+|maximum\s+)?height\b"
-                                     r"|\bheight\s+(?:increase|modification|bonus|district)s?\b")),
-    ("extra_floor_area",      _words(r"\b(?:increased?|increasing|additional|bonus)\s+"
-                                     r"(?:(?:in|of|the)\s+)*(?:f\.a\.r\b|(?-i:FAR\b)|floor\s+area\b)")),
+    ("extra_height",          _all_of(_MORE_HEIGHT, _HOMES)),
+    ("extra_floor_area",      _all_of(_MORE_FLOOR_AREA, _HOMES)),
     ("tract",                 _all_of(r"\btract\b|\bDSUP\b(?!\s*#?\s*\d)|\bdevelopment\s+(?:special\s+use\s+permit|SUP)\b",
                                       _HOMES)),
     # Variances (BZA cases only)
@@ -101,7 +111,8 @@ KEYWORDS: list[tuple[str, re.Pattern]] = [
 
 NOT_THE_HOME = _words("|".join([
     # Businesses and other uses that aren't homes
-    r"\brest(?:au|ua)rants?\b", r"\bcaf[eé]s?\b", r"\bcatering\b", r"\bcarry\s?-?out\b",
+    r"\brest[aru]{3,5}nts?\b", r"(?-i:\b[Bb]ars?\b)", r"\bbrew(?:ery|eries|pub)\b",
+    r"\btaverns?\b", r"\bcoffee\b", r"\bpharmac(?:y|ies)\b", r"\bcaf[eé]s?\b", r"\bcatering\b", r"\bcarry\s?-?out\b",
     r"\bseat(?:s|ing)\b", r"\bdining\b", r"\bbakery\b", r"\bdeli\b", r"\bfood\b",
     r"\bconv[a-z]*nce\s+stores?\b", r"\bstores?\b", r"\bretail\b", r"\bshopping\b",
     r"\bmarket\b", r"\bwholesale\b", r"\bbusiness(?:es)?\b", r"\bbanks?\b",
@@ -122,8 +133,9 @@ NOT_THE_HOME = _words("|".join([
     r"\bsigns?\b", r"\bsignage\b", r"\bfences?\b", r"\bretaining\s+walls?\b", r"\bsheds?\b",
     r"\bdetached\s+garages?\b", r"\b(?:swimming\s+)?pools?\b",
     r"\baccessory\s+(?:buildings?|structures?|dwellings?)\b",
-    # Appeals of a zoning decision grant nothing by themselves
-    r"\bappeal",
+    # Appeals of a zoning decision grant nothing by themselves. The Board of
+    # Zoning Appeals' own name is not an appeal.
+    r"(?<!zoning )\bappeal(?:s|ed)?\s+(?:of|from)\b", r"\bappellants?\b",
 ]))
 
 
@@ -161,6 +173,10 @@ def _check_override(case: str, override: dict, cases: dict[str, dict]) -> None:
         raise ValueError(f"Override for {case} has unknown fields: {sorted(unknown)}")
     if not str(override.get("source") or "").strip():
         raise ValueError(f"Override for {case} needs a source note")
+    for field in ("tags", "parcel_ids"):
+        value = override.get(field, [])
+        if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+            raise ValueError(f"Override for {case}: {field} must be a list of text values")
     bad_tags = set(override.get("tags") or []) - set(TAG_RULE_IDS)
     if bad_tags:
         raise ValueError(f"Override for {case} has unknown tags: {sorted(bad_tags)}")

@@ -78,20 +78,20 @@ def test_override_replaces_tags_and_needs_a_source():
     ("homes_near_eisenhower", "residential development at 2400 Eisenhower Avenue with 300 dwelling units"),
     ("homes_near_eisenhower", "multi-family residential use in Eisenhower East Block 20"),
     ("homes_near_eisenhower", "apartments on Eisenhower Ave"),
-    ("extra_height", "sup amendment to amend condition 104 of the Carlyle Development plan sup to permit "
-                     "additional height on the southern portion of block O."),  # SUP2004-00003
-    ("extra_height", "Request for additional height - proposed rooftop structures"),  # SUP2017-00072
-    ("extra_height", "Request for increased height and front yard setback modifications"),  # SUP2017-00088
+    ("extra_height", "extension of sup for development of residential condominiums; potomac river vicinity "
+                     "height district sup; parking reduction sup"),  # SUP96-00014
+    ("extra_height", "construct a single family dwelling with increased height"),
+    ("extra_height", "request for additional height for a multi-family residential building"),
     ("extra_height", "home for elderly (131 unit 15 story highrise apartment building for 172-198 senior "
                      "residents), underground parking, setback modification, penthouse height "
                      "modification."),  # SUP95-00171
-    ("extra_floor_area", "Consideration of a request to increase the floor area ratio (FAR)."),  # SUP2007-00057
+    ("extra_floor_area", "increase in floor area ratio for a residential building"),
     ("extra_floor_area", "request for for SUP w/ plot plan to increase the floor area ratio (FAR) and parking "
                          "reduction for an eight unit residential building"),  # SUP2005-00050
     ("extra_floor_area", "residential development plan, with site plan. modifications: lots without street "
                          "frontage, increase in f.a.r., townhouses exceeding 8 units in a single "
                          "structure."),  # SUP96-00056
-    ("extra_floor_area", "zone transition setback - 25 ft or bldg ht increase f.a.r. to 2.5"),  # SUP94-00305
+    ("extra_floor_area", "construct townhouses with additional floor area"),
     ("tract", "SUP (DSUP) for cluster residential; zoning modifications; sales trailer."),  # SUP97-00055
     ("tract", "DSUP with site plan, for residential townhouses, with modifications."),  # SUP96-00160
     ("tract", "development special use permit for a multi-family residential building"),
@@ -123,6 +123,14 @@ def test_wording_that_grants_a_tag(tag, text):
     ("extra_height", "Athletic field netting above 15' height up to 30' height at Witter fields."),  # SUP2022-00006
     ("extra_height", "Request for park improvements to baseball field - 15 ft+ backstop - Stevenson Park"),  # SUP2018-00053
     ("extra_height", "restaurant with additional height for a rooftop bar"),
+    ("extra_height", "restrauant with additional height"),
+    ("extra_height", "rooftop bar with additional height"),
+    ("extra_height", "residential building with a rooftop bar and additional height"),
+    # Says nothing about homes, so the use is unknown.
+    ("extra_height", "sup amendment to amend condition 104 of the Carlyle Development plan sup to permit "
+                     "additional height on the southern portion of block O."),  # SUP2004-00003
+    ("extra_height", "Request for additional height - proposed rooftop structures"),  # SUP2017-00072
+    ("extra_height", "Request for increased height and front yard setback modifications"),  # SUP2017-00088
     ("extra_height", "zone transition setback - 25 ft or bldg ht increase f.a.r. to 2.5"),  # SUP94-00305
     ("extra_floor_area", "DSUP for a hotel; retail space; increase f.a.r.; reduction of loading space "
                          "requirement."),  # SUP98-00039
@@ -131,6 +139,11 @@ def test_wording_that_grants_a_tag(tag, text):
     ("extra_floor_area", "request to amend the Carlyle Development Plan to tranfer 5,000 square feet of GFA "
                          "from Block L to Block O"),  # SUP2005-00091
     ("extra_floor_area", "office building with an increase in floor area ratio"),
+    ("extra_floor_area", "brewery with increase in floor area ratio"),
+    ("extra_floor_area", "coffee shop and apartments with an increase in floor area ratio"),
+    ("extra_floor_area", "pharmacy; residential above; increase in FAR"),
+    ("extra_floor_area", "Consideration of a request to increase the floor area ratio (FAR)."),  # SUP2007-00057, an art shop
+    ("extra_floor_area", "zone transition setback - 25 ft or bldg ht increase f.a.r. to 2.5"),  # SUP94-00305
     ("extra_floor_area", "Request to increase the hours so far approved"),
     ("tract", "request for for SUP w/ plot plan to increase the floor area ratio (FAR) and parking "
               "reduction for an eight unit residential building; see DSUP #2005-0001 for additional "
@@ -181,11 +194,19 @@ def test_variance_wording(text, expected):
     assert bza(text) == expected
 
 
+def test_naming_the_board_of_zoning_appeals_is_not_an_appeal():
+    assert bza("request to the Board of Zoning Appeals for a variance in the required side yard") == {
+        "variance:yard:left", "variance:yard:right"}
+    assert bza("Board of Zoning Appeals variance: rear yard") == {"variance:yard:rear"}
+
+
 @pytest.mark.parametrize("text", [
     "variance to construct a fence in the front yard exceeding the maximum height",
     "variance to construct a shed in the required side yard",
     "variance to construct a detached garage in the rear yard",
     "appeal of the zoning administrator's decision regarding the side yard",
+    "appeals from the decision of the zoning administrator on the rear yard",
+    "tavern addition in the rear yard",
     "variance for a sign exceeding the permitted height on a restaurant",
     "variance to construct an accessory structure in the rear yard",
     "variance to construct a swimming pool in the side yard",
@@ -242,6 +263,10 @@ def test_override_can_ignore_a_case():
     {"tags": ["not_a_tag"], "source": "x"},
     {"color": "red", "source": "x"},
     {"tags": ["extra_height"], "source": "  "},
+    {"tags": "extra_height", "source": "x"},
+    {"tags": [None], "source": "x"},
+    {"parcel_ids": "50618820", "source": "x"},
+    {"parcel_ids": [50618820], "source": "x"},
 ])
 def test_bad_overrides_are_refused(override):
     cases = {"SUP2001-00001": {"case": "SUP2001-00001"}}
