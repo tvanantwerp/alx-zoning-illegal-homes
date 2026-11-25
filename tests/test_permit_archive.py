@@ -79,11 +79,20 @@ def test_document_url():
 
 
 class FakeResponse:
-    def __init__(self, url, text="", content=None):
+    """A canned reply. A reply made from bytes alone refuses to be read as text,
+    the way a PDF body should never be decoded."""
+
+    def __init__(self, url, text=None, content=None):
         self.url = url
-        self.text = text
+        self._text = text
         self.content = content if content is not None else text.encode("utf-8")
         self.status_code = 200
+
+    @property
+    def text(self):
+        if self._text is None:
+            raise AssertionError(f"binary reply from {self.url} was read as text")
+        return self._text
 
     def raise_for_status(self):
         pass

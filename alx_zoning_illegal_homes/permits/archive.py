@@ -349,10 +349,15 @@ class ArchiveClient:
                 time.sleep(5)
         raise AssertionError("unreachable")
 
-    def _request(self, method: str, url: str, **kwargs) -> requests.Response:
-        """Send a request, starting a new session once if cookies were lost."""
+    def _request(self, method: str, url: str, check_cookies: bool = True,
+                 **kwargs) -> requests.Response:
+        """Send a request, starting a new session once if cookies were lost.
+
+        Pass check_cookies=False for file downloads: reading a large PDF's
+        body as text just to look for the warning is slow and pointless.
+        """
         response = self._send(method, url, **kwargs)
-        if COOKIE_WARNING in response.text:
+        if check_cookies and COOKIE_WARNING in response.text:
             self.session = self._new_session()
             response = self._send(method, url, **kwargs)
         return response
@@ -405,7 +410,7 @@ class ArchiveClient:
                 return False
         else:
             return False
-        content = self._request("GET", pdf_url).content
+        content = self._request("GET", pdf_url, check_cookies=False).content
         if not content.startswith(b"%PDF"):
             return False
         partial = destination.with_name(destination.name + ".part")
